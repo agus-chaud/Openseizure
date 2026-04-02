@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SeizureGuard</string>
+
+    <!-- Fase 1.1 — Notificación del ForegroundService -->
+    <string name="notification_channel_name">Monitoreo nocturno</string>
+    <string name="notification_channel_description">Monitoreo continuo de convulsiones durante el sueño</string>
+    <string name="notification_monitoring_title">SeizureGuard activo</string>
+    <string name="notification_monitoring_text">Monitoreando movimientos durante el sueño…</string>
+
+    <!-- Fase 1.1 — Botones de la UI principal -->
+    <string name="btn_start_monitoring">Iniciar monitoreo</string>
+    <string name="btn_stop_monitoring">Detener monitoreo</string>
+    <string name="label_monitoring_on">Monitoreo activo</string>
+    <string name="label_monitoring_off">Monitoreo inactivo</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- S de SeizureGuard -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36 C44,36 36,42 36,50 C36,58 44,62 54,64 C64,66 68,70 68,76 C68,82 62,86 54,86 C46,86 40,82 38,76"/>
+</vector>

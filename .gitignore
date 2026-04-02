@@ -1,0 +1,35 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Módulos
+/wear/build
+/phone/build
+
+# Modelo TFLite (archivo binario — no commitear si es grande)
+# Descomentar si el .tflite supera los 100MB del límite de GitHub
+# *.tflite
+
+# Claude Code — config local de máquina (paths, permisos)
+.claude/settings.local.json
+
+# Datos de sensores generados en Fase 1.6 (CSV logging)
+# Pueden contener datos de paciente y son potencialmente grandes
+**/logs/*.csv
+**/logs/raw_accel_*.csv
+
+# Build outputs — nunca van al repo
+*.apk
+*.aab
+
+# Keystores de firma — NUNCA al repo (seguridad)
+*.jks
+*.keystore
+keystore.properties

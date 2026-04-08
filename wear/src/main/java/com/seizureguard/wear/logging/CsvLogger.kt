@@ -16,7 +16,7 @@ import java.util.Locale
  *   Antes de conectar el TFLite Interpreter (Fase 2.1), necesitamos verificar
  *   que el pipeline de sensores produce datos correctos:
  *   - Frecuencia real ≈ 25Hz (una muestra cada ~40ms)
- *   - Magnitud en reposo ≈ 0 m/s² (TYPE_LINEAR_ACCELERATION sin gravedad)
+ *   - Magnitud en reposo ≈ 1000 milli-g (TYPE_ACCELEROMETER con gravedad incluida)
  *   - Sin gaps prolongados cuando el reloj ahorra batería
  *
  * Analogía Python:
@@ -90,10 +90,10 @@ class CsvLogger(private val context: Context) {
      *   Ver DEC-031 para el análisis de tradeoffs.
      *
      * @param timestampMs Timestamp en milisegundos (System.currentTimeMillis())
-     * @param x Aceleración eje X en m/s² (sin gravedad, TYPE_LINEAR_ACCELERATION)
+     * @param x Aceleración eje X en m/s² (con gravedad incluida, TYPE_ACCELEROMETER)
      * @param y Aceleración eje Y en m/s²
      * @param z Aceleración eje Z en m/s²
-     * @param magnitude √(x²+y²+z²) — calculada en SeizureMonitorService antes de llamar aquí
+     * @param magnitude √(x²+y²+z²) convertida a milli-g — calculada en SeizureMonitorService antes de llamar aquí
      */
     fun write(timestampMs: Long, x: Float, y: Float, z: Float, magnitude: Float) {
         synchronized(lock) {

@@ -308,8 +308,8 @@ class SeizureMonitorServiceTest {
         // Assert
         assertTrue(
             "Después de ACTION_START, debe haber un listener registrado para " +
-                    "TYPE_LINEAR_ACCELERATION — sin esto el Service no recibe datos del sensor",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+                    "TYPE_ACCELEROMETER — sin esto el Service no recibe datos del sensor",
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
     }
 
@@ -342,7 +342,7 @@ class SeizureMonitorServiceTest {
         // Precondición: el listener está registrado antes del stop
         assertTrue(
             "Precondición: el listener debe estar registrado antes de ACTION_STOP",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
 
         // Act — enviar ACTION_STOP al mismo Service
@@ -352,7 +352,7 @@ class SeizureMonitorServiceTest {
         assertFalse(
             "Después de ACTION_STOP, el listener debe desregistrarse — " +
                     "el Service no debe seguir consumiendo datos del sensor",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
     }
 
@@ -386,7 +386,7 @@ class SeizureMonitorServiceTest {
         // Precondición: el listener está activo antes del destroy
         assertTrue(
             "Precondición: el listener debe estar registrado antes del destroy",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
 
         // Act
@@ -396,7 +396,7 @@ class SeizureMonitorServiceTest {
         assertFalse(
             "Después de onDestroy(), el listener debe desregistrarse — " +
                     "el cleanup de onDestroy() es la red de seguridad ante kills del OS",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
     }
 
@@ -404,18 +404,18 @@ class SeizureMonitorServiceTest {
      * Verifica que la constante SENSOR_SAMPLING_PERIOD_US es exactamente 40,000 microsegundos.
      *
      * Qué testea (contrato del CNN): la constante documenta el contrato de frecuencia
-     * entre el sensor y el modelo. 40,000 µs = 40ms = 25Hz = 125 muestras en 5 segundos.
+     * entre el sensor y el modelo. 40,000 µs = 40ms = 25Hz = 750 muestras en 30 segundos.
      * Si alguien cambia este valor, el CNN recibiría la cantidad incorrecta de datos
      * por ventana y sus predicciones serían inválidas.
      *
      * Por qué testear una constante:
      *   Las constantes "obvias" son las que más se cambian por error en refactors.
      *   Este test sirve de documentación ejecutable: "este valor NO es arbitrario,
-     *   existe por el contrato con el modelo CNN v0.24".
+     *   existe por el contrato con el modelo DeepEpiCnn Run24".
      *
      * Analogía Python:
      *   assert SAMPLE_RATE_HZ == 25, "CNN was trained on 25Hz data — do not change"
-     *   assert WINDOW_SIZE == 125,   "CNN input shape is (1, 125, 1)"
+     *   assert WINDOW_SIZE == 750,   "CNN input requires 30 seconds at 25Hz"
      */
     @Test
     fun sensorManager_samplingPeriod_is25Hz() {
@@ -425,7 +425,7 @@ class SeizureMonitorServiceTest {
 
         assertEquals(
             "SENSOR_SAMPLING_PERIOD_US debe ser 40,000µs (40ms = 25Hz). " +
-                    "El CNN v0.24 fue entrenado con ventanas de 125 muestras a 25Hz. " +
+                    "El modelo DeepEpiCnn Run24 requiere ventanas de 750 muestras a 25Hz (30 segundos). " +
                     "Cambiar este valor invalida las predicciones del modelo.",
             expectedPeriodUs,
             SeizureMonitorService.SENSOR_SAMPLING_PERIOD_US
@@ -433,31 +433,28 @@ class SeizureMonitorServiceTest {
     }
 
     /**
-     * Verifica que el Service usa TYPE_LINEAR_ACCELERATION y no TYPE_ACCELEROMETER.
+     * Verifica que el Service usa TYPE_ACCELEROMETER (raw, con gravedad) y NO TYPE_LINEAR_ACCELERATION.
      *
      * Qué testea (corrección del pipeline ML): que el tipo de sensor registrado
-     * es el correcto para el CNN v0.24. Este es el test más crítico de la Fase 1.3.
+     * es el correcto para el modelo DeepEpiCnn Run24. Este es el test más crítico de la Fase 1.3.
      *
-     * Por qué TYPE_LINEAR_ACCELERATION y no TYPE_ACCELEROMETER:
-     *   TYPE_ACCELEROMETER incluye la componente gravitacional (≈9.8 m/s² constante).
-     *   Con el reloj quieto en la muñeca, el sensor mediría ≈9.8 m/s² en el eje vertical
-     *   aunque la persona esté dormida sin moverse. El CNN interpretaría este offset
-     *   como movimiento constante, generando falsas alarmas cada noche.
+     * Por qué TYPE_ACCELEROMETER y no TYPE_LINEAR_ACCELERATION:
+     *   El modelo DeepEpiCnn Run24 fue entrenado con datos de Garmin y PineTime que reportan
+     *   aceleración cruda con gravedad incluida (confirmado por Graham Jones, creador de
+     *   OpenSeizureDetector). Con el reloj en reposo sobre la mesa, un eje debe mostrar
+     *   ~1000 milli-g (= 1g de gravedad). Eso solo es posible con TYPE_ACCELEROMETER.
      *
-     *   TYPE_LINEAR_ACCELERATION = aceleración real del movimiento, sin gravedad.
-     *   El sensor fusion del OS usa el giroscopio para estimar y sustraer la gravedad.
-     *   En reposo: ≈0 m/s² en todos los ejes.
-     *
-     *   El CNN v0.24 fue entrenado con datos de OpenSeizureDetector que usan
-     *   linear acceleration. Es un contrato de preprocesamiento que no puede violarse.
+     *   TYPE_LINEAR_ACCELERATION (sin gravedad) daría magnitud ≈ 0 milli-g en reposo —
+     *   fuera de la distribución de entrenamiento del modelo, lo que invalidaría las
+     *   predicciones. El CNN aprendió a detectar convulsiones sobre el baseline de ~1000 milli-g.
      *
      * Cómo verificarlo en Robolectric:
      *   ShadowSensorManager.hasListener() acepta el tipo de sensor como Int.
-     *   TYPE_LINEAR_ACCELERATION = 10, TYPE_ACCELEROMETER = 1 (valores del SDK de Android).
+     *   TYPE_ACCELEROMETER = 1, TYPE_LINEAR_ACCELERATION = 10 (valores del SDK de Android).
      *   Verificamos el tipo correcto Y que el incorrecto NO esté registrado.
      */
     @Test
-    fun sensorManager_usesLinearAcceleration_notRawAccelerometer() {
+    fun sensorManager_usesRawAccelerometer_notLinearAcceleration() {
         // Arrange
         val context = ApplicationProvider.getApplicationContext<Application>()
         val startIntent = SeizureMonitorService.startIntent(context)
@@ -472,16 +469,16 @@ class SeizureMonitorServiceTest {
 
         // Assert — el sensor correcto está registrado
         assertTrue(
-            "El Service debe registrar TYPE_LINEAR_ACCELERATION (sin gravedad). " +
-                    "El CNN v0.24 fue entrenado con datos sin componente gravitacional.",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            "El Service debe registrar TYPE_ACCELEROMETER (con gravedad). " +
+                    "El modelo DeepEpiCnn Run24 fue entrenado con aceleración cruda — magnitud ~1000 milli-g en reposo.",
+            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
         )
 
         // Assert — el sensor incorrecto NO está registrado
         assertFalse(
-            "El Service NO debe registrar TYPE_ACCELEROMETER (con gravedad). " +
-                    "El offset de ≈9.8 m/s² del raw accelerometer causaría falsas alarmas nocturnas.",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            "El Service NO debe registrar TYPE_LINEAR_ACCELERATION (sin gravedad). " +
+                    "Daría magnitud ≈ 0 milli-g en reposo, fuera del dominio de entrenamiento del modelo.",
+            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
         )
     }
 }

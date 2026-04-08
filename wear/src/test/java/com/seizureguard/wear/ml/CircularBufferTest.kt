@@ -41,7 +41,7 @@ class CircularBufferTest {
 
     @Before
     fun setUp() {
-        buffer = CircularBuffer(capacity = 125)
+        buffer = CircularBuffer(capacity = 750)
     }
 
     /**
@@ -61,7 +61,7 @@ class CircularBufferTest {
     /**
      * Verifica que el buffer no se considera lleno antes de alcanzar la capacidad.
      *
-     * Qué testea: que 124 muestras (un segundo menos) no son suficientes para
+     * Qué testea: que 749 muestras (una muestra menos que la capacidad) no son suficientes para
      * activar una inferencia. La ventana del CNN debe ser completa o nada.
      *
      * Por qué exactamente capacity - 1:
@@ -71,27 +71,27 @@ class CircularBufferTest {
     @Test
     fun buffer_afterAddingLessThanCapacity_isNotFull() {
         // Arrange + Act
-        repeat(124) { i -> buffer.add(i.toFloat()) }
+        repeat(749) { i -> buffer.add(i.toFloat()) }
 
         // Assert
-        assertFalse("Con 124 muestras el buffer no debe estar lleno", buffer.isFull)
-        assertEquals("Con 124 muestras, size debe ser 124", 124, buffer.size)
+        assertFalse("Con 749 muestras el buffer no debe estar lleno", buffer.isFull)
+        assertEquals("Con 749 muestras, size debe ser 749", 749, buffer.size)
     }
 
     /**
      * Verifica que el buffer se marca como lleno exactamente en la muestra número [capacity].
      *
      * Qué testea: el contrato fundamental — cuando isFull es true, hay exactamente
-     * 125 muestras (5 segundos) disponibles para el CNN.
+     * 750 muestras (30 segundos) disponibles para el CNN.
      */
     @Test
     fun buffer_afterAddingExactCapacity_isFull() {
         // Arrange + Act
-        repeat(125) { i -> buffer.add(i.toFloat()) }
+        repeat(750) { i -> buffer.add(i.toFloat()) }
 
         // Assert
-        assertTrue("Con exactamente 125 muestras el buffer debe estar lleno", buffer.isFull)
-        assertEquals("size debe ser exactamente 125 cuando está lleno", 125, buffer.size)
+        assertTrue("Con exactamente 750 muestras el buffer debe estar lleno", buffer.isFull)
+        assertEquals("size debe ser exactamente 750 cuando está lleno", 750, buffer.size)
     }
 
     /**
@@ -102,17 +102,17 @@ class CircularBufferTest {
      * como leer un ECG de derecha a izquierda. El modelo nunca lo vio en entrenamiento.
      *
      * Cómo se verifica:
-     *   Agregamos 0f, 1f, 2f, ..., 124f en ese orden.
-     *   snapshot() debe devolver exactamente [0, 1, 2, ..., 124].
+     *   Agregamos 0f, 1f, 2f, ..., 749f en ese orden.
+     *   snapshot() debe devolver exactamente [0, 1, 2, ..., 749].
      *
      * Analogía Python:
-     *   buf = deque(range(125), maxlen=125)
-     *   assert list(buf) == list(range(125))
+     *   buf = deque(range(750), maxlen=750)
+     *   assert list(buf) == list(range(750))
      */
     @Test
     fun buffer_snapshot_returnsElementsInChronologicalOrder() {
         // Arrange
-        val expected = FloatArray(125) { it.toFloat() }
+        val expected = FloatArray(750) { it.toFloat() }
 
         // Act
         expected.forEach { buffer.add(it) }
@@ -134,26 +134,26 @@ class CircularBufferTest {
      * Qué testea: la propiedad clave del ring buffer — no es una lista que crece,
      * es una ventana que desliza sobre el stream de datos.
      *
-     * Escenario: 130 muestras agregadas (0f..129f), capacidad 125.
+     * Escenario: 755 muestras agregadas (0f..754f), capacidad 750.
      * Las primeras 5 (0f..4f) deben haber sido descartadas.
-     * snapshot() debe devolver [5f, 6f, ..., 129f] — exactamente los últimos 5 segundos.
+     * snapshot() debe devolver [5f, 6f, ..., 754f] — exactamente los últimos 30 segundos.
      *
      * Analogía Python:
-     *   buf = deque(maxlen=125)
-     *   for i in range(130):
+     *   buf = deque(maxlen=750)
+     *   for i in range(755):
      *       buf.append(float(i))
-     *   assert list(buf) == [float(i) for i in range(5, 130)]
+     *   assert list(buf) == [float(i) for i in range(5, 755)]
      */
     @Test
     fun buffer_afterOverflow_containsMostRecentSamples() {
         // Arrange
-        repeat(130) { i -> buffer.add(i.toFloat()) }
+        repeat(755) { i -> buffer.add(i.toFloat()) }
 
         // Act
         val snapshot = buffer.snapshot()
 
-        // Assert — el buffer tiene los 125 más recientes: 5f..129f
-        assertEquals("Después de overflow, snapshot debe tener exactamente 125 elementos", 125, snapshot.size)
+        // Assert — el buffer tiene los 750 más recientes: 5f..754f
+        assertEquals("Después de overflow, snapshot debe tener exactamente 750 elementos", 750, snapshot.size)
         assertEquals(
             "El primer elemento debe ser el sexto agregado (5f) — los 5 primeros fueron descartados",
             5f,
@@ -161,16 +161,16 @@ class CircularBufferTest {
             0.0001f
         )
         assertEquals(
-            "El último elemento debe ser el más reciente (129f)",
-            129f,
-            snapshot[124],
+            "El último elemento debe ser el más reciente (754f)",
+            754f,
+            snapshot[749],
             0.0001f
         )
 
         // Verificar que el orden es cronológico completo
-        val expected = FloatArray(125) { (it + 5).toFloat() }
+        val expected = FloatArray(750) { (it + 5).toFloat() }
         assertArrayEquals(
-            "snapshot() debe devolver los últimos 125 elementos en orden cronológico",
+            "snapshot() debe devolver los últimos 750 elementos en orden cronológico",
             expected,
             snapshot,
             0.0001f
@@ -180,9 +180,9 @@ class CircularBufferTest {
     /**
      * Verifica que snapshot() retorna un array vacío cuando el buffer no está lleno.
      *
-     * Qué testea: que el CNN no recibe datos parciales durante los primeros 5 segundos.
-     * Los primeros 124 muestras se acumulan silenciosamente — no se infiere nada.
-     * La primera inferencia válida ocurre exactamente en la muestra 125.
+     * Qué testea: que el CNN no recibe datos parciales durante los primeros 30 segundos.
+     * Las primeras 749 muestras se acumulan silenciosamente — no se infiere nada.
+     * La primera inferencia válida ocurre exactamente en la muestra 750.
      *
      * Analogía Python:
      *   if len(buffer) < WINDOW_SIZE:
@@ -190,7 +190,7 @@ class CircularBufferTest {
      */
     @Test
     fun buffer_snapshot_whenNotFull_returnsEmptyArray() {
-        // Arrange — buffer con solo 50 muestras (menos de 5 segundos)
+        // Arrange — buffer con solo 50 muestras (menos de 30 segundos)
         repeat(50) { i -> buffer.add(i.toFloat()) }
 
         // Act
@@ -198,7 +198,7 @@ class CircularBufferTest {
 
         // Assert
         assertEquals(
-            "snapshot() debe retornar un array vacío cuando el buffer tiene menos de 125 muestras",
+            "snapshot() debe retornar un array vacío cuando el buffer tiene menos de 750 muestras",
             0,
             snapshot.size
         )
@@ -210,13 +210,13 @@ class CircularBufferTest {
      * Qué testea: que después de detener y reiniciar el monitoreo,
      * el buffer no "contamina" el siguiente ciclo con datos del anterior.
      *
-     * Escenario: se llenó el buffer (125 muestras), se llamó reset(),
+     * Escenario: se llenó el buffer (750 muestras), se llamó reset(),
      * el buffer debe comportarse como nuevo.
      */
     @Test
     fun buffer_reset_clearsAllSamples() {
         // Arrange — llenar el buffer completamente
-        repeat(125) { i -> buffer.add(i.toFloat()) }
+        repeat(750) { i -> buffer.add(i.toFloat()) }
         assertTrue("Precondición: el buffer debe estar lleno antes del reset", buffer.isFull)
 
         // Act
@@ -250,21 +250,21 @@ class CircularBufferTest {
      */
     @Test
     fun buffer_snapshot_returnsIndependentCopy() {
-        // Arrange — llenar el buffer con valores conocidos (0f..124f)
-        repeat(125) { i -> buffer.add(i.toFloat()) }
+        // Arrange — llenar el buffer con valores conocidos (0f..749f)
+        repeat(750) { i -> buffer.add(i.toFloat()) }
         val snapshot = buffer.snapshot()
 
-        // Verificar precondición: el último elemento del snapshot es 124f
-        assertEquals("Precondición: snapshot[124] debe ser 124f", 124f, snapshot[124], 0.0001f)
+        // Verificar precondición: el último elemento del snapshot es 749f
+        assertEquals("Precondición: snapshot[749] debe ser 749f", 749f, snapshot[749], 0.0001f)
 
-        // Act — agregar 5 muestras más (125f..129f) para desplazar la ventana
-        repeat(5) { i -> buffer.add((125 + i).toFloat()) }
+        // Act — agregar 5 muestras más (750f..754f) para desplazar la ventana
+        repeat(5) { i -> buffer.add((750 + i).toFloat()) }
 
         // Assert — el snapshot original NO debe haber cambiado
         assertEquals(
             "El snapshot obtenido antes del add() no debe cambiar cuando se siguen agregando datos",
-            124f,
-            snapshot[124],
+            749f,
+            snapshot[749],
             0.0001f
         )
         assertEquals(
@@ -347,7 +347,7 @@ class CircularBufferTest {
     @Test
     fun buffer_concurrentAccess_doesNotCorrupt() {
         // Arrange
-        val concurrentBuffer = CircularBuffer(capacity = 125)
+        val concurrentBuffer = CircularBuffer(capacity = 750)
 
         // Act — dos coroutines agregando 1000 muestras cada una en paralelo
         runBlocking {
@@ -362,11 +362,11 @@ class CircularBufferTest {
         }
 
         // Assert — el buffer debe estar en un estado consistente
-        // Con 2000 operaciones sobre un buffer de 125, debe estar lleno y no corrupto
+        // Con 2000 operaciones sobre un buffer de 750, debe estar lleno y no corrupto
         assertEquals(
-            "Después de 2000 operaciones concurrentes, size debe ser exactamente capacity (125). " +
+            "Después de 2000 operaciones concurrentes, size debe ser exactamente capacity (750). " +
                     "Si falla, hay una condición de carrera en synchronized(lock).",
-            125,
+            750,
             concurrentBuffer.size
         )
         assertTrue(
@@ -374,8 +374,8 @@ class CircularBufferTest {
             concurrentBuffer.isFull
         )
         assertEquals(
-            "snapshot() después de acceso concurrente debe retornar exactamente 125 elementos",
-            125,
+            "snapshot() después de acceso concurrente debe retornar exactamente 750 elementos",
+            750,
             concurrentBuffer.snapshot().size
         )
     }

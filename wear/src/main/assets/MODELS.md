@@ -17,7 +17,7 @@ Esta carpeta contiene los modelos de inferencia embebidos en la Wear App.
 
 | Tensor | Shape | Tipo | Descripción |
 |--------|-------|------|-------------|
-| Input (índice 0) | `(1, 125, 1)` | FLOAT32 | 125 muestras de magnitud vectorial del acelerómetro a 25Hz = 5 segundos de señal |
+| Input (índice 0) | `(1, 750, 1)` | FLOAT32 | 750 muestras de magnitud vectorial en milli-g del acelerómetro a 25Hz = 30 segundos de señal |
 | Output (índice 0) | `(1, 2)` | FLOAT32 | `[prob_normal, prob_seizure]` — valores entre 0 y 1, suman 1.0 (Softmax) |
 
 ### Cómo interpretar el output
@@ -40,15 +40,15 @@ Señal cruda del acelerómetro (x, y, z a 25Hz):
   │ t₀: (0.12, 9.81, 0.03)            │
   │ t₁: (0.15, 9.79, 0.05)            │
   │ ...                                │
-  │ t₁₂₄: (0.10, 9.82, 0.02)         │
+  │ t₇₄₉: (0.10, 9.82, 0.02)         │
   └────────────────────────────────────┘
               │
               ▼
-  Magnitud vectorial: √(x² + y² + z²)
-  → [9.81, 9.79, ..., 9.82]   (125 floats)
+  Magnitud vectorial: √(x² + y² + z²) × (1000 / 9.81)  → milli-g
+  → [1000.2, 999.8, ..., 1000.1]   (750 floats)
               │
               ▼
-  Tensor ByteBuffer shape (1, 125, 1)
+  Tensor ByteBuffer shape (1, 750, 1)
               │
               ▼
   tflite.Interpreter.run(input, output)

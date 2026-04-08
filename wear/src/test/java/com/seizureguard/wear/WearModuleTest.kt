@@ -13,7 +13,7 @@ import org.junit.Test
  * 3. La lógica básica de la app está lista para ser construida
  *
  * Estos tests evolucionarán en fases posteriores:
- * - Fase 1.5: CircularBufferTest (ring buffer de 125 muestras)
+ * - Fase 1.5: CircularBufferTest (ring buffer de 750 muestras)
  * - Fase 2.4: SeizureStateMachineTest (OK → WARNING → ALARM)
  * - Fase 0.3: TFLiteModelLoadTest (carga del modelo CNN v0.24)
  */
@@ -33,9 +33,9 @@ class WearModuleTest {
 
     @Test
     fun modelConstants_inputShapeIsCorrect() {
-        // Arrange — constantes del modelo CNN v0.24 (documentadas en DevPlan)
-        val expectedSamples = 125       // 5 segundos a 25Hz
-        val expectedChannels = 1        // magnitud vectorial (scalar)
+        // Arrange — constantes del modelo DeepEpiCnn Run24
+        val expectedSamples = 750       // 30 segundos a 25Hz
+        val expectedChannels = 1        // magnitud vectorial en milli-g (scalar)
         val expectedBatchSize = 1       // inferencia single-sample
 
         // Act — en Fase 2.1 estas constantes vendrán del TFLiteInferenceEngine
@@ -43,23 +43,23 @@ class WearModuleTest {
 
         // Assert
         assertEquals("Batch size debe ser 1", 1, tensorInput.first)
-        assertEquals("Input debe tener 125 muestras (5s @ 25Hz)", 125, tensorInput.second)
-        assertEquals("Canal único: magnitud vectorial", 1, tensorInput.third)
+        assertEquals("Input debe tener 750 muestras (30s @ 25Hz)", 750, tensorInput.second)
+        assertEquals("Canal único: magnitud vectorial en milli-g", 1, tensorInput.third)
     }
 
     @Test
     fun sensorSampling_frequencyAndWindowSizeAreConsistent() {
         // Arrange
         val samplingRateHz = 25
-        val windowSeconds = 5
+        val windowSeconds = 30
 
         // Act
         val samplesPerWindow = samplingRateHz * windowSeconds
 
         // Assert
         assertEquals(
-            "25Hz × 5s debe dar exactamente 125 muestras para el tensor CNN",
-            125,
+            "25Hz × 30s debe dar exactamente 750 muestras para el tensor CNN",
+            750,
             samplesPerWindow
         )
     }

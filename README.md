@@ -34,14 +34,14 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 │  X, Y, Z muestras/segundo                                                       │
 │         │                                                                       │
 │         ▼                                                                       │
-│  Magnitud vectorial: √(x² + y² + z²)   ← convierte 3D en 1D                   │
+│  Magnitud vectorial: √(x² + y² + z²) → milli-g   ← convierte 3D en 1D        │
 │         │                                                                       │
 │         ▼                                                                       │
-│  Ring Buffer (125 muestras = 5 segundos)   ← ventana deslizante               │
-│  [t-124, t-123, ..., t-1, t]                                                   │
+│  Ring Buffer (750 muestras = 30 segundos)   ← ventana deslizante              │
+│  [t-749, t-748, ..., t-1, t]                                                   │
 │         │                                                                       │
 │         ▼                                                                       │
-│  Tensor input: shape (1, 125, 1)   ← listo para el modelo                     │
+│  Tensor input: shape (1, 750, 1)   ← listo para el modelo                     │
 │         │                                                                       │
 │         ▼                                                                       │
 │  ┌─────────────────────────────┐                                               │
@@ -85,10 +85,10 @@ La CNN aprende a reconocer **patrones de movimiento característicos de convulsi
 ### Arquitectura
 
 ```
-Input: (1, 125, 1)
+Input: (1, 750, 1)
   = 1 muestra del batch
-  × 125 timesteps (5 segundos a 25Hz)
-  × 1 feature (magnitud vectorial)
+  × 750 timesteps (30 segundos a 25Hz)
+  × 1 feature (magnitud vectorial en milli-g)
          │
    ┌─────▼──────────────────┐
    │  Conv1D layers         │  Detectan patrones locales en el tiempo
@@ -120,7 +120,7 @@ El modelo fue entrenado por el proyecto [OpenSeizureDetector](https://github.com
 | Tasa de falsas alarmas | ~7% |
 | Tamaño del modelo | 204.5 KB |
 | Latencia de inferencia | ~15-30ms (CPU Wear OS) |
-| Ventana temporal | 5 segundos (125 muestras a 25Hz) |
+| Ventana temporal | 30 segundos (750 muestras a 25Hz) |
 
 ### Por qué TFLite y no el modelo .h5 o .pt original
 
@@ -183,7 +183,7 @@ OpenSeizure/
 │   │   │       │   └── CsvLogger.kt          ← logging de muestras a CSV (Fase 1.6)
 │   │   │       ├── ml/
 │   │   │       │   ├── TFLiteModelLoader.kt  ← carga el modelo en memoria
-│   │   │       │   └── CircularBuffer.kt     ← ring buffer de 125 muestras (Fase 1.5)
+│   │   │       │   └── CircularBuffer.kt     ← ring buffer de 750 muestras (Fase 1.5)
 │   │   │       └── service/
 │   │   │           └── SeizureMonitorService.kt  ← ForegroundService nocturno
 │   │   └── test/
@@ -280,7 +280,7 @@ Los tests verifican **comportamiento**, no implementación. El objetivo no es 10
 wear/src/test/
 ├── WearModuleTest.kt                      ← Smoke tests del módulo
 │   ├── smokeTest                           tests que el módulo compila
-│   ├── modelConstants_inputShapeIsCorrect  125 samples × 25Hz = 5 seg
+│   ├── modelConstants_inputShapeIsCorrect  750 samples × 25Hz = 30 seg
 │   └── sensorSampling_frequencyIs25Hz
 │
 ├── ml/TFLiteModelLoaderTest.kt            ← Tests del loader (Robolectric)
@@ -290,11 +290,11 @@ wear/src/test/
 │
 ├── ml/CircularBufferTest.kt               ← Tests del ring buffer (Fase 1.5)
 │   ├── buffer_startsEmpty                           size == 0, isFull == false
-│   ├── buffer_afterAddingLessThanCapacity_isNotFull 124 muestras → isFull false
-│   ├── buffer_afterAddingExactCapacity_isFull       125 muestras → isFull true
+│   ├── buffer_afterAddingLessThanCapacity_isNotFull 749 muestras → isFull false
+│   ├── buffer_afterAddingExactCapacity_isFull       750 muestras → isFull true
 │   ├── buffer_snapshot_returnsElementsInChronologicalOrder  orden cronológico exacto
 │   ├── buffer_afterOverflow_containsMostRecentSamples       ventana deslizante correcta
-│   ├── buffer_snapshot_whenNotFull_returnsEmptyArray        sin datos parciales al CNN
+│   ├── buffer_snapshot_whenNotFull_returnsEmptyArray        sin datos parciales al CNN (< 750)
 │   ├── buffer_reset_clearsAllSamples                        reset() limpia todo
 │   ├── buffer_snapshot_returnsIndependentCopy               copia independiente del array
 │   ├── buffer_magnitude_calculatedCorrectly                 √(3²+4²+0²) = 5.0
@@ -327,7 +327,7 @@ wear/src/test/
     ├── sensorManager_afterActionStop_isUnregistered    listener desregistrado al parar (Fase 1.3)
     ├── sensorManager_afterOnDestroy_isUnregistered     listener desregistrado en onDestroy (Fase 1.3)
     ├── sensorManager_samplingPeriod_is25Hz             contrato 40,000µs = 40ms = 25Hz (Fase 1.3)
-    └── sensorManager_usesLinearAcceleration_notRawAccelerometer  TYPE_LINEAR_ACCELERATION (Fase 1.3)
+    └── sensorManager_usesRawAccelerometer_notLinearAcceleration   TYPE_ACCELEROMETER (Fase 1.3)
 ```
 
 **¿Qué es Robolectric?**
@@ -383,8 +383,8 @@ print(df['delta_ms'].describe())
 # std < 5ms   → sin jitter problemático
 
 # Magnitud en reposo
-print(f"\nMagnitud media: {df['magnitude'].mean():.3f} m/s²")
-# ≈ 0.0 → TYPE_LINEAR_ACCELERATION funcionando
+print(f"\nMagnitud media: {df['magnitude'].mean():.3f} milli-g")
+# ≈ 1000 milli-g → TYPE_ACCELEROMETER funcionando (1g de gravedad en reposo)
 ```
 
 **Qué verificar antes de pasar a Fase 2.1 (inferencia TFLite):**
@@ -393,7 +393,7 @@ print(f"\nMagnitud media: {df['magnitude'].mean():.3f} m/s²")
 |---------|---------------|-----------------|
 | Frecuencia media | ~40ms entre muestras | `df['delta_ms'].mean()` |
 | Jitter | std < 5ms | `df['delta_ms'].std()` |
-| Magnitud en reposo | < 0.5 m/s² | `df['magnitude'].mean()` con reloj quieto |
+| Magnitud en reposo | 950–1050 milli-g | `df['magnitude'].mean()` con reloj quieto |
 | Gaps largos | < 5 instancias > 200ms | `(df['delta_ms'] > 200).sum()` |
 
 ---
@@ -458,7 +458,7 @@ Usa fixture de 144 bytes                 Usa cnn_v024.tflite empaquetado
 # SeizureMonitorServiceTest > sensorManager_afterActionStop_isUnregistered PASSED
 # SeizureMonitorServiceTest > sensorManager_afterOnDestroy_isUnregistered PASSED
 # SeizureMonitorServiceTest > sensorManager_samplingPeriod_is25Hz PASSED
-# SeizureMonitorServiceTest > sensorManager_usesLinearAcceleration_notRawAccelerometer PASSED
+# SeizureMonitorServiceTest > sensorManager_usesRawAccelerometer_notLinearAcceleration PASSED
 # BUILD SUCCESSFUL
 ```
 
@@ -561,14 +561,14 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 ### Fase 1: Captura de sensores (wear)
 - [x] **1.1** ForegroundService con notificación persistente ("SeizureGuard activo") + UI toggle en MainActivity
 - [x] **1.2** WakeLock + lifecycle management (evitar que el reloj duerma)
-- [x] **1.3** SensorManager: acelerómetro 3D a 25Hz (TYPE_LINEAR_ACCELERATION, 40ms period)
+- [x] **1.3** SensorManager: acelerómetro 3D a 25Hz (TYPE_ACCELEROMETER, 40ms period, salida en milli-g)
 - [ ] **1.4** Samsung Privileged Health SDK (opcional — mejor acceso a sensores)
-- [x] **1.5** Ring buffer circular de 125 muestras + cálculo de magnitud vectorial
+- [x] **1.5** Ring buffer circular de 750 muestras + cálculo de magnitud vectorial en milli-g
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
 ### Fase 2: Inferencia TFLite (wear)
 - [ ] **2.1** Crear `Interpreter` + verificar shapes en logcat
-- [ ] **2.2** Pipeline de preprocesamiento: `FloatArray(125)` → `ByteBuffer` → tensor
+- [ ] **2.2** Pipeline de preprocesamiento: `FloatArray(750)` → `ByteBuffer` → tensor
 - [ ] **2.3** Inferencia cada ventana + log de probabilidades
 - [ ] **2.4** Máquina de estados: OK → WARNING → ALARM
 - [ ] **2.5** Vibración háptica en estado ALARM

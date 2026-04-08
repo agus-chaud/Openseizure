@@ -65,14 +65,14 @@ class SeizureMonitorService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     /**
-     * Fase 1.5 — Ring buffer circular de 125 muestras (5 segundos a 25Hz).
+     * Fase 1.5 — Ring buffer circular de 750 muestras (30 segundos a 25Hz).
      *
-     * Acumula la magnitud vectorial √(x²+y²+z²) de cada muestra del acelerómetro.
-     * Cuando está lleno, entrega una ventana de 5 segundos lista para el CNN v0.24.
+     * Acumula la magnitud vectorial √(x²+y²+z²) en milli-g de cada muestra del acelerómetro.
+     * Cuando está lleno, entrega una ventana de 30 segundos lista para el CNN DeepEpiCnn Run24.
      *
-     * Por qué BUFFER_CAPACITY = 125:
-     *   125 muestras × (1 muestra / 25Hz) = 5 segundos exactos.
-     *   Ese es el input shape que el CNN espera: (1, 125, 1).
+     * Por qué BUFFER_CAPACITY = 750:
+     *   750 muestras × (1 muestra / 25Hz) = 30 segundos exactos.
+     *   Ese es el input shape que el modelo DeepEpiCnn Run24 espera.
      *
      * Ver DEC-026, DEC-027, DEC-028 en DECISIONS.md para las decisiones de diseño.
      */
@@ -110,18 +110,19 @@ class SeizureMonitorService : Service() {
      * En Wear OS, los sensores del reloj (acelerómetro, frecuencia cardíaca, etc.)
      * se acceden a través de este mismo mecanismo.
      *
-     * Por qué TYPE_LINEAR_ACCELERATION y no TYPE_ACCELEROMETER:
-     *   - TYPE_ACCELEROMETER incluye la componente gravitacional (≈9.8 m/s² en reposo).
-     *     Si el reloj está quieto, el sensor mide ~9.8 m/s² aunque no haya movimiento real.
-     *   - TYPE_LINEAR_ACCELERATION = aceleración del movimiento real, con la gravedad
-     *     sustraída por el sensor fusion del OS. En reposo: ≈0 m/s² en todos los ejes.
-     *   - El modelo CNN v0.24 fue entrenado con datos de OpenSeizureDetector que usan
-     *     linear acceleration. Darle raw accelerometer al CNN sería como pasar features
-     *     sin normalizar a un modelo entrenado con datos normalizados.
+     * Por qué TYPE_ACCELEROMETER y no TYPE_LINEAR_ACCELERATION:
+     *   - El modelo DeepEpiCnn Run24 fue entrenado con datos de Garmin y PineTime que
+     *     reportan aceleración cruda con gravedad incluida (confirmado por Graham Jones,
+     *     creador de OpenSeizureDetector).
+     *   - Con el reloj en reposo sobre la mesa, un eje muestra ~1000 milli-g (= 1g de gravedad).
+     *     Eso solo es posible con TYPE_ACCELEROMETER.
+     *   - El CNN aprendió a detectar convulsiones sobre este baseline de ~1000 milli-g.
+     *     Darle TYPE_LINEAR_ACCELERATION (magnitud en reposo ≈ 0) sería input fuera de
+     *     la distribución de entrenamiento. Ver DEC-023.
      *
      * Analogía Python:
-     *   TYPE_ACCELEROMETER = data_raw (con gravedad como offset constante)
-     *   TYPE_LINEAR_ACCELERATION = data_raw - gravity_vector (ya sin el offset)
+     *   TYPE_ACCELEROMETER = data_raw (con gravedad incluida — ~1000 milli-g en reposo)
+     *   TYPE_LINEAR_ACCELERATION = data_raw - gravity_vector (en reposo ≈ 0 milli-g)
      *
      * Se inicializa como null y se asigna en startSensorCollection().
      * El nullable (SensorManager?) protege contra el caso donde stopSensorCollection()
@@ -130,7 +131,7 @@ class SeizureMonitorService : Service() {
     private var sensorManager: SensorManager? = null
 
     /**
-     * Referencia al sensor de aceleración lineal del reloj.
+     * Referencia al sensor de aceleración cruda (con gravedad) del reloj.
      * Null si el hardware no lo soporta (ver manejo en startSensorCollection).
      */
     private var accelerometerSensor: Sensor? = null
@@ -151,7 +152,7 @@ class SeizureMonitorService : Service() {
      */
     private val sensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
-            if (event.sensor.type == Sensor.TYPE_LINEAR_ACCELERATION) {
+            if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
                 val x = event.values[0]
                 val y = event.values[1]
                 val z = event.values[2]
@@ -286,7 +287,7 @@ class SeizureMonitorService : Service() {
      *   - SENSOR_DELAY_GAME    ≈ 20ms  = 50Hz
      *   - SENSOR_DELAY_FASTEST ≈ 0ms   (máximo del hardware, varía por dispositivo)
      *
-     *   El CNN requiere exactamente 25Hz (125 samples en 5 segundos de ventana).
+     *   El CNN requiere exactamente 25Hz (750 samples en 30 segundos de ventana).
      *   Ninguna constante predefinida da 25Hz. Por eso usamos el valor numérico:
      *   40,000 microsegundos = 40ms = 25 muestras por segundo.
      *
@@ -295,21 +296,21 @@ class SeizureMonitorService : Service() {
      *   En Fase 1.6 (logging CSV) se medirá la frecuencia real para verificar que
      *   estamos efectivamente cerca de 25Hz antes de conectar el CNN.
      *
-     * Manejo del caso donde TYPE_LINEAR_ACCELERATION no está disponible:
-     *   Aunque es raro en hardware moderno (Galaxy Watch 8 lo soporta), algunos
-     *   relojes más viejos o emuladores Robolectric pueden no tenerlo. En ese caso
-     *   logueamos una advertencia y retornamos sin registrar. En Fase 1.4 se evalúa
-     *   el Samsung Health SDK como alternativa con mejor acceso a sensores.
+     * Manejo del caso donde TYPE_ACCELEROMETER no está disponible:
+     *   Aunque es extremadamente raro (todo hardware con Wear OS lo soporta), algunos
+     *   emuladores Robolectric pueden no tenerlo. En ese caso logueamos una advertencia
+     *   y retornamos sin registrar. En Fase 1.4 se evalúa el Samsung Health SDK como
+     *   alternativa con mejor acceso a sensores.
      *
      * @return true si el listener se registró exitosamente, false si no hay sensor disponible.
      */
     private fun startSensorCollection() {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
         if (accelerometerSensor == null) {
             // Fallback documentado: en Fase 1.4 se evalúa Samsung Health SDK
-            Log.w(TAG, "TYPE_LINEAR_ACCELERATION no disponible en este dispositivo. " +
+            Log.w(TAG, "TYPE_ACCELEROMETER no disponible en este dispositivo. " +
                     "El monitoreo de sensores no está activo. Ver DEC-023 y Fase 1.4.")
             return
         }
@@ -353,37 +354,14 @@ class SeizureMonitorService : Service() {
     }
 
     /**
-     * Procesa cada muestra del acelerómetro (x, y, z) en m/s².
+     * Procesa cada muestra del acelerómetro (x, y, z) en m/s² con gravedad incluida.
      *
-     * Este método es el punto de entrada de todos los datos del sensor al pipeline.
-     * Corre en el thread del SensorManager (no en el main thread, no en serviceScope).
+     * Fase 1.5: calcula la magnitud vectorial en milli-g y la agrega al ring buffer.
+     * Cuando el buffer tiene 750 muestras (30 segundos), llama a onWindowReady().
      *
-     * Estado actual (Fase 1.3): solo loggea en verbose para diagnóstico.
-     *
-     * Evolución planificada:
-     *   - Fase 1.5: calcular magnitud = √(x² + y² + z²) y agregar al ring buffer de 125 muestras.
-     *   - Fase 1.6: loggear la muestra a CSV para análisis offline con Python.
-     *   - Fase 2.3: cuando el ring buffer esté lleno, extraer ventana y pasarla al CNN.
-     *
-     * Analogía Python:
-     *   Este método es el equivalente a un callback de consumer en un stream:
-     *   ```python
-     *   def on_sample(x: float, y: float, z: float):
-     *       magnitude = math.sqrt(x**2 + y**2 + z**2)
-     *       ring_buffer.append(magnitude)
-     *       if len(ring_buffer) == 125:
-     *           run_cnn(ring_buffer)
-     *   ```
-     *
-     * @param x Aceleración en el eje X (m/s²), sin gravedad.
-     * @param y Aceleración en el eje Y (m/s²), sin gravedad.
-     * @param z Aceleración en el eje Z (m/s²), sin gravedad.
-     */
-    /**
-     * Procesa cada muestra del acelerómetro (x, y, z) en m/s².
-     *
-     * Fase 1.5: calcula la magnitud vectorial y la agrega al ring buffer.
-     * Cuando el buffer tiene 125 muestras (5 segundos), llama a onWindowReady().
+     * Los valores x, y, z vienen en m/s² de TYPE_ACCELEROMETER (con gravedad).
+     * La magnitud se convierte a milli-g antes de guardarse en el buffer, que es
+     * la unidad esperada por el modelo DeepEpiCnn Run24. En reposo: ~1000 milli-g.
      *
      * Por qué calcular la magnitud aquí y no dentro de CircularBuffer:
      *   El buffer solo sabe de FloatArray — es una estructura de datos genérica.
@@ -392,21 +370,22 @@ class SeizureMonitorService : Service() {
      *   saber nada sobre acelerómetros ni sobre el modelo.
      *
      * Analogía Python:
-     *   magnitude = np.sqrt(x**2 + y**2 + z**2)
-     *   ring_buffer.append(magnitude)
+     *   magnitude_milli_g = np.sqrt(x**2 + y**2 + z**2) * (1000.0 / 9.81)
+     *   ring_buffer.append(magnitude_milli_g)
      *
-     * @param x Aceleración en el eje X (m/s²), sin gravedad.
-     * @param y Aceleración en el eje Y (m/s²), sin gravedad.
-     * @param z Aceleración en el eje Z (m/s²), sin gravedad.
+     * @param x Aceleración en el eje X (m/s²), con gravedad incluida.
+     * @param y Aceleración en el eje Y (m/s²), con gravedad incluida.
+     * @param z Aceleración en el eje Z (m/s²), con gravedad incluida.
      */
     private fun onAccelerometerSample(x: Float, y: Float, z: Float) {
-        val magnitude = sqrt(x * x + y * y + z * z)
-        accelerometerBuffer.add(magnitude)
+        // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
+        val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
+        accelerometerBuffer.add(magnitudeMilliG)
 
         // Fase 1.6: loggear muestra a CSV para análisis offline con Python.
         // En release, isLoggingEnabled = false → este bloque no ejecuta.
         if (isLoggingEnabled) {
-            csvLogger.write(System.currentTimeMillis(), x, y, z, magnitude)
+            csvLogger.write(System.currentTimeMillis(), x, y, z, magnitudeMilliG)
         }
 
         if (accelerometerBuffer.isFull) {
@@ -416,7 +395,7 @@ class SeizureMonitorService : Service() {
     }
 
     /**
-     * Recibe una ventana completa de 125 muestras lista para inferencia.
+     * Recibe una ventana completa de 750 muestras lista para inferencia.
      *
      * En Fase 1.5: loggea para diagnóstico y verificar que el pipeline llega hasta acá.
      * En Fase 2.1: pasará la ventana al TFLiteInferenceEngine.
@@ -427,7 +406,7 @@ class SeizureMonitorService : Service() {
      *   responsabilidad por separado. En Fase 2.x, este método crecerá con la
      *   lógica del intérprete, la máquina de estados y la alarma.
      *
-     * @param window FloatArray de exactamente [BUFFER_CAPACITY] magnitudes en orden cronológico.
+     * @param window FloatArray de exactamente [BUFFER_CAPACITY] magnitudes en milli-g en orden cronológico.
      */
     private fun onWindowReady(window: FloatArray) {
         // TODO Fase 2.1: pasar la ventana al TFLite Interpreter
@@ -542,16 +521,25 @@ class SeizureMonitorService : Service() {
         /**
          * Capacidad del ring buffer = número de muestras por ventana del CNN.
          *
-         * 125 muestras × (1/25Hz) = 5 segundos exactos.
-         * El input shape del CNN v0.24 es (1, 125, 1).
+         * 750 muestras × (1/25Hz) = 30 segundos exactos.
+         * El modelo DeepEpiCnn Run24 requiere 30 segundos de datos como input.
          * Si se cambia este valor, el modelo recibiría la forma incorrecta de tensor
          * y las predicciones serían inválidas.
          *
          * Analogía Python:
-         *   WINDOW_SIZE = 125  # samples at 25Hz = 5 seconds
+         *   WINDOW_SIZE = 750  # samples at 25Hz = 30 seconds
          *   buffer = deque(maxlen=WINDOW_SIZE)
          */
-        const val BUFFER_CAPACITY = 125  // 5 segundos × 25Hz
+        const val BUFFER_CAPACITY = 750  // 30 segundos × 25Hz — input del modelo DeepEpiCnn Run24
+
+        /**
+         * Factor de conversión de m/s² a milli-g.
+         *
+         * 1g = 9.81 m/s² = 1000 milli-g (por definición del sistema SI).
+         * El modelo DeepEpiCnn Run24 fue entrenado con magnitudes en milli-g.
+         * Con el reloj en reposo, la magnitud esperada es ~1000 milli-g (1g de gravedad).
+         */
+        private const val MS2_TO_MILLIG = 1000f / 9.81f
 
         /**
          * Tag de logging — formato "ClassName" estándar de Android.
@@ -566,7 +554,7 @@ class SeizureMonitorService : Service() {
          * 25Hz = 25 muestras por segundo = 1 muestra cada 40ms = 40,000 microsegundos.
          *
          * Por qué 25Hz:
-         *   - El modelo CNN v0.24 fue entrenado con ventanas de 125 muestras a 25Hz = 5 segundos.
+         *   - El modelo DeepEpiCnn Run24 fue entrenado con ventanas de 750 muestras a 25Hz = 30 segundos.
          *   - Darle datos a 50Hz sin reentrenar el modelo rompería el contrato de input shape.
          *   - Darle datos a 10Hz perdería resolución temporal de las convulsiones tónico-clónicas
          *     (frecuencia característica: 1-3Hz de movimientos rítmicos, necesitamos 25Hz para

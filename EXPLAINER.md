@@ -301,22 +301,22 @@ sensor.unsubscribe()
 
 Es una suscripción a un stream de datos. Nada más. La diferencia es que en Android el "stream" es el hardware del reloj, corre 24/7, y tiene consecuencias en batería y estabilidad si lo manejás mal.
 
-### Por qué `TYPE_LINEAR_ACCELERATION` y no `TYPE_ACCELEROMETER`
+### Por qué `TYPE_ACCELEROMETER` y no `TYPE_LINEAR_ACCELERATION`
 
 Este es el punto más importante de toda la fase, y si lo hacés mal vas a tener un modelo que da basura sin entender por qué.
 
-`TYPE_ACCELEROMETER` te da la aceleración **incluyendo la gravedad**. Cuando el reloj está quieto sobre la mesa, te da `z ≈ 9.8 m/s²`. Siempre. En reposo. Eso es la Tierra tirando para abajo.
+`TYPE_ACCELEROMETER` te da la aceleración **incluyendo la gravedad**. Cuando el reloj está quieto sobre la mesa, te da `z ≈ 9.8 m/s²` = ~1000 milli-g. Siempre. En reposo. Eso es la Tierra tirando para abajo.
 
-`TYPE_LINEAR_ACCELERATION` le resta la gravedad via el giroscopio interno. Cuando el reloj está quieto, te da `x=0, y=0, z=0`. Solo el movimiento real.
+`TYPE_LINEAR_ACCELERATION` le resta la gravedad via el giroscopio interno. Cuando el reloj está quieto, te da `x=0, y=0, z=0` = ~0 milli-g. Solo el movimiento real.
 
-El CNN v0.24 fue entrenado con datos de OpenSeizureDetector que usan aceleración lineal. Si vos le das `TYPE_ACCELEROMETER`, el modelo recibe una señal sistemáticamente distinta a la que vio durante el entrenamiento. El resultado: falsos negativos o falsas alarmas constantes. Y lo peor — todo parecería funcionar porque el modelo compila, carga, infiere. El error es silencioso.
+El modelo DeepEpiCnn Run24 fue entrenado con datos de Garmin y PineTime que incluyen la gravedad (confirmado por Graham Jones, creador de OpenSeizureDetector). El modelo ESPERA ver ~1000 milli-g en reposo. Si le das `TYPE_LINEAR_ACCELERATION`, la magnitud en reposo es ≈0 — el modelo recibe una señal fuera de su distribución de entrenamiento. El resultado: falsos negativos, falsas alarmas, predicciones inválidas. Y lo peor — todo parecería funcionar porque el modelo compila, carga, infiere. El error es silencioso.
 
 ```
-TYPE_ACCELEROMETER en reposo:    [0.1, 0.2, 9.8]   ← ese 9.8 contamina todo
-TYPE_LINEAR_ACCELERATION:        [0.0, 0.0, 0.0]   ← lo que el CNN espera
+TYPE_ACCELEROMETER en reposo:    [0.1, 0.2, 9.8] m/s²  → magnitud ≈ 1000 milli-g ← lo que el modelo espera
+TYPE_LINEAR_ACCELERATION:        [0.0, 0.0, 0.0] m/s²  → magnitud ≈ 0 milli-g    ← distribution shift
 ```
 
-Loco, es como normalizarle mal los features a tu modelo. Ya entrenaste el StandardScaler con `mean=0, std=1` y después en producción le mandás los datos crudos. El modelo no te va a tirar error. Va a predecir. Mal. Y vos no vas a saber por qué.
+Loco, es como normalizarle mal los features a tu modelo. El modelo entrenó con datos con gravedad incluida. Si en producción le mandás datos sin gravedad, el modelo no tira error. Va a predecir. Mal. Y vos no vas a saber por qué.
 
 ### El período de muestreo: 40,000 microsegundos
 
@@ -347,13 +347,13 @@ Existe un SDK llamado **Samsung Privileged Health SDK** que da acceso a sensores
 
 Suena tentador. Pero en el MVP, lo salteamos. Y vale la pena entender por qué.
 
-**Lo que `TYPE_LINEAR_ACCELERATION` ya hace bien**
+**Lo que `TYPE_ACCELEROMETER` ya hace bien**
 
-Las convulsiones tónico-clónicas son movimientos de alta amplitud y frecuencia relativamente baja (1-3 Hz). Son señales fuertes en el acelerómetro — no son sutiles. El CNN v0.24 fue entrenado con datos capturados con acelerómetro estándar de Android (el mismo que usamos nosotros: `TYPE_LINEAR_ACCELERATION` a 25Hz).
+Las convulsiones tónico-clónicas son movimientos de alta amplitud y frecuencia relativamente baja (1-3 Hz). Son señales fuertes en el acelerómetro — no son sutiles. El modelo DeepEpiCnn Run24 fue entrenado con datos capturados con acelerómetro estándar con gravedad incluida (el mismo que usamos nosotros: `TYPE_ACCELEROMETER` a 25Hz, salida en milli-g).
 
-En términos de Python: el modelo aprendió sobre una distribución particular de features. Esa distribución fue generada por `TYPE_LINEAR_ACCELERATION` estándar. Cambiar el sensor —aunque sea "mejor"— es un distribution shift. El modelo no entrenó con esos datos. El resultado es impredecible hasta que se revalide.
+En términos de Python: el modelo aprendió sobre una distribución particular de features. Esa distribución fue generada por `TYPE_ACCELEROMETER` con magnitudes en milli-g. Cambiar el sensor —aunque sea "mejor"— es un distribution shift. El modelo no entrenó con esos datos. El resultado es impredecible hasta que se revalide.
 
-Para el problema que estamos resolviendo en la Fase 1 del MVP, el SensorManager estándar es suficiente. La señal que necesitamos es fuerte. 25Hz alcanza. La gravedad está restada. El modelo funciona.
+Para el problema que estamos resolviendo en la Fase 1 del MVP, el SensorManager estándar es suficiente. La señal que necesitamos es fuerte. 25Hz alcanza. El modelo funciona sobre la señal cruda con gravedad.
 
 **El costo real del Samsung Health SDK**
 
@@ -382,24 +382,24 @@ No agregues complejidad antes de que el problema la requiera. El MVP funciona si
 
 Llegamos al momento donde el pipeline empieza a tener sentido completo. El CNN v0.24 no analiza cada muestra del acelerómetro en aislamiento. No puede. No tiene forma de saber si un valor de magnitud de 2.3 m/s² es parte de una convulsión o de un movimiento brusco para acomodar la almohada.
 
-Lo que el CNN v0.24 necesita es **una ventana de tiempo**: los últimos 5 segundos de movimiento, representados como 125 muestras continuas. Solo con esa secuencia completa puede reconocer el patrón rítmico y de alta amplitud que caracteriza una convulsión tónico-clónica.
+Lo que el modelo DeepEpiCnn Run24 necesita es **una ventana de tiempo**: los últimos 30 segundos de movimiento, representados como 750 muestras continuas en milli-g. Solo con esa secuencia completa puede reconocer el patrón rítmico y de alta amplitud que caracteriza una convulsión tónico-clónica.
 
 El componente que acumula esa ventana y la mantiene actualizada es el **ring buffer circular**.
 
-**Por qué una ventana de 125 muestras**
+**Por qué una ventana de 750 muestras**
 
-El modelo fue entrenado con ventanas de 5 segundos capturadas a 25Hz:
+El modelo fue entrenado con ventanas de 30 segundos capturadas a 25Hz:
 
 ```
-5 segundos × 25 muestras/segundo = 125 muestras
+30 segundos × 25 muestras/segundo = 750 muestras
 ```
 
-El tensor de input del CNN tiene shape `(1, 125, 1)`:
+El tensor de input del CNN tiene shape `(1, 750, 1)`:
 - `1` → tamaño del batch (inferimos de a una ventana)
-- `125` → timesteps (5 segundos de historia)
-- `1` → features por timestep (la magnitud vectorial √(x²+y²+z²))
+- `750` → timesteps (30 segundos de historia)
+- `1` → features por timestep (la magnitud vectorial √(x²+y²+z²) en milli-g)
 
-Si le pasás 124 muestras, el shape no coincide. Si le pasás 126, tampoco. El contrato es exacto.
+Si le pasás 749 muestras, el shape no coincide. Si le pasás 751, tampoco. El contrato es exacto.
 
 **Qué es un ring buffer y cómo funciona**
 
@@ -416,13 +416,13 @@ Agregamos 1.7 (overflow → sobreescribe el más antiguo):
 [1.7, 0.8, 2.1, 0.5, 3.1]  writeIndex=1
 ```
 
-El buffer nunca crece. Siempre ocupa exactamente `capacidad × 4 bytes` en memoria. Para 125 floats: **500 bytes**, siempre, durante toda la noche.
+El buffer nunca crece. Siempre ocupa exactamente `capacidad × 4 bytes` en memoria. Para 750 floats: **3,000 bytes**, siempre, durante toda la noche.
 
 En Python, el equivalente exacto es:
 
 ```python
 from collections import deque
-buffer = deque(maxlen=125)
+buffer = deque(maxlen=750)
 buffer.append(nueva_muestra)  # O(1): descarta el más antiguo si está lleno
 ```
 
@@ -432,9 +432,9 @@ El buffer tiene dos operaciones fundamentales:
 
 - `add(value: Float)`: escribe una nueva muestra en la posición `writeIndex` y avanza el índice. Es O(1). Lo llama el `onSensorChanged()` cada 40ms.
 
-- `snapshot(): FloatArray`: cuando el buffer está lleno (125 muestras acumuladas), genera una copia del contenido **en orden cronológico** — del más antiguo al más reciente. Es esta ventana ordenada la que se convierte en tensor para el CNN.
+- `snapshot(): FloatArray`: cuando el buffer está lleno (750 muestras acumuladas), genera una copia del contenido **en orden cronológico** — del más antiguo al más reciente. Es esta ventana ordenada la que se convierte en tensor para el CNN.
 
-La palabra clave es **COPIA**. `snapshot()` no devuelve el array interno del buffer. Crea un `FloatArray` nuevo con 125 elementos. ¿Por qué?
+La palabra clave es **COPIA**. `snapshot()` no devuelve el array interno del buffer. Crea un `FloatArray` nuevo con 750 elementos. ¿Por qué?
 
 Porque el sensor sigue escribiendo datos en un thread del OS mientras el CNN intenta inferir sobre la ventana en otro thread. Si `snapshot()` devolviera el array interno, este escenario sería posible:
 
@@ -452,7 +452,7 @@ El sensor entrega callbacks en un thread interno del OS. La inferencia va a corr
 
 Sin `synchronized`: un `add()` y un `snapshot()` ejecutándose en paralelo pueden leer valores a medio escribir. El CNN recibe un tensor corrupto. Puede devolver una probabilidad de convulsión basada en basura. Falsa alarma a las 3am, o peor: no detectar una convulsión real.
 
-Con `synchronized(lock)`: solo un thread puede ejecutar `add()` o `snapshot()` a la vez. El bloqueo dura microsegundos (escribir o copiar 125 floats). No hay contención observable en la práctica.
+Con `synchronized(lock)`: solo un thread puede ejecutar `add()` o `snapshot()` a la vez. El bloqueo dura microsegundos (escribir o copiar 750 floats). No hay contención observable en la práctica.
 
 **El gotcha del off-by-one en `snapshot()`**
 
@@ -474,25 +474,25 @@ En Python: es la diferencia entre pasar `magnitude = np.sqrt(x**2 + y**2 + z**2)
 
 **El puente hacia Fase 2**
 
-Cuando el buffer se llena (125 muestras acumuladas), el Service llama a `onWindowReady(snapshot)`. Por ahora ese método está vacío — es un stub. El puente está tendido. En Fase 2.1, ese stub se llenará con el código que crea el tensor de TFLite, instancia el `Interpreter`, y hace la primera inferencia real.
+Cuando el buffer se llena (750 muestras acumuladas), el Service llama a `onWindowReady(snapshot)`. Por ahora ese método está vacío — es un stub. El puente está tendido. En Fase 2.1, ese stub se llenará con el código que crea el tensor de TFLite, instancia el `Interpreter`, y hace la primera inferencia real.
 
-El vigilante ya tiene memoria de los últimos 5 segundos. Ahora necesita la inteligencia para interpretarlos.
+El vigilante ya tiene memoria de los últimos 30 segundos. Ahora necesita la inteligencia para interpretarlos.
 
 ---
 
 ## Fase 1.6 — CSV Logging — "Ver los datos antes de confiar en ellos"
 
-Tenemos el ForegroundService activo, el WakeLock que mantiene el CPU despierto, el SensorManager capturando a 25Hz, y el ring buffer acumulando ventanas de 5 segundos. Todo listo para conectar TFLite en Fase 2.1.
+Tenemos el ForegroundService activo, el WakeLock que mantiene el CPU despierto, el SensorManager capturando a 25Hz, y el ring buffer acumulando ventanas de 30 segundos. Todo listo para conectar TFLite en Fase 2.1.
 
-Pero espera. ¿Realmente estamos capturando a 25Hz? ¿O el OS entrega muestras a 23Hz, a 27Hz, con jitter variable? ¿Y `TYPE_LINEAR_ACCELERATION` realmente resta la gravedad? ¿Cómo lo verificás?
+Pero espera. ¿Realmente estamos capturando a 25Hz? ¿O el OS entrega muestras a 23Hz, a 27Hz, con jitter variable? ¿Y `TYPE_ACCELEROMETER` realmente entrega ~1000 milli-g en reposo? ¿Cómo lo verificás?
 
 Sin esta fase, estás **adivinando**. En una app médica, adivinar no alcanza.
 
 **El problema concreto**
 
-El período de 40,000µs que le pasamos al `SensorManager` es un *hint* al OS, no una garantía. Android puede variarlo según la carga del sistema, el estado del hardware, y la versión del reloj. Si la frecuencia real es 20Hz en lugar de 25Hz, el buffer se llena en 6.25 segundos en lugar de 5. Las ventanas no representan lo que el CNN espera.
+El período de 40,000µs que le pasamos al `SensorManager` es un *hint* al OS, no una garantía. Android puede variarlo según la carga del sistema, el estado del hardware, y la versión del reloj. Si la frecuencia real es 20Hz en lugar de 25Hz, el buffer se llena en 37.5 segundos en lugar de 30. Las ventanas no representan lo que el CNN espera.
 
-Además, `TYPE_LINEAR_ACCELERATION` debería dar magnitud ≈0 en reposo. Pero eso es teoría. ¿Qué pasa en el hardware real del Galaxy Watch 8? ¿El sensor fusion del Wear OS 4 funciona bien a las 3am cuando el CPU está bajo carga del WakeLock?
+Además, `TYPE_ACCELEROMETER` debería dar magnitud ≈1000 milli-g en reposo. Pero eso es teoría. ¿Qué pasa en el hardware real del Galaxy Watch 8 a las 3am cuando el CPU está bajo carga del WakeLock?
 
 La única forma de responder estas preguntas es **mirar los datos reales**.
 
@@ -536,8 +536,8 @@ print(df['delta_ms'].describe())
 # std < 5ms   → sin jitter problemático
 
 # Magnitud en reposo
-print(f"\nMagnitud media: {df['magnitude'].mean():.3f} m/s²")
-# ≈ 0.0 → TYPE_LINEAR_ACCELERATION funcionando
+print(f"\nMagnitud media: {df['magnitude'].mean():.3f} milli-g")
+# ≈ 1000 milli-g → TYPE_ACCELEROMETER funcionando (1g de gravedad en reposo)
 ```
 
 Si `mean ≈ 40ms` y `std < 5ms`: el SensorManager entrega a 25Hz con jitter aceptable. Si `magnitude ≈ 0.0` con el reloj quieto: la resta de gravedad funciona correctamente en el hardware real. Recién ahí podés conectar TFLite encima con confianza.
@@ -577,20 +577,20 @@ Ahora sí tenés datos reales verificados. Ahora sí podés conectar TFLite enci
 
 ## El estado del pipeline hasta acá
 
-La Fase 1 está completa (salvo la 1.4 opcional que se retoma en Fase 5). El vigilante tiene todo lo que necesita para capturar datos reales, acumularlos en ventanas de 5 segundos verificadas, y pasarlos al CNN. Lo que sigue es la inteligencia: la inferencia TFLite, el preprocesamiento del tensor, y la máquina de estados que decide cuándo despertar al cuidador.
+La Fase 1 está completa (salvo la 1.4 opcional que se retoma en Fase 5). El vigilante tiene todo lo que necesita para capturar datos reales en milli-g, acumularlos en ventanas de 30 segundos verificadas, y pasarlos al CNN. Lo que sigue es la inteligencia: la inferencia TFLite, el preprocesamiento del tensor, y la máquina de estados que decide cuándo despertar al cuidador.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         SAMSUNG GALAXY WATCH 8                      │
 │                                                                     │
-│  ✅ Acelerómetro 3D (25Hz, TYPE_LINEAR_ACCELERATION)                │
+│  ✅ Acelerómetro 3D (25Hz, TYPE_ACCELEROMETER, salida en milli-g)   │
 │     X, Y, Z muestras cada 40ms                                      │
 │            │                                                        │
 │            ▼                                                        │
 │  ✅ Magnitud vectorial: √(x² + y² + z²)   ← Fase 1.5               │
 │            │                                                        │
 │            ▼                                                        │
-│  ✅ Ring Buffer circular (125 muestras = 5 segundos)   ← Fase 1.5   │
+│  ✅ Ring Buffer circular (750 muestras = 30 segundos)  ← Fase 1.5   │
 │     thread-safe, snapshot() devuelve copia independiente            │
 │            │                                                        │
 │            ▼                                                        │
@@ -598,7 +598,7 @@ La Fase 1 está completa (salvo la 1.4 opcional que se retoma en Fase 5). El vig
 │     verificación de 25Hz y magnitud ≈ 0 en reposo                  │
 │            │                                                        │
 │            ▼                                                        │
-│  [ ] Tensor input: shape (1, 125, 1)   ← Fase 2.2                  │
+│  [ ] Tensor input: shape (1, 750, 1)   ← Fase 2.2                  │
 │            │                                                        │
 │            ▼                                                        │
 │  ✅ CNN v0.24 cargado en memoria (TFLiteModelLoader)                │

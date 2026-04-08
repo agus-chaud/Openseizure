@@ -4,13 +4,13 @@ package com.seizureguard.wear.ml
  * Buffer circular de capacidad fija para acumular muestras del acelerómetro.
  *
  * Contexto del pipeline:
- *   El CNN v0.24 requiere exactamente 125 muestras (5 segundos a 25Hz)
+ *   El modelo DeepEpiCnn Run24 requiere exactamente 750 muestras (30 segundos a 25Hz)
  *   para hacer una inferencia. Este buffer mantiene siempre los últimos
- *   5 segundos de magnitud de aceleración.
+ *   30 segundos de magnitud de aceleración en milli-g.
  *
  * Analogía Python:
  *   from collections import deque
- *   buffer = deque(maxlen=125)
+ *   buffer = deque(maxlen=750)
  *   buffer.append(valor)  # descarta el más antiguo automáticamente
  *
  * Thread safety:
@@ -19,9 +19,9 @@ package com.seizureguard.wear.ml
  *   Sin sincronización: condición de carrera → datos corruptos → falsa alarma
  *   o convulsión no detectada a las 3am.
  *
- * @param capacity Número de muestras. Por defecto 125 (5s × 25Hz).
+ * @param capacity Número de muestras. Por defecto 750 (30s × 25Hz — input shape del modelo DeepEpiCnn Run24).
  */
-class CircularBuffer(val capacity: Int = 125) {
+class CircularBuffer(val capacity: Int = 750) {
     private val buffer = FloatArray(capacity)
     private var writeIndex = 0
     private var count = 0
@@ -30,7 +30,7 @@ class CircularBuffer(val capacity: Int = 125) {
     /**
      * Agrega una muestra al buffer, reemplazando la más antigua si está lleno.
      *
-     * @param value Magnitud de aceleración √(x²+y²+z²) en m/s²
+     * @param value Magnitud de aceleración √(x²+y²+z²) en milli-g
      */
     fun add(value: Float) {
         synchronized(lock) {

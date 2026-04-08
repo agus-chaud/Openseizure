@@ -519,40 +519,47 @@ if lock.locked():      # equivale a isHeld
 
 ---
 
-## DEC-023: TYPE_LINEAR_ACCELERATION y no TYPE_ACCELEROMETER
+## DEC-023: TYPE_ACCELEROMETER (raw, con gravedad) en lugar de TYPE_LINEAR_ACCELERATION
 
-**Fase:** 1.3 | **Fecha:** Abril 2026
+**Fase:** 1.3 | **Fecha:** Abril 2026 | **Corregido:** Abril 2026
 
-**Decisión:** El SensorManager se suscribe a `Sensor.TYPE_LINEAR_ACCELERATION` para capturar los datos del acelerómetro.
+**Decisión:** El SensorManager se suscribe a `Sensor.TYPE_ACCELEROMETER` (aceleración cruda con gravedad incluida) para capturar los datos del acelerómetro.
 
-**Alternativa descartada:** `Sensor.TYPE_ACCELEROMETER`.
+**Decisión original (incorrecta):** Habíamos elegido `Sensor.TYPE_LINEAR_ACCELERATION` asumiendo que el modelo fue entrenado sin gravedad. Esta suposición era INCORRECTA.
 
-**Por qué no usar TYPE_ACCELEROMETER:**
+**Corrección (confirmada por Graham Jones, creador de OpenSeizureDetector):**
 
-`TYPE_ACCELEROMETER` mide la fuerza total que actúa sobre el sensor, incluyendo la gravedad terrestre. En reposo, sobre el eje perpendicular a la muñeca, mide aproximadamente 9.8 m/s². Esto significa que incluso cuando la persona está completamente quieta durmiendo, el sensor reporta un valor de ~9.8 m/s² constante en ese eje.
+El modelo DeepEpiCnn Run24 fue entrenado con datos de Garmin y PineTime que reportan **aceleración cruda con gravedad incluida**. Los datos de entrenamiento NO tienen la gravedad sustraída.
 
-`TYPE_LINEAR_ACCELERATION` usa el sensor fusion del OS (combina acelerómetro + giroscopio) para estimar y sustraer la componente gravitacional. En reposo: ≈0 m/s² en todos los ejes. Solo el movimiento real genera señal.
+**Evidencia clave:**
+Con el reloj en reposo sobre la mesa, un eje debe mostrar **~1000 milli-g** (= 1g de gravedad). Eso solo es posible con `TYPE_ACCELEROMETER`. Si se usara `TYPE_LINEAR_ACCELERATION`, la magnitud en reposo sería ≈0 milli-g.
 
-**Por qué este es un contrato con el modelo CNN v0.24:**
-
-El modelo fue entrenado con datos del Open Seizure Database (OSDB) capturados por OpenSeizureDetector, que usa linear acceleration. El modelo aprendió a distinguir patrones de convulsión de movimientos normales de sueño **en un espacio de features sin gravedad**. Si le pasamos datos con la componente gravitacional incluida, el modelo está recibiendo inputs fuera de la distribución de entrenamiento — equivalent a pasar features sin normalizar a un modelo entrenado con datos normalizados.
+**Por qué importa:**
+El CNN aprendió a detectar convulsiones **sobre el baseline de ~1000 milli-g**. Una convulsión tónico-clónica genera movimientos de alta amplitud por encima de ese baseline. Si le pasamos datos sin gravedad (magnitud en reposo ≈ 0), el modelo está recibiendo inputs fuera de la distribución de entrenamiento — equivalente a pasar features sin la escala correcta a un modelo entrenado con datos en otra escala.
 
 **Analogía Python:**
 ```python
-# TYPE_ACCELEROMETER: el valor X en reposo no es 0
-accel_raw = sensor.read()    # ej: [0.1, 9.8, 0.2]  (eje y tiene gravedad)
+# TYPE_ACCELEROMETER: el vector en reposo tiene módulo 1g
+accel_raw = sensor.read()    # ej: [0.1, 9.8, 0.2] m/s²  → magnitud ≈ 9.81 m/s² ≈ 1000 milli-g
 
 # TYPE_LINEAR_ACCELERATION: el OS sustrae la gravedad
-accel_linear = sensor.read() # ej: [0.1, 0.0, 0.2]  (solo movimiento real)
+accel_linear = sensor.read() # ej: [0.1, 0.0, 0.2] m/s²  → magnitud ≈ 0.2 m/s² ≈ 22 milli-g
 
-# El CNN espera accel_linear. Darle accel_raw = features mal preprocesadas.
+# El modelo Run24 espera accel_raw. Darle accel_linear = distribución incorrecta.
 ```
 
-**Consecuencia práctica si se usara TYPE_ACCELEROMETER:**
-El CNN vería un "movimiento" constante de 9.8 m/s² en un eje toda la noche, aun cuando la persona está dormida quieta. El resultado sería falsas alarmas continuas o un modelo que no puede distinguir sueño normal de convulsión.
+**Implicación en las unidades:**
+Las magnitudes se convierten de m/s² a **milli-g** antes de entrar al buffer:
+```
+milli_g = sqrt(x² + y² + z²) × (1000 / 9.81)
+```
+En reposo: ~1000 milli-g. Durante convulsión TC: picos de 2000-5000+ milli-g.
+
+**Lección aprendida:**
+No asumir el preprocessing del modelo — verificar con el creador o con los datos de entrenamiento originales. Un supuesto incorrecto sobre la distribución de features invalida completamente el pipeline de inferencia.
 
 **Fallback documentado:**
-Algunos relojes más viejos o el simulador Robolectric pueden no tener TYPE_LINEAR_ACCELERATION disponible. En ese caso el Service loggea una advertencia y no registra el sensor. La Fase 1.4 evalúa el Samsung Health SDK como alternativa con mejor acceso a sensores en hardware Samsung.
+`TYPE_ACCELEROMETER` está disponible en todo hardware Android. Es el sensor más básico del stack. No hay fallback necesario — todos los relojes lo soportan.
 
 ---
 
@@ -573,9 +580,9 @@ Algunos relojes más viejos o el simulador Robolectric pueden no tener TYPE_LINE
 
 **Por qué 25Hz exactamente:**
 
-- El CNN v0.24 fue entrenado con ventanas de **125 muestras** que representan **5 segundos** de datos.
-- 125 muestras / 5 segundos = 25 muestras por segundo = 25Hz.
-- Cambiar la frecuencia sin reentrenar el modelo rompe el contrato de la ventana temporal: a 50Hz tendríamos 250 muestras en 5 segundos pero el tensor input es `(1, 125, 1)`.
+- El modelo DeepEpiCnn Run24 fue entrenado con ventanas de **750 muestras** que representan **30 segundos** de datos.
+- 750 muestras / 30 segundos = 25 muestras por segundo = 25Hz.
+- Cambiar la frecuencia sin reentrenar el modelo rompe el contrato de la ventana temporal: a 50Hz tendríamos 1500 muestras en 30 segundos pero el tensor input es `(1, 750, 1)`.
 - El criterio de Nyquist también es relevante: las convulsiones tónico-clónicas tienen movimientos rítmicos de 1-3Hz. Para capturarlos correctamente se necesita muestrear a más del doble: 25Hz >> 6Hz.
 
 **Conversión Hz → microsegundos:**
@@ -636,7 +643,7 @@ La convención de Android es llamar `super.onDestroy()` al final del override (a
 
 ## DEC-026: Ring buffer en lugar de lista creciente para acumular muestras
 
-**Fase:** 1.5 | **Fecha:** Abril 2026
+**Fase:** 1.5 | **Fecha:** Abril 2026 | **Actualizado:** Abril 2026 (buffer 125 → 750 muestras)
 
 **Decisión:** Usar `CircularBuffer` (array de tamaño fijo + puntero de escritura circular) en lugar de una lista que crece indefinidamente.
 
@@ -646,28 +653,31 @@ La convención de Android es llamar `super.onDestroy()` al final del override (a
 
 | Criterio | Lista creciente | Ring buffer |
 |----------|----------------|-------------|
-| Memoria en 8h de monitoreo | ~7 MB (1.8M muestras × 4 bytes) | 500 bytes (125 × 4 bytes), siempre |
+| Memoria en 8h de monitoreo | ~7 MB (1.8M muestras × 4 bytes) | 3,000 bytes (750 × 4 bytes), siempre |
 | Operación de inserción | O(n) si se hace `removeAt(0)` | O(1) siempre |
 | Complejidad de implementación | Simple de entender | Requiere entender el índice circular |
-| Riesgo en producción | OOM en la noche si hay un bug | Imposible crecer más allá de 500 bytes |
+| Riesgo en producción | OOM en la noche si hay un bug | Imposible crecer más allá de 3,000 bytes |
 
 **El número concreto:**
 
 8 horas × 3600 segundos × 25 muestras/segundo = **720,000 muestras × 4 bytes = 2.88 MB**.
 Con magnitud calculada desde 3 floats, el raw sería **3 × 2.88 MB = ~8.6 MB** acumulado overnight.
-En un reloj con 1-2 GB RAM esto parece manejable, pero el GC tendría que limpiar constantemente, presionando la batería y la CPU. El ring buffer usa **exactamente 500 bytes siempre**, sin GC pressure.
+En un reloj con 1-2 GB RAM esto parece manejable, pero el GC tendría que limpiar constantemente, presionando la batería y la CPU. El ring buffer usa **exactamente 3,000 bytes siempre** (750 muestras × 4 bytes), sin GC pressure.
+
+**Capacidad: 750 muestras (30 segundos a 25Hz):**
+El modelo DeepEpiCnn Run24 requiere ventanas de 30 segundos como input. Ver DEC-023 para el contexto del modelo.
 
 **Analogía Python:**
 ```python
 # Mal: lista que crece
 samples = []
 samples.append(value)
-if len(samples) > 125:
+if len(samples) > 750:
     samples.pop(0)  # O(n): copia toda la lista
 
 # Bien: deque con maxlen
 from collections import deque
-buffer = deque(maxlen=125)
+buffer = deque(maxlen=750)
 buffer.append(value)  # O(1): descarta el más antiguo automáticamente
 ```
 

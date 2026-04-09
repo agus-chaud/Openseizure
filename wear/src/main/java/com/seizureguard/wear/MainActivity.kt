@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,7 @@ import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.seizureguard.wear.alarm.AlarmStateManager
 import com.seizureguard.wear.service.SeizureMonitorService
 
 /**
@@ -65,8 +67,10 @@ class MainActivity : ComponentActivity() {
 /**
  * UI del reloj: un botón toggle para iniciar/detener el monitoreo.
  *
+ * Fase 2.2: muestra el alarmState actual (OK/WARNING/ALARM) con color según la severidad.
+ *
  * Diseño mínimo para Wear OS (pantalla redonda ~1.4 pulgadas, 450x450px):
- *   - Texto de estado en la parte superior
+ *   - Texto de estado en la parte superior (con color según alarmState)
  *   - Botón prominente en el centro
  *
  * En Fase 4.5 se agrega el Tile de Wear OS y la Complicación.
@@ -77,6 +81,24 @@ fun SeizureGuardWearApp(
     onStopMonitoring: () -> Unit
 ) {
     var isMonitoring by remember { mutableStateOf(false) }
+    val alarmState by SeizureMonitorService.alarmState.collectAsState()
+
+    // Color del texto según alarmState
+    val statusColor = when (alarmState) {
+        AlarmStateManager.ALARM_WARNING -> Color(0xFFF57F17)   // Amarillo
+        in 2..Int.MAX_VALUE             -> Color(0xFFB71C1C)   // Rojo
+        else                            -> Color.Unspecified   // Color por defecto del tema
+    }
+
+    // Texto del estado
+    val statusText = when (alarmState) {
+        AlarmStateManager.ALARM_WARNING -> stringResource(R.string.label_status_warning)
+        in 2..Int.MAX_VALUE             -> stringResource(R.string.label_status_alarm)
+        else                            -> if (isMonitoring)
+                                               stringResource(R.string.label_monitoring_on)
+                                           else
+                                               stringResource(R.string.label_monitoring_off)
+    }
 
     MaterialTheme {
         Column(
@@ -87,12 +109,10 @@ fun SeizureGuardWearApp(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = if (isMonitoring)
-                    stringResource(R.string.label_monitoring_on)
-                else
-                    stringResource(R.string.label_monitoring_off),
+                text = statusText,
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.body1
+                style = MaterialTheme.typography.body1,
+                color = statusColor
             )
 
             Spacer(modifier = Modifier.height(12.dp))

@@ -13,4 +13,8 @@
     <string name="btn_stop_monitoring">Detener monitoreo</string>
     <string name="label_monitoring_on">Monitoreo activo</string>
     <string name="label_monitoring_off">Monitoreo inactivo</string>
+
+    <!-- Fase 2.2 — Estados del alarmState en la UI -->
+    <string name="label_status_warning">⚠ Movimiento detectado</string>
+    <string name="label_status_alarm">🚨 ALARMA — Posible convulsión</string>
 </resources>

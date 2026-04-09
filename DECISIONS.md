@@ -927,6 +927,74 @@ Solo cuando ambos pasos pasen se considera el transporte validado.
 
 ---
 
+---
+
+## DEC-036: StateFlow en companion object vs LiveData vs BroadcastReceiver
+
+**Fase:** 2.2 | **Fecha:** Abril 2026
+
+**Decisión:** Usar `StateFlow` en el companion object de `SeizureMonitorService` para comunicar el `alarmState` a la `MainActivity`.
+
+**Alternativas descartadas:**
+
+| Alternativa | Por qué se descartó |
+|-------------|---------------------|
+| `LocalBroadcastManager` | Deprecated desde AndroidX 1.1.0 |
+| `LiveData` | Requiere un `LifecycleOwner` — correcto para Activity pero innecesario aquí; introduce acoplamiento con el lifecycle de Android sin beneficio real en este contexto |
+| `SharedPreferences` + polling | Lento, no reactivo, requiere un loop o un `FileObserver` |
+| `ViewModel` compartido | Overhead innecesario en esta fase — el Service y la Activity viven en el mismo proceso |
+
+**Por qué StateFlow:**
+- Es la API moderna de Kotlin para estado observable
+- `collectAsState()` en Compose lo conecta directamente a la UI sin boilerplate
+- El companion object es suficiente en esta fase — en Fase 3 se puede migrar a un ViewModel compartido si el estado se complejiza
+
+**Archivos afectados:** `SeizureMonitorService.kt` (companion object), `MainActivity.kt` (collectAsState)
+
+---
+
+## DEC-037: VibrationEffect.createWaveform() para ALARM en vez de loop de coroutines
+
+**Fase:** 2.2 | **Fecha:** Abril 2026
+
+**Decisión:** Usar `VibrationEffect.createWaveform(timings, amplitudes, repeat=-1)` para el patrón de ALARM, en lugar de un loop de coroutines que llame `vibrate()` repetidamente.
+
+**Alternativa descartada:** Un loop en `serviceScope` que dispara `vibrate()` cada 700ms mientras `alarmState >= 2`.
+
+**Por qué se descartó el loop:**
+- Requiere cancelación explícita cuando el alarmState vuelve a OK
+- Condición de carrera: si el loop tarda en cancelarse y llega un nuevo alarmState antes, el reloj puede seguir vibrando cuando no debería
+- Más código, más puntos de falla en una app médica
+
+**Por qué createWaveform:**
+- El patrón de vibración está controlado por el sistema operativo, no por una coroutine
+- Para detener la vibración: `vibrator.cancel()` — una sola línea, inmediato
+- `repeat = -1` significa "ejecutar el waveform una sola vez" — el ciclo de detección controla si se vuelve a llamar
+
+**Archivos afectados:** `AlarmStateManager.kt`
+
+---
+
+## DEC-038: Amplitudes 80 para WARNING y 255 para ALARM
+
+**Fase:** 2.2 | **Fecha:** Abril 2026
+
+**Decisión:** WARNING usa amplitud 80/255 (~31%) y ALARM usa amplitud 255 (máxima).
+
+**Razonamiento:**
+
+| Estado | Amplitud | Justificación |
+|--------|----------|---------------|
+| WARNING | 80/255 (~31%) | Perceptible en la muñeca sin despertar al cuidador. Es una señal al sistema para prepararse, no una alarma final. |
+| ALARM | 255 (máxima) | Debe despertar al usuario y al cuidador. Cuando hay riesgo real de convulsión, no hay razón para suavizar la respuesta háptica. |
+
+**Por qué no una escala lineal (0→50→255):**
+El protocolo OSD define solo 3 estados clínicamente relevantes: normal, sospechoso, alarma. Una escala continua agregaría complejidad sin beneficio para el usuario final.
+
+**Archivos afectados:** `AlarmStateManager.kt` (constantes `WARNING_AMPLITUDE`, `vibrateAlarm()`)
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

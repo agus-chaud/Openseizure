@@ -65,6 +65,18 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 │  CircularBuffer → onWindowReady() → WearDataLayerManager → /osd/accel_data     │
 │                                                                                 │
 │  ← /osd/alarm_state (1 byte: 0=OK, 1=WARNING, 2=ALARM) ─────────────────────  │
+│         │                                                                       │
+│         ▼  (Fase 2.2)                                                           │
+│  AlarmStateManager:                                                             │
+│    0=OK      → sin vibración, UI verde                                          │
+│    1=WARNING → VibrationEffect 100ms amp=80, UI amarilla                        │
+│    2+=ALARM  → VibrationEffect waveform 3×500ms amp=255, UI roja                │
+│         │                                                                       │
+│         ▼                                                                       │
+│  SeizureMonitorService.alarmState (StateFlow<Int>)                              │
+│         │ collectAsState()                                                      │
+│         ▼                                                                       │
+│  MainActivity / SeizureGuardWearApp (Compose) — UI reactiva                    │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                    │
                         Wear Data Layer API
@@ -616,7 +628,7 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 
 ### Fase 2: Inferencia TFLite (wear)
 - [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + protocolo de validación Graham Jones
-- [ ] **2.2** Pipeline de preprocesamiento: `FloatArray(750)` → `ByteBuffer` → tensor
+- [x] **2.2** Recepción de alarmState + vibración háptica + UI reactiva: `AlarmStateManager` (OK/WARNING/ALARM) + `StateFlow` en Service + `collectAsState()` en Compose — 7 tests Robolectric
 - [ ] **2.3** Inferencia cada ventana + log de probabilidades
 - [ ] **2.4** Máquina de estados: OK → WARNING → ALARM
 - [ ] **2.5** Vibración háptica en estado ALARM

@@ -22,10 +22,14 @@ import com.seizureguard.wear.logging.CsvLogger
 import com.seizureguard.wear.ml.CircularBuffer
 import com.google.android.gms.wearable.MessageClient
 import kotlin.math.sqrt
+import com.seizureguard.wear.alarm.AlarmStateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -98,6 +102,12 @@ class SeizureMonitorService : Service() {
      * Inicializado aquí con `this` como contexto; el Service es un Context válido.
      */
     private val dataLayerManager = WearDataLayerManager(this)
+
+    /**
+     * Fase 2.2 — Gestiona la respuesta háptica según el alarmState del teléfono.
+     * Ver AlarmStateManager para el mapping de valores a efectos de vibración.
+     */
+    private val alarmStateManager = AlarmStateManager(this)
 
     /**
      * Referencia al listener de alarmState para poder removerlo en onDestroy().
@@ -470,9 +480,9 @@ class SeizureMonitorService : Service() {
      * En Fase 2.2: actualizar UI y disparar vibración según el estado.
      */
     private fun onAlarmStateReceived(alarmState: Int) {
-        Log.i(TAG, "AlarmState del teléfono: $alarmState")
-        // TODO Fase 2.2: actualizar UI y vibración según alarmState
-        // AlarmState: 0=OK, 1=WARNING, 2=ALARM, 3=SEIZURE_DETECTED, ...
+        Log.i(TAG, "alarmState recibido: $alarmState")
+        alarmStateManager.handleAlarmState(alarmState)
+        _alarmState.value = alarmState
     }
 
     // ─── WakeLock ─────────────────────────────────────────────────────────────
@@ -579,6 +589,21 @@ class SeizureMonitorService : Service() {
         const val NOTIFICATION_ID = 1
         const val ACTION_START    = "com.seizureguard.wear.START_MONITORING"
         const val ACTION_STOP     = "com.seizureguard.wear.STOP_MONITORING"
+
+        /**
+         * Fase 2.2 — Estado actual del monitoreo observable desde la UI.
+         * La MainActivity colecta este flow para actualizar la pantalla.
+         *
+         * Por qué StateFlow en el companion object:
+         *   El Service y la Activity viven en el mismo proceso — compartir estado
+         *   via companion object es la forma más simple sin introducir un ViewModel
+         *   o un patrón de binding complejo en esta fase.
+         *   En Fase 3+ se puede migrar a un ViewModel compartido.
+         *
+         * Valores posibles: ALARM_OK (0), ALARM_WARNING (1), ALARM_ALARM (2+)
+         */
+        private val _alarmState = MutableStateFlow(AlarmStateManager.ALARM_OK)
+        val alarmState: StateFlow<Int> = _alarmState.asStateFlow()
 
         /**
          * Capacidad del ring buffer = número de muestras por ventana del CNN.

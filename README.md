@@ -59,10 +59,17 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 │         │                                                                       │
 │         ▼                                                                       │
 │  Vibración + envío por Wear Data Layer                                          │
+│         │                                                                       │
+│         ▼                                                                       │
+│  WearDataLayerManager (Fase 2.1)                                                │
+│  CircularBuffer → onWindowReady() → WearDataLayerManager → /osd/accel_data     │
+│                                                                                 │
+│  ← /osd/alarm_state (1 byte: 0=OK, 1=WARNING, 2=ALARM) ─────────────────────  │
 └─────────────────────────────────────────────────────────────────────────────────┘
                                    │
                         Wear Data Layer API
                      (Bluetooth, sin internet)
+                     MessageClient — fire-and-forget
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -312,6 +319,15 @@ wear/src/test/
 │   ├── csvLogger_filename_containsTimestamp         nombre sigue patrón raw_accel_YYYYMMDD_HHmmss.csv
 │   └── csvLogger_open_secondCall_returnsNull        segundo open() retorna null
 │
+├── data/WearDataLayerManagerTest.kt      ← Tests del WearDataLayerManager (Fase 2.1)
+│   ├── floatsToBytes_roundTrip_preservesValues          serialización sin pérdida
+│   ├── floatsToBytes_750samples_produces3000bytes        750 × 4 bytes = 3000
+│   ├── floatsToBytes_isLittleEndian                      1.0f → [0x00,0x00,0x80,0x3F]
+│   ├── bytesToFloats_emptyArray_returnsEmptyFloatArray   caso borde array vacío
+│   ├── sequentialTestData_hasCorrectValues               protocolo de validación Graham Jones
+│   ├── alarmStatePath_matchesOsdProtocol                 contrato "/osd/alarm_state"
+│   └── accelDataPath_matchesOsdProtocol                 contrato "/osd/accel_data"
+│
 └── service/SeizureMonitorServiceTest.kt   ← Tests del ForegroundService (Robolectric)
     ├── service_onCreate_doesNotCrash               el Service arranca sin crash
     ├── service_onCreate_registersNotification      notificación persistente registrada
@@ -395,6 +411,38 @@ print(f"\nMagnitud media: {df['magnitude'].mean():.3f} milli-g")
 | Jitter | std < 5ms | `df['delta_ms'].std()` |
 | Magnitud en reposo | 950–1050 milli-g | `df['magnitude'].mean()` con reloj quieto |
 | Gaps largos | < 5 instancias > 200ms | `(df['delta_ms'] > 200).sum()` |
+
+---
+
+## Protocolo de validación del transporte (Graham Jones) — Fase 2.1
+
+Antes de conectar el modelo CNN al Data Layer, verificar que el transporte Bluetooth es confiable con dos pasos:
+
+### Paso 1: modo secuencial (`isSequentialMode = true` — activo por defecto en DEBUG)
+
+El reloj envía `[1.0, 2.0, ..., 750.0]` en lugar de datos reales. En el logcat del teléfono verificar:
+
+```
+adb logcat -s SdDataSourceAw:D
+# Si el transporte funciona: "Received 750 floats: [1.0, 2.0, 3.0, ...]"
+# Si hay inversión de bytes: "[4.0, 3.0, 2.0, 1.0, ...]" → bug en serialización
+# Si hay fragmentación: "[0.0, 1.401e-45, ...]" → bug en ByteOrder
+```
+
+### Paso 2: reloj quieto (`isSequentialMode = false`)
+
+Cambiar en `SeizureMonitorService.companion`:
+```kotlin
+var isSequentialMode: Boolean = false  // datos reales
+```
+
+Con el reloj en reposo sobre la mesa, verificar ~1000 milli-g en logcat:
+```
+# Correcto: magnitud ≈ 1000 milli-g (1g de gravedad con TYPE_ACCELEROMETER)
+# Incorrecto: magnitud ≈ 0 → se estaría usando TYPE_LINEAR_ACCELERATION
+```
+
+Solo cuando ambos pasos pasen, el transporte está validado y se puede conectar el modelo.
 
 ---
 
@@ -567,7 +615,7 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
 ### Fase 2: Inferencia TFLite (wear)
-- [ ] **2.1** Crear `Interpreter` + verificar shapes en logcat
+- [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + protocolo de validación Graham Jones
 - [ ] **2.2** Pipeline de preprocesamiento: `FloatArray(750)` → `ByteBuffer` → tensor
 - [ ] **2.3** Inferencia cada ventana + log de probabilidades
 - [ ] **2.4** Máquina de estados: OK → WARNING → ALARM

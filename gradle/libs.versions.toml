@@ -48,7 +48,8 @@ tensorflow-lite-support     = { group = "org.tensorflow",         name = "tensor
 
 # Coroutines (ambos módulos — imprescindible para ForegroundService en Fase 1.1)
 kotlinx-coroutines-core     = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core",    version.ref = "coroutines" }
-kotlinx-coroutines-android  = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-android      = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android",      version.ref = "coroutines" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
 # Lifecycle (Service scope + ViewModel en phone)
 androidx-lifecycle-runtime  = { group = "androidx.lifecycle",    name = "lifecycle-runtime-ktx",      version.ref = "lifecycle" }

@@ -849,6 +849,84 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 
 ---
 
+---
+
+## DEC-033: `MessageClient` y no `DataClient` para enviar accel_data
+
+**Fase:** 2.1 | **Fecha:** Abril 2026
+
+**Decisión:** Usar `MessageClient` para enviar las 750 muestras del acelerómetro al teléfono.
+
+**Alternativa descartada:** `DataClient` (el otro mecanismo principal del Wear Data Layer).
+
+**Por qué descartamos `DataClient`:**
+
+| Criterio | `DataClient` | `MessageClient` |
+|----------|-------------|----------------|
+| Semántica | Key-value store sincronizado entre dispositivos | Mensaje unidireccional fire-and-forget |
+| Overhead | Sincronización bilateral → mayor latencia | Sin sincronización → baja latencia |
+| Persistencia | Los datos persisten hasta que se actualizan | El mensaje no persiste — se entrega o se pierde |
+| Caso de uso ideal | Configuración, preferencias que deben estar disponibles offline | Streaming de datos que se procesa inmediatamente |
+| Para accel_data | Inapropiado: sincroniza 3,000 bytes c/30s innecesariamente | Correcto: envía y olvida — el teléfono infiere y descarta |
+
+**El argumento clave:** El teléfono no necesita almacenar los datos del acelerómetro — los procesa y descarta. `DataClient` mantendría los últimos 3,000 bytes sincronizados y disponibles aunque el teléfono no esté conectado. Ese overhead no aporta nada y añade latencia. `MessageClient` envía y listo.
+
+**Referencia:** SdDataSourceAw.java de OpenSeizureDetector V5 también usa `MessageClient` para recibir los datos — mantener la misma API simplifica la compatibilidad.
+
+---
+
+## DEC-034: Serialización little-endian para el ByteBuffer de accel_data
+
+**Fase:** 2.1 | **Fecha:** Abril 2026
+
+**Decisión:** Serializar los 750 floats en `ByteOrder.LITTLE_ENDIAN` antes de enviarlos via `MessageClient`.
+
+**Por qué:**
+
+1. **Compatibilidad con SdDataSourceAw.java:** El código del teléfono deserializa con `ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)`. Si el reloj serializa en big-endian, los 4 bytes de cada float llegan invertidos → el modelo infiere sobre basura sin ningún error visible.
+
+2. **Orden nativo de ARM:** El Samsung Galaxy Watch 8 usa un procesador ARM (Exynos W930). ARM es natively little-endian. No hay conversión de bytes → cero overhead.
+
+**Analogía Python:**
+```python
+import struct
+# little-endian: '<' + '750f'
+payload = struct.pack('<750f', *samples)
+# big-endian hubiera sido '>' — el teléfono fallaría silenciosamente
+```
+
+**Verificación:** El test `floatsToBytes_isLittleEndian` verifica que el primer float `1.0f` produce `[0x00, 0x00, 0x80, 0x3F]` — el encoding little-endian de IEEE 754 para 1.0.
+
+---
+
+## DEC-035: Modo secuencial como primer test de transporte (protocolo Graham Jones)
+
+**Fase:** 2.1 | **Fecha:** Abril 2026
+
+**Decisión:** Agregar `isSequentialMode` al companion object de `SeizureMonitorService`. Cuando es `true` (por defecto en DEBUG), `onWindowReady()` envía `[1.0, 2.0, ..., 750.0]` en lugar de datos reales.
+
+**Por qué verificar el transporte antes de conectar datos reales:**
+
+El pipeline de datos tiene tres capas con potenciales puntos de falla:
+```
+Sensor → CircularBuffer → WearDataLayerManager → MessageClient → Bluetooth → SdDataSourceAw.java
+```
+
+Si conectamos datos reales directamente y el modelo da resultados extraños, no sabemos en qué capa está el problema. ¿El sensor mide mal? ¿La serialización invierte bytes? ¿El Bluetooth fragmenta paquetes?
+
+Los números secuenciales `[1.0..750.0]` son fácilmente verificables en el logcat del teléfono sin necesidad de entender los datos del acelerómetro:
+- Si el teléfono recibe `[1.0, 2.0, 3.0, ...]` → el transporte funciona.
+- Si recibe `[4.0, 3.0, 2.0, 1.0, ...]` → hay inversión de orden.
+- Si recibe `[0.0, 1.401e-45, ...]` → la serialización está en big-endian.
+
+**Dos pasos del protocolo:**
+1. `isSequentialMode = true` → verificar orden de llegada end-to-end.
+2. `isSequentialMode = false` + reloj quieto → verificar ~1000 milli-g en logcat del teléfono.
+
+Solo cuando ambos pasos pasen se considera el transporte validado.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |
@@ -856,5 +934,5 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 | DEC-017 | Ownership del `tflite.Interpreter` — ¿quién lo crea, quién lo cierra? | 2.1 | Pendiente (ver TODO-002) |
 | DEC-018 | Umbral de decisión: ¿0.5 o valor calibrado contra OSDB? | 2.4 | Pendiente |
 | DEC-019 | Frecuencia de inferencia: ¿cada ventana nueva (cada 40ms) o cada 5s? | 2.3 | Pendiente |
-| DEC-020 | Protocolo de mensajes Wear Data Layer: JSON vs Protobuf vs bytes raw | 3.1 | Pendiente |
+| DEC-020 | Protocolo de mensajes Wear Data Layer: JSON vs Protobuf vs bytes raw | 3.1 | Pendiente — DEC-033 resuelve el mecanismo (MessageClient), no el formato |
 | DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | Pendiente |

@@ -17,13 +17,16 @@ import androidx.core.app.NotificationCompat
 import com.seizureguard.wear.BuildConfig
 import com.seizureguard.wear.MainActivity
 import com.seizureguard.wear.R
+import com.seizureguard.wear.data.WearDataLayerManager
 import com.seizureguard.wear.logging.CsvLogger
 import com.seizureguard.wear.ml.CircularBuffer
+import com.google.android.gms.wearable.MessageClient
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Fase 1.1 — Foreground Service de monitoreo nocturno.
@@ -87,6 +90,21 @@ class SeizureMonitorService : Service() {
      * Ver DEC-029, DEC-030, DEC-031, DEC-032 en DECISIONS.md.
      */
     private val csvLogger = CsvLogger(this)
+
+    /**
+     * Fase 2.1 — Wear Data Layer: comunicación reloj → teléfono.
+     *
+     * Encapsula el MessageClient y el protocolo OSD (/osd/accel_data, /osd/alarm_state).
+     * Inicializado aquí con `this` como contexto; el Service es un Context válido.
+     */
+    private val dataLayerManager = WearDataLayerManager(this)
+
+    /**
+     * Referencia al listener de alarmState para poder removerlo en onDestroy().
+     * Sin esto, el MessageClient mantiene una referencia al Service vivo después de
+     * que se destruyó → memory leak.
+     */
+    private var alarmStateListener: MessageClient.OnMessageReceivedListener? = null
 
     /**
      * Controla si el logging a CSV está activo.
@@ -245,6 +263,11 @@ class SeizureMonitorService : Service() {
         //
         //   5. super.onDestroy() al final: convención de Android — super siempre último
         //      en onDestroy() (a diferencia de onCreate() donde va primero).
+        //
+        // Nota Fase 2.1: el alarmStateListener va antes de stopSensorCollection() porque
+        // podría llegar un mensaje del teléfono exactamente en el momento del shutdown.
+        // Removerlo primero evita que el callback intente usar un Service ya destruido.
+        alarmStateListener?.let { dataLayerManager.removeAlarmStateListener(it) }
         stopSensorCollection()
         csvLogger.close()
         releaseWakeLock()
@@ -271,7 +294,10 @@ class SeizureMonitorService : Service() {
             val path = csvLogger.open()
             Log.i(TAG, "CSV logging activo: $path")
         }
-        // TODO Fase 2.1: cargar TFLiteModelLoader y crear TFLiteInferenceEngine
+        // Fase 2.1: registrar listener de alarmState del teléfono
+        alarmStateListener = dataLayerManager.addAlarmStateListener { alarmState ->
+            onAlarmStateReceived(alarmState)
+        }
     }
 
     // ─── SensorManager ────────────────────────────────────────────────────────
@@ -408,9 +434,45 @@ class SeizureMonitorService : Service() {
      *
      * @param window FloatArray de exactamente [BUFFER_CAPACITY] magnitudes en milli-g en orden cronológico.
      */
+    /**
+     * Recibe una ventana completa de 750 muestras y la envía al teléfono via Wear Data Layer.
+     *
+     * En modo debug con [isSequentialMode] = true (paso 1 del protocolo de validación de
+     * Graham Jones): envía números 1.0..750.0 en lugar de datos reales para verificar que
+     * el teléfono recibe los floats en el orden correcto end-to-end.
+     *
+     * En modo normal: envía las magnitudes reales del acelerómetro.
+     *
+     * La coroutine corre en serviceScope (Dispatchers.Default) — la llamada a
+     * sendAccelData() suspende en el thread del pool, sin bloquear el callback del sensor.
+     */
     private fun onWindowReady(window: FloatArray) {
-        // TODO Fase 2.1: pasar la ventana al TFLite Interpreter
         Log.d(TAG, "Ventana lista: ${window.size} muestras, magnitud media=${window.average()}")
+        serviceScope.launch {
+            val dataToSend = if (BuildConfig.DEBUG && isSequentialMode) {
+                // Modo validación (Graham's protocol step 1):
+                // Enviar números 1.0..750.0 en lugar de datos reales
+                // para verificar que el teléfono los recibe en orden correcto.
+                FloatArray(window.size) { i -> (i + 1).toFloat() }
+            } else {
+                window
+            }
+            dataLayerManager.sendAccelData(dataToSend)
+        }
+    }
+
+    /**
+     * Procesa el alarmState recibido del teléfono via /osd/alarm_state.
+     *
+     * @param alarmState Valor 0-7 según la especificación OSD:
+     *   0 = OK, 1 = WARNING, 2 = ALARM, 3 = SEIZURE_DETECTED, ...
+     *
+     * En Fase 2.2: actualizar UI y disparar vibración según el estado.
+     */
+    private fun onAlarmStateReceived(alarmState: Int) {
+        Log.i(TAG, "AlarmState del teléfono: $alarmState")
+        // TODO Fase 2.2: actualizar UI y vibración según alarmState
+        // AlarmState: 0=OK, 1=WARNING, 2=ALARM, 3=SEIZURE_DETECTED, ...
     }
 
     // ─── WakeLock ─────────────────────────────────────────────────────────────
@@ -582,6 +644,20 @@ class SeizureMonitorService : Service() {
          * se llama en onDestroy() antes de que el timeout expire.
          */
         const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 60 * 1000L
+
+        /**
+         * Fase 2.1 — Modo de validación del transporte (protocolo de Graham Jones).
+         *
+         * Cuando es true, onWindowReady() envía números secuenciales [1.0..750.0]
+         * en lugar de datos reales. Permite verificar que el teléfono recibe los
+         * floats en el orden correcto antes de conectar datos reales del acelerómetro.
+         *
+         * Paso 1 (isSequentialMode = true): verificar orden de llegada.
+         * Paso 2 (isSequentialMode = false): reloj quieto → ~1000 milli-g en un eje.
+         *
+         * Cambiar a false cuando el transporte esté verificado end-to-end.
+         */
+        var isSequentialMode: Boolean = BuildConfig.DEBUG
 
         /** Crea el Intent para iniciar el monitoreo desde cualquier parte de la app. */
         fun startIntent(context: android.content.Context) =

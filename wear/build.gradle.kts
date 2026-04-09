@@ -72,6 +72,9 @@ dependencies {
     // Coroutines — imprescindible para el ForegroundService (Fase 1.1)
     implementation(libs.kotlinx.coroutines.android)
 
+    // Coroutines extensions para GMS Tasks — Task.await() en WearDataLayerManager (Fase 2.1)
+    implementation(libs.kotlinx.coroutines.play.services)
+
     // Lifecycle — serviceScope ligado al ciclo de vida del Service (Fase 1.2)
     implementation(libs.androidx.lifecycle.runtime)
 

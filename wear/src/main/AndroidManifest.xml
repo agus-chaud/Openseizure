@@ -61,6 +61,20 @@
             android:exported="false"
             android:foregroundServiceType="health" />
 
+        <!--
+            Fase 2.1: Wear Data Layer — recepción de mensajes del teléfono.
+
+            El WearableListenerService es el punto de entrada oficial de Wear OS
+            para recibir mensajes Data Layer cuando la app no está en foreground.
+            En esta fase, el listener vive dentro de WearDataLayerManager via
+            MessageClient.addListener() — funciona mientras el Service está activo.
+
+            Si en el futuro se necesita recibir mensajes con la app en background
+            (fuera del ForegroundService), se debe agregar un WearableListenerService
+            declarado acá con el intent-filter com.google.android.gms.wearable.BIND_LISTENER.
+            Ver TODO en TODOS.md (Fase 4.4: edge case watch fuera de muñeca).
+        -->
+
     </application>
 
 </manifest>

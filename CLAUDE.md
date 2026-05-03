@@ -217,7 +217,7 @@ Correr cuando haya una versión nueva de gstack disponible.
 | Wear OS SDK | API 30–34 | target: Galaxy Watch 8 |
 | UI | Jetpack Compose for Wear OS | BOM 2024.05.00 |
 | ML | TensorFlow Lite | 2.14.0 |
-| Modelo | CNN v0.24.tflite | 205KB, input (1,125,1) |
+| Modelo | CNN v0.24.tflite | 205KB, input (1,750,1) |
 | Sensores | SensorManager (25Hz) | + Samsung SDK opcional |
 | Comunicación | Wear Data Layer API | — |
 | DB | Room | 2.6.1 |

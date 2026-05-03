@@ -17,7 +17,7 @@ Esta carpeta contiene los modelos de inferencia embebidos en la Wear App.
 
 | Tensor | Shape | Tipo | Descripción |
 |--------|-------|------|-------------|
-| Input (índice 0) | `(1, 750, 1)` | FLOAT32 | 750 muestras de magnitud vectorial en milli-g del acelerómetro a 25Hz = 30 segundos de señal |
+| Input (índice 0) | `(1, 750, 1)` | FLOAT32 | 750 muestras de magnitud vectorial en milli-g del acelerómetro a 25Hz = 30 segundos de señal (shape canónico del `.tflite`; el mensaje Wear `/osd/accel_data` puede llevar `N` floats por envío — ver **DEC-039** en `DECISIONS.md`) |
 | Output (índice 0) | `(1, 2)` | FLOAT32 | `[prob_normal, prob_seizure]` — valores entre 0 y 1, suman 1.0 (Softmax) |
 
 ### Cómo interpretar el output

@@ -12,7 +12,7 @@ import java.nio.ByteOrder
  * Gestiona la comunicación Wear Data Layer entre el reloj y el teléfono.
  *
  * Protocolo OSD (compatible con SdDataSourceAw.java de OpenSeizureDetector V5):
- *   /osd/accel_data   → reloj envía 750 floats (30s de magnitud en milli-g)
+ *   /osd/accel_data   → reloj envía N floats en milli-g (payload variable: N×4 bytes LE; ver DEC-039)
  *   /osd/alarm_state  → teléfono responde con 1 byte (0=OK, 1=WARNING, 2=ALARM)
  *
  * Analogía Python:
@@ -36,11 +36,12 @@ class WearDataLayerManager(private val context: Context) {
      * Envía una ventana de datos del acelerómetro al teléfono.
      *
      * El array de floats se serializa a ByteBuffer little-endian antes de enviar.
-     * El teléfono deserializa en el mismo orden.
+     * El teléfono deserializa en el mismo orden. El **tamaño del payload es variable**:
+     * `samples.size` define N; el mensaje ocupa `N × 4` bytes (N no tiene que coincidir
+     * con los 750 timesteps del tensor TFLite — ver DEC-039).
      *
-     * @param samples FloatArray de exactamente 750 muestras en milli-g.
-     *                En modo debug, pasar FloatArray(750) { it.toFloat() + 1 }
-     *                (números 1.0..750.0) para verificar orden de llegada.
+     * @param samples FloatArray de magnitud en milli-g (típicamente 750 en ventana completa;
+     *                en modo secuencial debug, `FloatArray(750) { i -> (i + 1).toFloat() }` para verificar orden).
      */
     suspend fun sendAccelData(samples: FloatArray) {
         val bytes = floatsToBytes(samples)

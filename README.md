@@ -62,7 +62,9 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 │         │                                                                       │
 │         ▼                                                                       │
 │  WearDataLayerManager (Fase 2.1)                                                │
-│  CircularBuffer → onWindowReady() → WearDataLayerManager → /osd/accel_data     │
+│  CircularBuffer → onWindowReady() → /osd/accel_data (N floats LE, N×4 bytes)   │
+│  N puede ser 750 (ventana) u otro (p. ej. 125 chunk); modelo sigue (1,750,1)  │
+│  Ver DEC-039 en DECISIONS.md — única fuente del contrato watch↔phone          │
 │                                                                                 │
 │  ← /osd/alarm_state (1 byte: 0=OK, 1=WARNING, 2=ALARM) ─────────────────────  │
 │         │                                                                       │
@@ -104,6 +106,10 @@ La CNN aprende a reconocer **patrones de movimiento característicos de convulsi
 ### Arquitectura
 
 ```
+Input TFLite: (1, 750, 1)   ← tensor del modelo (30 s a 25 Hz)
+Transporte Wear /osd/accel_data: N floats LE (N×4 bytes) — N no tiene que ser 750;
+  p. ej. chunks de 125 (~5 s) que el teléfono acumula hasta 750 (DEC-039)
+
 Input: (1, 750, 1)
   = 1 muestra del batch
   × 750 timesteps (30 segundos a 25Hz)
@@ -139,7 +145,7 @@ El modelo fue entrenado por el proyecto [OpenSeizureDetector](https://github.com
 | Tasa de falsas alarmas | ~7% |
 | Tamaño del modelo | 204.5 KB |
 | Latencia de inferencia | ~15-30ms (CPU Wear OS) |
-| Ventana temporal | 30 segundos (750 muestras a 25Hz) |
+| Ventana temporal (modelo) | 30 segundos (750 muestras a 25Hz) — distinto del tamaño N de cada mensaje `accel_data` (DEC-039) |
 
 ### Por qué TFLite y no el modelo .h5 o .pt original
 
@@ -202,7 +208,7 @@ OpenSeizure/
 │   │   │       │   └── CsvLogger.kt          ← logging de muestras a CSV (Fase 1.6)
 │   │   │       ├── ml/
 │   │   │       │   ├── TFLiteModelLoader.kt  ← carga el modelo en memoria
-│   │   │       │   └── CircularBuffer.kt     ← ring buffer de 750 muestras (Fase 1.5)
+│   │   │       │   └── CircularBuffer.kt     ← ring buffer 750 muestras (Fase 1.5); envío Data Layer = N floats por mensaje (DEC-039)
 │   │   │       └── service/
 │   │   │           └── SeizureMonitorService.kt  ← ForegroundService nocturno
 │   │   └── test/
@@ -627,7 +633,7 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
 ### Fase 2: Inferencia TFLite (wear)
-- [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + protocolo de validación Graham Jones
+- [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + validación Graham Jones + **DEC-039** (contrato bytes: N floats LE vs tensor 750)
 - [x] **2.2** Recepción de alarmState + vibración háptica + UI reactiva: `AlarmStateManager` (OK/WARNING/ALARM) + `StateFlow` en Service + `collectAsState()` en Compose — 7 tests Robolectric
 - [ ] **2.3** Inferencia cada ventana + log de probabilidades
 - [ ] **2.4** Máquina de estados: OK → WARNING → ALARM

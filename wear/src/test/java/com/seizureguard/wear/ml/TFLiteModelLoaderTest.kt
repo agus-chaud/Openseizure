@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
  *
  * Qué NO se testea aquí (Fase 2.1):
  *   - Validación del schema TFLite (Interpreter creation)
- *   - Shapes del tensor: input (1,125,1) / output (1,2)
+ *   - Shapes del tensor: input (1,750,1) / output (1,2) en producción (ver MODELS.md, DEC-039)
  *   - Inferencia real
  *
  * Fixture: model_fixture.tflite — FlatBuffer TFLite v3 mínimo válido (144 bytes),

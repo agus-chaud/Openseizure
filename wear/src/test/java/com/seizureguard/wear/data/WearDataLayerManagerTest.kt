@@ -11,16 +11,21 @@ import org.robolectric.annotation.Config
 /**
  * Fase 2.1 — Tests del WearDataLayerManager.
  *
- * Estrategia de testing:
- *   WearDataLayerManager usa Wearable.getMessageClient() que requiere Google Play Services.
- *   Esa parte no se puede testear con Robolectric sin un mock framework completo.
- *   Estos tests cubren la LÓGICA PURA que no depende de GMS: serialización/deserialización
- *   de FloatArray a ByteArray y las constantes del protocolo OSD.
+ * Estrategia (alineada a smart-testing / pirámide): comportamiento observable de la
+ * serialización (entradas/salidas, tamaños en bytes, endianness), sin acoplarse a GMS
+ * ni a detalles internos del cliente de mensajes.
+ *
+ * WearDataLayerManager usa Wearable.getMessageClient() que requiere Google Play Services.
+ * Esa parte no se testea aquí sin mocks profundos. Estos tests cubren la lógica pura:
+ * FloatArray ↔ ByteArray y constantes de path del protocolo OSD (DEC-039).
  *
  * Por qué importa testear la serialización:
  *   SdDataSourceAw.java (teléfono) deserializa los bytes con ByteOrder.LITTLE_ENDIAN.
  *   Si el reloj serializa en big-endian, los floats llegan con los bytes invertidos
  *   y el modelo infiere sobre basura. Este test es la red de seguridad de ese contrato.
+ *
+ * Contrato N floats por mensaje (DEC-039): el payload `/osd/accel_data` es variable;
+ * aquí se fijan los tamaños previstos 125 (~5 s de transporte) y 750 (ventana modelo).
  *
  * Protocolo de validación de Graham Jones (documentado en test 5):
  *   Paso 1: enviar [1.0..750.0] → verificar que el teléfono los recibe en orden.
@@ -74,6 +79,42 @@ class WearDataLayerManagerTest {
             3000,
             bytes.size
         )
+    }
+
+    /** Contrato DEC-039: chunk de transporte típico 125 floats → 500 bytes, round-trip estable. */
+    @Test
+    fun `transportPayload 125 floats roundTrips and occupies 500 bytes`() {
+        val original = FloatArray(125) { i -> (i - 62).toFloat() * 0.25f }
+
+        val bytes = manager.floatsToBytes(original)
+
+        assertEquals(
+            "125 floats × 4 bytes = 500 bytes (tamaño de mensaje accel_data para ese N)",
+            500,
+            bytes.size
+        )
+        val recovered = manager.bytesToFloats(bytes)
+        assertArrayEquals(
+            "Round-trip con N=125 debe preservar todos los valores",
+            original,
+            recovered,
+            0.0001f
+        )
+    }
+
+    /** Regla observable: tamaño en bytes = N×4 para los N previstos en el plan de transporte. */
+    @Test
+    fun `transportPayload byteLength is four times float count for 125 and 750`() {
+        val cases = listOf(125 to 500, 750 to 3000)
+        for ((n, expectedBytes) in cases) {
+            val samples = FloatArray(n) { it.toFloat() }
+            val bytes = manager.floatsToBytes(samples)
+            assertEquals(
+                "N=$n → ${n * 4} bytes",
+                expectedBytes,
+                bytes.size
+            )
+        }
     }
 
     // ─── Test 3: verificar little-endian ─────────────────────────────────────

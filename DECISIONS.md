@@ -867,7 +867,7 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 | Overhead | Sincronización bilateral → mayor latencia | Sin sincronización → baja latencia |
 | Persistencia | Los datos persisten hasta que se actualizan | El mensaje no persiste — se entrega o se pierde |
 | Caso de uso ideal | Configuración, preferencias que deben estar disponibles offline | Streaming de datos que se procesa inmediatamente |
-| Para accel_data | Inapropiado: sincroniza 3,000 bytes c/30s innecesariamente | Correcto: envía y olvida — el teléfono infiere y descarta |
+| Para accel_data | Inapropiado: sincroniza p. ej. 3,000 bytes (750×4) por ventana innecesariamente en el store | Correcto: envía y olvida — el teléfono infiere y descarta (tamaño por mensaje: ver DEC-039) |
 
 **El argumento clave:** El teléfono no necesita almacenar los datos del acelerómetro — los procesa y descarta. `DataClient` mantendría los últimos 3,000 bytes sincronizados y disponibles aunque el teléfono no esté conectado. Ese overhead no aporta nada y añade latencia. `MessageClient` envía y listo.
 
@@ -879,7 +879,7 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 
 **Fase:** 2.1 | **Fecha:** Abril 2026
 
-**Decisión:** Serializar los 750 floats en `ByteOrder.LITTLE_ENDIAN` antes de enviarlos via `MessageClient`.
+**Decisión:** Serializar los floats de `accel_data` en `ByteOrder.LITTLE_ENDIAN` antes de enviarlos via `MessageClient` (cantidad de floats variable; ver DEC-039).
 
 **Por qué:**
 
@@ -890,8 +890,8 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 **Analogía Python:**
 ```python
 import struct
-# little-endian: '<' + '750f'
-payload = struct.pack('<750f', *samples)
+# little-endian: '<' + f'{len(samples)}f'  (p. ej. 750f o 125f — ver DEC-039)
+payload = struct.pack(f'<{len(samples)}f', *samples)
 # big-endian hubiera sido '>' — el teléfono fallaría silenciosamente
 ```
 
@@ -992,6 +992,38 @@ Solo cuando ambos pasos pasen se considera el transporte validado.
 El protocolo OSD define solo 3 estados clínicamente relevantes: normal, sospechoso, alarma. Una escala continua agregaría complejidad sin beneficio para el usuario final.
 
 **Archivos afectados:** `AlarmStateManager.kt` (constantes `WARNING_AMPLITUDE`, `vibrateAlarm()`)
+
+---
+
+## DEC-039: Contrato OSD wear ↔ phone (transporte de bytes)
+
+**Fase:** 2.1+ (documentación de contrato) | **Fecha:** Mayo 2026
+
+**Decisión:** Esta entrada es la **única fuente de verdad** para el protocolo de mensajes entre reloj y teléfono (paths, payload binario, endianness, unidades y relación con el tensor del modelo). DEC-033 y DEC-034 describen el mecanismo (`MessageClient`) y la serialización; aquí se congela el contrato completo.
+
+### Paths (`MessageClient`)
+
+| Path | Dirección | Payload |
+|------|-----------|---------|
+| `/osd/accel_data` | watch → phone | `N` floats IEEE-754 **little-endian** (ver DEC-034), `N ≥ 1`, tamaño en bytes = `N × 4`. Valores: magnitud vectorial en **milli-g** (misma convención que DEC-024). |
+| `/osd/alarm_state` | phone → watch | **1 byte** sin signo: `0` = OK, `1` = WARNING, `2+` = ALARM (resto reservado / compatibilidad OSD). |
+
+### Tensor del modelo CNN v0.24 (TFLite) vs tamaño del mensaje
+
+| Concepto | Valor canónico | Notas |
+|----------|------------------|--------|
+| **Input del modelo** `(batch, timesteps, features)` | **`(1, 750, 1)`** | 750 timesteps × 25 Hz = 30 s de magnitud en milli-g. Documentado en `wear/src/main/assets/MODELS.md`. |
+| **Floats por mensaje `accel_data`** | **Variable `N`** | La API `WearDataLayerManager.sendAccelData(samples)` no fija `N` en tiempo de compilación: el teléfono debe interpretar `data.size / 4` como `N`. Hoy el flujo de producción envía ventanas completas (`N = 750` → 3000 bytes); el plan de producto prevé **chunks de transporte** (p. ej. `N = 125` → 500 bytes, ~5 s a 25 Hz) que el teléfono acumula hasta armar la ventana de 750 para inferencia. |
+
+**Regla explícita:** `N` del mensaje **no tiene por qué** coincidir con 750: es el **tamaño de un envío** por Data Layer; **750** es el **timesteps del tensor** del modelo. No confundir chunk de transporte con shape del input TFLite.
+
+### Frecuencia y cadencia (referencia)
+
+- **Sensor:** 25 Hz (período objetivo 40 ms; ver DEC-024).
+- **Mensajes `accel_data`:** acoplados a la lógica de ventana/chunk del servicio (p. ej. al llenar buffer o cada 125 muestras), no a cada muestra individual.
+- **`alarm_state`:** evento puntual cuando el teléfono actualiza el estado hacia el reloj.
+
+**Referencias de código:** `WearDataLayerManager.PATH_ACCEL_DATA`, `PATH_ALARM_STATE`, `floatsToBytes` / `bytesToFloats`.
 
 ---
 

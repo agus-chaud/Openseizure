@@ -36,6 +36,7 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
 }
 
 dependencies {
@@ -53,6 +54,7 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     // Lifecycle — ViewModel para AlarmActivity y configuración (Fase 3.2, 3.4)
     implementation(libs.androidx.lifecycle.runtime)

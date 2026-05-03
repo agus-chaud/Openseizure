@@ -32,17 +32,13 @@
             </intent-filter>
         </activity>
 
-        <!--
-            DataLayerListenerService — se agrega en Fase 3.1
-            <service
-                android:name=".service.DataLayerListenerService"
-                android:exported="true">
-                <intent-filter>
-                    <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
-                    <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
-                </intent-filter>
-            </service>
-        -->
+        <service
+            android:name=".service.DataLayerListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.BIND_LISTENER" />
+            </intent-filter>
+        </service>
 
     </application>
 

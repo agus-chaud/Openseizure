@@ -1023,7 +1023,24 @@ El protocolo OSD define solo 3 estados clínicamente relevantes: normal, sospech
 - **Mensajes `accel_data`:** acoplados a la lógica de ventana/chunk del servicio (p. ej. al llenar buffer o cada 125 muestras), no a cada muestra individual.
 - **`alarm_state`:** evento puntual cuando el teléfono actualiza el estado hacia el reloj.
 
-**Referencias de código:** `WearDataLayerManager.PATH_ACCEL_DATA`, `PATH_ALARM_STATE`, `floatsToBytes` / `bytesToFloats`.
+**Referencias de código:** `WearDataLayerManager.PATH_ACCEL_DATA`, `PATH_ALARM_STATE`, `floatsToBytes` / `bytesToFloats`; en phone: `DataLayerListenerService`, `AccelPayloadCodec`, `PhoneCircularBuffer`, `PhoneAccelChunkProcessor` (DEC-040).
+
+---
+
+## DEC-040: Teléfono — warm-up del buffer y luego inferir en cada chunk (ventana deslizante)
+
+**Fase:** 3.1 (acumulador phone) | **Fecha:** Mayo 2026
+
+**Decisión:** En el módulo `phone`, `PhoneCircularBuffer` acumula muestras hasta `inputSize` (750 por defecto). Mientras `count < inputSize`, **no** se dispara inferencia ni se envía `alarm_state` al watch. Una vez el buffer está **lleno** (`isFull`):
+
+1. **Primera inferencia** ocurre en el primer instante en que hay 750 muestras acumuladas (p. ej. tras 6 chunks de 125).
+2. **Inferencias siguientes:** tras cada chunk adicional que se ingiere con `addAll`, el buffer sigue lleno y representa una **ventana deslizante** con paso igual al tamaño del chunk (125): se infiere de nuevo en **cada** mensaje posterior.
+
+**Por qué no inferir antes del warm-up:** El tensor del modelo exige 750 timesteps continuos en orden; inferir con menos datos sería padding arbitrario o basura.
+
+**Por qué inferir en cada chunk post warm-up:** Mantiene latencia acotada respecto al último dato recibido y coincide con el paso de 125 muestras del plan de transporte (actualización cada ~5 s de señal nueva entrando en la ventana de 30 s).
+
+**Archivos afectados:** `PhoneCircularBuffer.kt`, `PhoneAccelChunkProcessor.kt`, `DataLayerListenerService.kt`.
 
 ---
 

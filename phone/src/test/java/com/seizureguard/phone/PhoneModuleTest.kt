@@ -9,7 +9,7 @@ import org.junit.Test
  *
  * Verifica que el módulo Companion compila y el test runner está configurado.
  * Tests más significativos se agregan en:
- * - Fase 3.1: DataLayerParserTest (parsear mensajes del watch)
+ * - Fase 3.1: `PhoneCircularBufferTest`, `PhoneAccelChunkProcessorTest` (acumulador + parseo LE)
  * - Fase 3.5: SeizureEventDaoTest (Room DB queries)
  */
 class PhoneModuleTest {

@@ -72,18 +72,17 @@ class SeizureMonitorService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     /**
-     * Fase 1.5 — Ring buffer circular de 750 muestras (30 segundos a 25Hz).
+     * Ring buffer circular para chunks de transporte reloj → teléfono.
      *
      * Acumula la magnitud vectorial √(x²+y²+z²) en milli-g de cada muestra del acelerómetro.
-     * Cuando está lleno, entrega una ventana de 30 segundos lista para el CNN DeepEpiCnn Run24.
+     * Se envía un chunk cuando se acumulan [TRANSPORT_CHUNK_SIZE] muestras (~5s a 25Hz).
      *
-     * Por qué BUFFER_CAPACITY = 750:
-     *   750 muestras × (1 muestra / 25Hz) = 30 segundos exactos.
-     *   Ese es el input shape que el modelo DeepEpiCnn Run24 espera.
-     *
-     * Ver DEC-026, DEC-027, DEC-028 en DECISIONS.md para las decisiones de diseño.
+     * IMPORTANTE: este buffer ya no representa la ventana del modelo (750 timesteps).
+     * La ventana de inferencia se arma en phone al concatenar múltiples chunks.
      */
     private val accelerometerBuffer = CircularBuffer(capacity = BUFFER_CAPACITY)
+    private var samplesSinceLastChunk = 0
+    private var sequentialSampleCounter = 0L
 
     /**
      * Fase 1.6 — Logger de muestras del acelerómetro a CSV.
@@ -237,10 +236,12 @@ class SeizureMonitorService : Service() {
                 // Fase 1.6: cerrar el CSV logger antes de que el Service muera.
                 // flush() garantiza que los últimos datos llegan al disco.
                 csvLogger.close()
-                // Limpiar el ring buffer: el próximo monitoreo empieza desde cero.
+                // Limpiar estado de transporte: el próximo monitoreo empieza desde cero.
                 // Sin esto, las primeras ventanas del siguiente ciclo mezclarían
                 // datos del monitoreo anterior con datos nuevos.
                 accelerometerBuffer.reset()
+                samplesSinceLastChunk = 0
+                sequentialSampleCounter = 0L
                 stopSelf()
             }
         }
@@ -392,8 +393,8 @@ class SeizureMonitorService : Service() {
     /**
      * Procesa cada muestra del acelerómetro (x, y, z) en m/s² con gravedad incluida.
      *
-     * Fase 1.5: calcula la magnitud vectorial en milli-g y la agrega al ring buffer.
-     * Cuando el buffer tiene 750 muestras (30 segundos), llama a onWindowReady().
+     * Calcula la magnitud vectorial en milli-g y la agrega al ring buffer.
+     * Cada [TRANSPORT_CHUNK_SIZE] muestras (~5 segundos a 25Hz), dispara onWindowReady().
      *
      * Los valores x, y, z vienen en m/s² de TYPE_ACCELEROMETER (con gravedad).
      * La magnitud se convierte a milli-g antes de guardarse en el buffer, que es
@@ -417,6 +418,7 @@ class SeizureMonitorService : Service() {
         // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
         val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
         accelerometerBuffer.add(magnitudeMilliG)
+        samplesSinceLastChunk++
 
         // Fase 1.6: loggear muestra a CSV para análisis offline con Python.
         // En release, isLoggingEnabled = false → este bloque no ejecuta.
@@ -424,32 +426,19 @@ class SeizureMonitorService : Service() {
             csvLogger.write(System.currentTimeMillis(), x, y, z, magnitudeMilliG)
         }
 
-        if (accelerometerBuffer.isFull) {
+        if (samplesSinceLastChunk >= TRANSPORT_CHUNK_SIZE && accelerometerBuffer.isFull) {
             val window = accelerometerBuffer.snapshot()
             onWindowReady(window)
+            samplesSinceLastChunk = 0
         }
     }
 
     /**
-     * Recibe una ventana completa de 750 muestras lista para inferencia.
-     *
-     * En Fase 1.5: loggea para diagnóstico y verificar que el pipeline llega hasta acá.
-     * En Fase 2.1: pasará la ventana al TFLiteInferenceEngine.
-     *
-     * Por qué extraer este método y no hacer todo en onAccelerometerSample():
-     *   Separar la "acumulación de datos" (onAccelerometerSample) de la
-     *   "inferencia sobre una ventana" (onWindowReady) facilita testear cada
-     *   responsabilidad por separado. En Fase 2.x, este método crecerá con la
-     *   lógica del intérprete, la máquina de estados y la alarma.
-     *
-     * @param window FloatArray de exactamente [BUFFER_CAPACITY] magnitudes en milli-g en orden cronológico.
-     */
-    /**
-     * Recibe una ventana completa de 750 muestras y la envía al teléfono via Wear Data Layer.
+     * Recibe un chunk y lo envía al teléfono via Wear Data Layer.
      *
      * En modo debug con [isSequentialMode] = true (paso 1 del protocolo de validación de
-     * Graham Jones): envía números 1.0..750.0 en lugar de datos reales para verificar que
-     * el teléfono recibe los floats en el orden correcto end-to-end.
+     * Graham Jones): envía números secuenciales continuos entre chunks en lugar de datos
+     * reales para verificar orden end-to-end multi-chunk.
      *
      * En modo normal: envía las magnitudes reales del acelerómetro.
      *
@@ -457,17 +446,19 @@ class SeizureMonitorService : Service() {
      * sendAccelData() suspende en el thread del pool, sin bloquear el callback del sensor.
      */
     private fun onWindowReady(window: FloatArray) {
-        Log.d(TAG, "Ventana lista: ${window.size} muestras, magnitud media=${window.average()}")
+        Log.d(TAG, "Chunk listo: ${window.size} muestras, magnitud media=${window.average()}")
         serviceScope.launch {
             val dataToSend = if (BuildConfig.DEBUG && isSequentialMode) {
                 // Modo validación (Graham's protocol step 1):
-                // Enviar números 1.0..750.0 en lugar de datos reales
-                // para verificar que el teléfono los recibe en orden correcto.
-                FloatArray(window.size) { i -> (i + 1).toFloat() }
+                // Numeración continua entre chunks para validar orden global.
+                FloatArray(window.size) { i -> (sequentialSampleCounter + i + 1).toFloat() }
             } else {
                 window
             }
             dataLayerManager.sendAccelData(dataToSend)
+            if (BuildConfig.DEBUG && isSequentialMode) {
+                sequentialSampleCounter += window.size.toLong()
+            }
         }
     }
 
@@ -606,18 +597,18 @@ class SeizureMonitorService : Service() {
         val alarmState: StateFlow<Int> = _alarmState.asStateFlow()
 
         /**
-         * Capacidad del ring buffer = número de muestras por ventana del CNN.
+         * Capacidad del ring buffer = número de muestras por chunk de transporte.
          *
-         * 750 muestras × (1/25Hz) = 30 segundos exactos.
-         * El modelo DeepEpiCnn Run24 requiere 30 segundos de datos como input.
-         * Si se cambia este valor, el modelo recibiría la forma incorrecta de tensor
-         * y las predicciones serían inválidas.
+         * 125 muestras × (1/25Hz) = 5 segundos por mensaje.
+         * Se mantiene separado del tamaño de ventana del modelo (750), que hoy vive en phone.
          *
          * Analogía Python:
-         *   WINDOW_SIZE = 750  # samples at 25Hz = 30 seconds
-         *   buffer = deque(maxlen=WINDOW_SIZE)
+         *   CHUNK_SIZE = 125
+         *   buffer = deque(maxlen=CHUNK_SIZE)
          */
-        const val BUFFER_CAPACITY = 750  // 30 segundos × 25Hz — input del modelo DeepEpiCnn Run24
+        const val TRANSPORT_CHUNK_SIZE = 125
+        const val BUFFER_CAPACITY = TRANSPORT_CHUNK_SIZE
+        const val MODEL_WINDOW_SIZE = 750
 
         /**
          * Factor de conversión de m/s² a milli-g.
@@ -673,9 +664,9 @@ class SeizureMonitorService : Service() {
         /**
          * Fase 2.1 — Modo de validación del transporte (protocolo de Graham Jones).
          *
-         * Cuando es true, onWindowReady() envía números secuenciales [1.0..750.0]
-         * en lugar de datos reales. Permite verificar que el teléfono recibe los
-         * floats en el orden correcto antes de conectar datos reales del acelerómetro.
+         * Cuando es true, onWindowReady() envía números secuenciales continuos
+         * entre chunks en lugar de datos reales. Permite verificar que el teléfono
+         * recibe los floats en el orden correcto antes de conectar datos reales.
          *
          * Paso 1 (isSequentialMode = true): verificar orden de llegada.
          * Paso 2 (isSequentialMode = false): reloj quieto → ~1000 milli-g en un eje.

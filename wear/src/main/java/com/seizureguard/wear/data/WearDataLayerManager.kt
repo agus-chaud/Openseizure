@@ -40,8 +40,8 @@ class WearDataLayerManager(private val context: Context) {
      * `samples.size` define N; el mensaje ocupa `N × 4` bytes (N no tiene que coincidir
      * con los 750 timesteps del tensor TFLite — ver DEC-039).
      *
-     * @param samples FloatArray de magnitud en milli-g (típicamente 750 en ventana completa;
-     *                en modo secuencial debug, `FloatArray(750) { i -> (i + 1).toFloat() }` para verificar orden).
+     * @param samples FloatArray de magnitud en milli-g (típicamente 125 por chunk de transporte;
+     *                en modo secuencial debug, puede llevar numeración continua para verificar orden global).
      */
     suspend fun sendAccelData(samples: FloatArray) {
         val bytes = floatsToBytes(samples)

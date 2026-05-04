@@ -403,10 +403,10 @@ class SeizureMonitorServiceTest {
     /**
      * Verifica que la constante SENSOR_SAMPLING_PERIOD_US es exactamente 40,000 microsegundos.
      *
-     * Qué testea (contrato del CNN): la constante documenta el contrato de frecuencia
-     * entre el sensor y el modelo. 40,000 µs = 40ms = 25Hz = 750 muestras en 30 segundos.
-     * Si alguien cambia este valor, el CNN recibiría la cantidad incorrecta de datos
-     * por ventana y sus predicciones serían inválidas.
+     * Qué testea (contrato de pipeline): la constante documenta el contrato de frecuencia
+     * del sensor. 40,000 µs = 40ms = 25Hz = 125 muestras cada ~5s (chunk watch) y
+     * 750 muestras en 30s (ventana de modelo en phone). Si alguien cambia este valor,
+     * se rompe la correspondencia temporal del pipeline.
      *
      * Por qué testear una constante:
      *   Las constantes "obvias" son las que más se cambian por error en refactors.
@@ -415,18 +415,19 @@ class SeizureMonitorServiceTest {
      *
      * Analogía Python:
      *   assert SAMPLE_RATE_HZ == 25, "CNN was trained on 25Hz data — do not change"
-     *   assert WINDOW_SIZE == 750,   "CNN input requires 30 seconds at 25Hz"
+     *   assert CHUNK_SIZE == 125,    "watch transport expects ~5s chunks at 25Hz"
+     *   assert WINDOW_SIZE == 750,   "phone model expects 30s at 25Hz"
      */
     @Test
     fun sensorManager_samplingPeriod_is25Hz() {
         // 25Hz = 1/25 segundos = 40,000 microsegundos
-        // Este valor es el contrato entre el sensor y el modelo CNN v0.24
+        // Este valor define el contrato temporal del pipeline watch → phone → modelo
         val expectedPeriodUs = 40_000
 
         assertEquals(
             "SENSOR_SAMPLING_PERIOD_US debe ser 40,000µs (40ms = 25Hz). " +
-                    "El modelo DeepEpiCnn Run24 requiere ventanas de 750 muestras a 25Hz (30 segundos). " +
-                    "Cambiar este valor invalida las predicciones del modelo.",
+                    "El pipeline requiere 125 muestras cada ~5s en watch y 750 muestras cada 30s en phone. " +
+                    "Cambiar este valor invalida la temporalidad esperada del modelo.",
             expectedPeriodUs,
             SeizureMonitorService.SENSOR_SAMPLING_PERIOD_US
         )

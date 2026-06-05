@@ -26,6 +26,12 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 
 ## Cómo funciona: el pipeline completo
 
+> **⚠️ Nota de arquitectura:** el diagrama de abajo todavía dibuja la inferencia **en el reloj**.
+> Eso quedó **viejo**. La decisión vigente (2026-06-05) es que la inferencia corre **en el
+> teléfono** (chunks de 125 @ ~5s desde el reloj → teléfono acumula 750 → CNN → `alarmState` de
+> vuelta al reloj). El diagrama se redibuja en una fase futura. Ver Fase 2 y engram
+> `architecture/seizureguard-inference-location`.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                              SAMSUNG GALAXY WATCH 8                             │
@@ -632,27 +638,41 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 - [x] **1.5** Ring buffer circular de 750 muestras + cálculo de magnitud vectorial en milli-g
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
-### Fase 2: Inferencia TFLite (wear)
+### Fase 2: Inferencia TFLite (EN EL TELÉFONO — ver nota de arquitectura)
+
+> **⚠️ Corrección de arquitectura (2026-06-05):** la inferencia corre **en el teléfono**, NO en
+> el reloj. El reloj solo captura, bufferea y envía chunks de 125 muestras (~5s) por Wear Data
+> Layer; el teléfono acumula 750 (6×125), corre la CNN `cnn_v024.tflite` sobre el tensor
+> `(1,750,1)` con **stride de inferencia de 5s** (ventanas de 30s solapadas, patrón OSD/Graham), y
+> devuelve el `alarmState` al reloj. Las versiones anteriores de este README describían la
+> inferencia en el reloj — eso quedó **viejo**. Ver engram `architecture/seizureguard-inference-location`.
+
+Cada fase se trackea en **dos estados**: **Agent-Done** (código + tests verdes + Safety Reviewer
+PASS + PR aprobado por humano) y **Field-Done** (validado en hardware/nocturno por el humano).
+El proyecto no está terminado hasta que todo sea Field-Done.
+
 - [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + validación Graham Jones + **DEC-039** (contrato bytes: N floats LE vs tensor 750)
 - [x] **2.2** Recepción de alarmState + vibración háptica + UI reactiva: `AlarmStateManager` (OK/WARNING/ALARM) + `StateFlow` en Service + `collectAsState()` en Compose — 7 tests Robolectric
-- [ ] **2.3** Inferencia cada ventana + log de probabilidades
-- [ ] **2.4** Máquina de estados: OK → WARNING → ALARM
-- [ ] **2.5** Vibración háptica en estado ALARM
-- [ ] **2.6** Benchmark de batería (objetivo: ≥8h con monitoreo continuo)
+- **2.3** Inferencia en el teléfono cada ventana (stride 5s) + log de probabilidades — Agent-Done [ ] / Field-Done [ ]
+- **2.4** Máquina de estados: OK → WARNING → ALARM (umbral + N ventanas → `CLINICAL_SIGNOFF.md`) — Agent-Done [ ] / Field-Done [ ]
+- **2.5** Vibración háptica en estado ALARM (reloj, vía `/osd/alarm_state`) — Agent-Done [ ] / Field-Done [ ]
+- **2.6** Benchmark de batería (objetivo: ≥8h) — hardware-gated, ver `HARDWARE_RUNBOOK.md` — Field-Done [ ]
 
-### Fase 3: Companion App (phone)
-- [ ] **3.1** Wear Data Layer: canal watch → phone
-- [ ] **3.2** AlarmActivity full-screen con sirena
-- [ ] **3.3** SMS automático al cuidador
-- [ ] **3.4** Pantalla de configuración (umbral, contacto, nombre del paciente)
-- [ ] **3.5** Room DB: historial de eventos con timestamp
+### Fase 3: Companion App (phone) — incluye inferencia (ver nota Fase 2)
+- **3.1** Wear Data Layer: canal watch → phone + acumulación 6×125 → tensor 750 — Agent-Done [ ] / Field-Done [ ]
+- **3.2** AlarmActivity full-screen con sirena — Agent-Done [ ] / Field-Done [ ]
+- **3.3** SMS automático al cuidador (ruta crítica — valida Safety Reviewer + `CAREGIVER_GUIDE.md`) — Agent-Done [ ] / Field-Done [ ]
+- **3.4** Pantalla de configuración (umbral → `CLINICAL_SIGNOFF.md`, contacto, nombre del paciente) — Agent-Done [ ] / Field-Done [ ]
+- **3.5** Room DB: historial de eventos con timestamp (KSP, no kapt) — Agent-Done [ ] / Field-Done [ ]
 
-### Fase 4: Integración y testing real
-- [ ] **4.1** Test E2E manual (simular convulsión con movimiento del reloj)
-- [ ] **4.2** Test nocturno real (8 horas de sueño con monitoreo activo)
-- [ ] **4.3** Análisis de falsas alarmas + tuning del umbral de decisión
-- [ ] **4.4** Edge cases: watch sacado, batería baja, Bluetooth perdido
-- [ ] **4.5** UI polish: Tile de Wear OS + complicación
+### Fase 4: Integración y testing real (hardware-gated — ver `HARDWARE_RUNBOOK.md`)
+> Estas fases SOLO las puede ejecutar un humano con el Watch 8 físico. El agente prepara el
+> runbook e interpreta resultados; el humano firma Field-Done.
+- **4.1** Test E2E manual (simular convulsión con movimiento del reloj) — Field-Done [ ]
+- **4.2** Test nocturno real (8 horas de sueño con monitoreo activo) — Field-Done [ ]
+- **4.3** Análisis de falsas alarmas + tuning del umbral (firma en `CLINICAL_SIGNOFF.md`) — Field-Done [ ]
+- **4.4** Edge cases: watch sacado, batería baja, Bluetooth perdido — Field-Done [ ]
+- **4.5** UI polish: Tile de Wear OS + complicación — Agent-Done [ ] / Field-Done [ ]
 
 ### Fase 5: Mejora del modelo (futuro)
 - [ ] Solicitar acceso a datos OSDB y analizar el dataset

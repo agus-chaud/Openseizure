@@ -295,7 +295,8 @@ class SeizureMonitorService : Service() {
      * Punto de entrada del monitoreo activo.
      * En Fase 1.2: adquiere el WakeLock para mantener el CPU despierto toda la noche.
      * En Fase 1.3: inicia la captura del acelerómetro a 25Hz.
-     * En Fase 2.1: aquí se carga el Interpreter TFLite y el pipeline de inferencia.
+     * NOTA: la inferencia NO corre acá — el reloj solo captura y transmite chunks (125 @ ~5s).
+     * La inferencia TFLite corre en el teléfono (architecture/seizureguard-inference-location).
      */
     private fun onMonitoringStart() {
         acquireWakeLock()

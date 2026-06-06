@@ -37,6 +37,18 @@ android {
         jvmTarget = "1.8"
     }
 
+    // Necesario para que el modelo ExecuTorch (.pte) no se comprima dentro del APK
+    // (la inferencia corre en el teléfono con ExecuTorch — ver architecture/seizureguard-inference-location)
+    aaptOptions {
+        noCompress += "pte"
+    }
+
+    // Requerido para que Robolectric pueda leer src/test/assets/ (loader test)
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -65,8 +77,14 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)      // KSP genera los DAOs en compile-time
 
+    // ExecuTorch (PyTorch Edge) — la inferencia corre acá, en el teléfono.
+    // Modelo: deepEpiCnn_2026_01_24_Run24.pte. Coordenada Maven PENDIENTE DE VERIFICAR
+    // (ExecuTorch Android no está en el version catalog todavía — ver nota en CLINICAL_SIGNOFF / handoff).
+    // implementation(libs.executorch)   // <-- descomentar cuando se confirme la coordenada
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)  // loader test lee src/test/assets/ en JVM
     androidTestImplementation(libs.androidx.junit)
 }

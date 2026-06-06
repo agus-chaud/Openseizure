@@ -6,7 +6,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.seizureguard.wear.service.SeizureMonitorService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -71,7 +70,7 @@ class AlarmStateManagerTest {
         // Assert
         assertFalse(
             "alarmState=0 (OK) no debe disparar vibración — el monitoreo normal es silencioso",
-            shadowVibrator().hasVibrated()
+            shadowVibrator().isVibrating
         )
     }
 
@@ -89,7 +88,7 @@ class AlarmStateManagerTest {
         // Assert
         assertTrue(
             "alarmState=1 (WARNING) debe disparar vibración — señal al usuario de movimiento sospechoso",
-            shadowVibrator().hasVibrated()
+            shadowVibrator().isVibrating
         )
     }
 
@@ -106,7 +105,7 @@ class AlarmStateManagerTest {
         // Assert
         assertTrue(
             "alarmState=2 (ALARM) debe disparar vibración — posible convulsión detectada",
-            shadowVibrator().hasVibrated()
+            shadowVibrator().isVibrating
         )
     }
 
@@ -125,7 +124,7 @@ class AlarmStateManagerTest {
         // Assert
         assertTrue(
             "alarmState=5 (>= 2) debe tratarse como ALARM y disparar vibración",
-            shadowVibrator().hasVibrated()
+            shadowVibrator().isVibrating
         )
     }
 
@@ -135,8 +134,10 @@ class AlarmStateManagerTest {
      * Qué testea: que vibrateWarning() usa la API moderna VibrationEffect
      * (no el Vibrator.vibrate(long) deprecated de API < 26).
      *
-     * ShadowVibrator.lastVibrationEffect no null indica que se usó VibrationEffect.createOneShot()
-     * o createWaveform() en lugar del constructor deprecated.
+     * ShadowVibrator.getMilliseconds() registra la duración del VibrationEffect.createOneShot()
+     * que usó vibrateWarning(). Un valor == WARNING_DURATION_MS (100ms) confirma que:
+     *   1. Se usó la API moderna VibrationEffect (no el deprecated Vibrator.vibrate(long)).
+     *   2. La duración es la corta de WARNING (100ms), no el patrón largo de ALARM.
      */
     @Test
     fun alarmState_warning_usesShortDuration() {
@@ -144,10 +145,12 @@ class AlarmStateManagerTest {
         manager.handleAlarmState(AlarmStateManager.ALARM_WARNING)
 
         // Assert
-        val effect = shadowVibrator().lastVibrationEffect
-        assertNotNull(
-            "WARNING debe usar VibrationEffect (API moderna, no el deprecated Vibrator.vibrate(long))",
-            effect
+        val durationMs = shadowVibrator().milliseconds
+        assertEquals(
+            "WARNING debe usar VibrationEffect.createOneShot con duración corta de 100ms " +
+                "(API moderna, no el deprecated Vibrator.vibrate(long))",
+            100L,
+            durationMs
         )
     }
 

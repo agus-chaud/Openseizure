@@ -17,6 +17,8 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowPowerManager
+import org.robolectric.shadows.ShadowSensor
 
 /**
  * Fase 1.1 — Tests del ForegroundService (Robolectric, sin dispositivo).
@@ -149,7 +151,8 @@ class SeizureMonitorServiceTest {
      * Cómo funciona en Robolectric:
      *   ShadowPowerManager simula el PowerManager del OS. Cuando el Service llama
      *   powerManager.newWakeLock(...).acquire(...), el shadow lo registra en memoria.
-     *   `shadowOf(powerManager).latestWakeLock` devuelve el último WakeLock creado.
+     *   `ShadowPowerManager.getLatestWakeLock()` (estático en 4.12.2) devuelve el último
+     *   WakeLock creado en el proceso.
      *
      * Analogía Python:
      *   Es como verificar que threading.Lock() está locked() después de acquire().
@@ -163,8 +166,7 @@ class SeizureMonitorServiceTest {
             .create()
             .startCommand(0, 1)
 
-        val powerManager = context.getSystemService(PowerManager::class.java)
-        val latestWakeLock = shadowOf(powerManager).latestWakeLock
+        val latestWakeLock = ShadowPowerManager.getLatestWakeLock()
 
         assertNotNull("Debe haberse creado un WakeLock al iniciar el monitoreo", latestWakeLock)
         assertTrue(
@@ -193,10 +195,9 @@ class SeizureMonitorServiceTest {
             .startCommand(0, 1)
 
         // Verificamos que estaba held antes del destroy
-        val powerManager = context.getSystemService(PowerManager::class.java)
         assertTrue(
             "Precondición: el WakeLock debe estar held antes del destroy",
-            shadowOf(powerManager).latestWakeLock.isHeld
+            ShadowPowerManager.getLatestWakeLock().isHeld
         )
 
         // Destruimos el Service
@@ -205,39 +206,34 @@ class SeizureMonitorServiceTest {
         // Ahora debe estar liberado
         assertTrue(
             "El WakeLock debe liberarse (isHeld=false) cuando el Service se destruye",
-            !shadowOf(powerManager).latestWakeLock.isHeld
+            !ShadowPowerManager.getLatestWakeLock().isHeld
         )
     }
 
     /**
-     * Verifica que el WakeLock es de tipo PARTIAL_WAKE_LOCK.
+     * Verifica que el WakeLock se adquiere con nivel PARTIAL_WAKE_LOCK.
      *
-     * Qué testea: que acquireWakeLock() usa el flag correcto.
+     * Qué testea: que acquireWakeLock() usa el nivel correcto.
      * PARTIAL_WAKE_LOCK = solo CPU activa, pantalla puede dormir.
      * Un error aquí (usar FULL_WAKE_LOCK) sería difícil de detectar en runtime
      * pero destruiría la batería del reloj en horas.
      *
-     * Cómo verificar el tipo en Robolectric:
-     *   ShadowWakeLock expone el flags con el que fue creado.
-     *   PowerManager.PARTIAL_WAKE_LOCK = 1 (constante del SDK de Android).
+     * Por qué un test de contrato sobre la constante y no una verificación en runtime:
+     *   Robolectric 4.12.2 NO preserva el nivel del WakeLock. ShadowWakeLock no expone los
+     *   flags, y el WakeLock real se instancia sin correr su constructor → mFlags queda en 0
+     *   (verificado empíricamente). No hay forma de leer el nivel del lock ya creado.
+     *   Por eso el nivel se extrae a la constante SeizureMonitorService.WAKE_LOCK_LEVEL, que
+     *   acquireWakeLock() pasa a newWakeLock(), y este test blinda esa constante contra
+     *   regresiones a FULL_WAKE_LOCK. Mismo patrón que los tests de WAKE_LOCK_TAG y
+     *   SENSOR_SAMPLING_PERIOD_US de este archivo.
      */
     @Test
     fun wakeLock_isPartialWakeLock() {
-        val context = ApplicationProvider.getApplicationContext<Application>()
-        val startIntent = SeizureMonitorService.startIntent(context)
-
-        Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
-            .create()
-            .startCommand(0, 1)
-
-        val powerManager = context.getSystemService(PowerManager::class.java)
-        val latestWakeLock = shadowOf(powerManager).latestWakeLock
-        val shadowWakeLock = shadowOf(latestWakeLock)
-
         assertEquals(
-            "El WakeLock debe ser PARTIAL (CPU activa, pantalla puede dormir)",
+            "WAKE_LOCK_LEVEL debe ser PARTIAL (CPU activa, pantalla puede dormir). " +
+                "FULL_WAKE_LOCK destruiría la batería del reloj en una noche.",
             PowerManager.PARTIAL_WAKE_LOCK,
-            shadowWakeLock.flags
+            SeizureMonitorService.WAKE_LOCK_LEVEL
         )
     }
 
@@ -260,8 +256,7 @@ class SeizureMonitorServiceTest {
             .create()
             .startCommand(0, 1)
 
-        val powerManager = context.getSystemService(PowerManager::class.java)
-        val latestWakeLock = shadowOf(powerManager).latestWakeLock
+        val latestWakeLock = ShadowPowerManager.getLatestWakeLock()
         val shadowWakeLock = shadowOf(latestWakeLock)
 
         assertEquals(
@@ -281,11 +276,12 @@ class SeizureMonitorServiceTest {
      * el Service efectivamente se suscribe al acelerómetro del reloj.
      * Sin este registro, el Service correría sin recibir ningún dato de sensor.
      *
-     * Cómo funciona ShadowSensorManager en Robolectric:
+     * Cómo funciona ShadowSensorManager en Robolectric 4.12.2:
      *   Robolectric reemplaza el SensorManager real con un shadow (simulacro).
-     *   `shadowSensorManager.hasListener(sensorType)` devuelve true si hay al menos
-     *   un SensorEventListener registrado para ese tipo de sensor.
-     *   Es equivalente a verificar que `registerListener()` fue llamado con éxito.
+     *   `hasListener(SensorEventListener)` / `hasListener(listener, sensor)` y `getListeners()`
+     *   son la API real — NO existe `hasListener(Int)`. Además, `getDefaultSensor(type)` solo
+     *   devuelve un Sensor si fue agregado antes con `addSensor()`; por eso el test crea el
+     *   acelerómetro con `ShadowSensor.newInstance()` y lo registra en el shadow.
      *
      * Analogía Python:
      *   Es como verificar que tu callback está en la lista de observadores de un evento:
@@ -299,6 +295,9 @@ class SeizureMonitorServiceTest {
         val shadowSensorManager = shadowOf(
             context.getSystemService(SensorManager::class.java)
         )
+        // Sin un acelerómetro registrado, getDefaultSensor(TYPE_ACCELEROMETER) devuelve null
+        // y el Service no registraría ningún listener.
+        shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
 
         // Act
         Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
@@ -309,7 +308,7 @@ class SeizureMonitorServiceTest {
         assertTrue(
             "Después de ACTION_START, debe haber un listener registrado para " +
                     "TYPE_ACCELEROMETER — sin esto el Service no recibe datos del sensor",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.listeners.isNotEmpty()
         )
     }
 
@@ -334,6 +333,7 @@ class SeizureMonitorServiceTest {
         val shadowSensorManager = shadowOf(
             context.getSystemService(SensorManager::class.java)
         )
+        shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
 
         val controller = Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
             .create()
@@ -342,17 +342,17 @@ class SeizureMonitorServiceTest {
         // Precondición: el listener está registrado antes del stop
         assertTrue(
             "Precondición: el listener debe estar registrado antes de ACTION_STOP",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.listeners.isNotEmpty()
         )
 
         // Act — enviar ACTION_STOP al mismo Service
         controller.get().onStartCommand(stopIntent, 0, 2)
 
         // Assert
-        assertFalse(
+        assertTrue(
             "Después de ACTION_STOP, el listener debe desregistrarse — " +
                     "el Service no debe seguir consumiendo datos del sensor",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.listeners.isEmpty()
         )
     }
 
@@ -378,6 +378,7 @@ class SeizureMonitorServiceTest {
         val shadowSensorManager = shadowOf(
             context.getSystemService(SensorManager::class.java)
         )
+        shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
 
         val controller = Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
             .create()
@@ -386,17 +387,17 @@ class SeizureMonitorServiceTest {
         // Precondición: el listener está activo antes del destroy
         assertTrue(
             "Precondición: el listener debe estar registrado antes del destroy",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.listeners.isNotEmpty()
         )
 
         // Act
         controller.destroy()
 
         // Assert
-        assertFalse(
+        assertTrue(
             "Después de onDestroy(), el listener debe desregistrarse — " +
                     "el cleanup de onDestroy() es la red de seguridad ante kills del OS",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.listeners.isEmpty()
         )
     }
 
@@ -449,10 +450,11 @@ class SeizureMonitorServiceTest {
      *   fuera de la distribución de entrenamiento del modelo, lo que invalidaría las
      *   predicciones. El CNN aprendió a detectar convulsiones sobre el baseline de ~1000 milli-g.
      *
-     * Cómo verificarlo en Robolectric:
-     *   ShadowSensorManager.hasListener() acepta el tipo de sensor como Int.
-     *   TYPE_ACCELEROMETER = 1, TYPE_LINEAR_ACCELERATION = 10 (valores del SDK de Android).
-     *   Verificamos el tipo correcto Y que el incorrecto NO esté registrado.
+     * Cómo verificarlo en Robolectric 4.12.2:
+     *   `hasListener(listener, sensor)` chequea si ese listener está registrado contra ese
+     *   Sensor específico (el shadow guarda un Multimap listener→sensores). Creamos ambos
+     *   sensores con `ShadowSensor.newInstance()`, dejamos que el Service registre el suyo,
+     *   y verificamos el par correcto (acelerómetro) Y la ausencia del incorrecto (lineal).
      */
     @Test
     fun sensorManager_usesRawAccelerometer_notLinearAcceleration() {
@@ -462,24 +464,32 @@ class SeizureMonitorServiceTest {
         val shadowSensorManager = shadowOf(
             context.getSystemService(SensorManager::class.java)
         )
+        val accelerometer = ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER)
+        val linearAcceleration = ShadowSensor.newInstance(Sensor.TYPE_LINEAR_ACCELERATION)
+        shadowSensorManager.addSensor(accelerometer)
+        shadowSensorManager.addSensor(linearAcceleration)
 
         // Act
         Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
             .create()
             .startCommand(0, 1)
 
+        // El Service registró exactamente un listener — lo recuperamos para chequear contra qué
+        // Sensor concreto quedó suscrito.
+        val listener = shadowSensorManager.listeners.single()
+
         // Assert — el sensor correcto está registrado
         assertTrue(
             "El Service debe registrar TYPE_ACCELEROMETER (con gravedad). " +
                     "El modelo DeepEpiCnn Run24 fue entrenado con aceleración cruda — magnitud ~1000 milli-g en reposo.",
-            shadowSensorManager.hasListener(Sensor.TYPE_ACCELEROMETER)
+            shadowSensorManager.hasListener(listener, accelerometer)
         )
 
         // Assert — el sensor incorrecto NO está registrado
         assertFalse(
             "El Service NO debe registrar TYPE_LINEAR_ACCELERATION (sin gravedad). " +
                     "Daría magnitud ≈ 0 milli-g en reposo, fuera del dominio de entrenamiento del modelo.",
-            shadowSensorManager.hasListener(Sensor.TYPE_LINEAR_ACCELERATION)
+            shadowSensorManager.hasListener(listener, linearAcceleration)
         )
     }
 }

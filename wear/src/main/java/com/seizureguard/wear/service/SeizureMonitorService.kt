@@ -504,7 +504,7 @@ class SeizureMonitorService : Service() {
     private fun acquireWakeLock() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
+            WAKE_LOCK_LEVEL,
             WAKE_LOCK_TAG
         ).apply {
             acquire(WAKE_LOCK_TIMEOUT_MS)
@@ -653,6 +653,19 @@ class SeizureMonitorService : Service() {
          * Visible en `adb shell dumpsys power` para diagnosticar problemas de batería.
          */
         const val WAKE_LOCK_TAG        = "SeizureGuard::MonitoringWakeLock"
+
+        /**
+         * Nivel del WakeLock — PARTIAL: mantiene la CPU activa pero permite que la pantalla
+         * duerma. Crítico para batería en monitoreo nocturno: FULL_WAKE_LOCK destruiría la
+         * batería del reloj en una noche.
+         *
+         * Se extrae como constante nombrada (no inline en acquireWakeLock) para que sea
+         * verificable por test. Robolectric 4.12.2 no preserva el nivel del WakeLock en
+         * runtime (ShadowWakeLock no lo expone y el constructor real no corre, dejando
+         * mFlags=0), así que la única forma de blindar este valor contra regresiones a
+         * FULL_WAKE_LOCK es un test de contrato sobre esta constante.
+         */
+        val WAKE_LOCK_LEVEL = PowerManager.PARTIAL_WAKE_LOCK
 
         /**
          * Timeout de seguridad: 10 horas en milisegundos.

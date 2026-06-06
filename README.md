@@ -2,9 +2,10 @@
 
 App de detección de convulsiones nocturnas para **Samsung Galaxy Watch 8** (Wear OS 4).
 
-Basado en [OpenSeizureDetector](https://openseizuredetector.org.uk) + modelo **CNN v0.24** (TFLite, 204.5 KB).
+Este repo aporta el **lado reloj** (un *data source* Android Wear) que alimenta la app oficial
+**[OpenSeizureDetector](https://openseizuredetector.org.uk) V5.0**, la cual corre el modelo
+**DeepEpiCnn Run24** (PyTorch ExecuTorch) en el teléfono. **El reloj no infiere.**
 
-> Desarrollado por Agus — Marzo 2026
 
 ---
 
@@ -12,7 +13,7 @@ Basado en [OpenSeizureDetector](https://openseizuredetector.org.uk) + modelo **C
 
 Si venís del mundo de datos y nunca tocaste Android/Kotlin, este proyecto te va a resultar familiar en lo conceptual y nuevo en la implementación. La idea central es simple:
 
-> **Tomar datos de un sensor físico → pasarlos por un modelo CNN → tomar una decisión en tiempo real.**
+> **Tomar datos de un sensor físico → pasarlos por un modelo  → tomar una decisión en tiempo real.**
 
 La diferencia con tu entorno habitual (Python, Jupyter, GPU) es que acá el modelo corre en una CPU de reloj inteligente con batería de 300 mAh, sin internet, a las 3 de la mañana. Cada decisión de arquitectura existe por esa restricción.
 
@@ -26,87 +27,40 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 
 ## Cómo funciona: el pipeline completo
 
-> **⚠️ ARQUITECTURA VIGENTE (2026-06-05) — el diagrama de abajo quedó VIEJO:**
-> El reloj de este proyecto **alimenta la app oficial OpenSeizureDetector V5.0** (rama beta),
-> que YA corre el modelo `deepEpiCnn_Run24.pte` con ExecuTorch **en el teléfono** y dispara las
-> alarmas/SMS. **Este proyecto NO construye un phone app ni corre inferencia propia.** El reloj
-> es un *data source Android Wear* compatible con `SdDataSourceAw` de OSD: captura accel a 25Hz,
-> lo manda en milli-g por Wear Data Layer (`/osd/accel_data`) y recibe el estado de alarma
-> (`/osd/alarm_state`). El modelo, el umbral y las alertas son responsabilidad de la app OSD.
-> Ver engram `architecture/seizureguard-executorch-api`. El módulo `:phone` propio queda obsoleto.
+Este repo es el **lado reloj**. La detección la hace la app **OpenSeizureDetector V5.0**. El flujo:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              SAMSUNG GALAXY WATCH 8                             │
-│                                                                                 │
-│  Acelerómetro 3D (25Hz)                                                         │
-│  X, Y, Z muestras/segundo                                                       │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Magnitud vectorial: √(x² + y² + z²) → milli-g   ← convierte 3D en 1D        │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Ring Buffer (750 muestras = 30 segundos)   ← ventana deslizante              │
-│  [t-749, t-748, ..., t-1, t]                                                   │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Tensor input: shape (1, 750, 1)   ← listo para el modelo                     │
-│         │                                                                       │
-│         ▼                                                                       │
-│  ┌─────────────────────────────┐                                               │
-│  │   CNN v0.24  (cnn_v024.tflite)│  204.5 KB en memoria del reloj             │
-│  │   TFLite Interpreter         │  ~15-30ms de inferencia                     │
-│  └─────────────────────────────┘                                               │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Output: shape (1, 2)                                                           │
-│  [prob_normal=0.03, prob_seizure=0.97]                                          │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Máquina de estados:                                                            │
-│  OK → WARNING (prob > 0.5, 1 ventana) → ALARM (prob > 0.5, N ventanas)        │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Vibración + envío por Wear Data Layer                                          │
-│         │                                                                       │
-│         ▼                                                                       │
-│  WearDataLayerManager (Fase 2.1)                                                │
-│  CircularBuffer → onWindowReady() → /osd/accel_data (N floats LE, N×4 bytes)   │
-│  N puede ser 750 (ventana) u otro (p. ej. 125 chunk); modelo sigue (1,750,1)  │
-│  Ver DEC-039 en DECISIONS.md — única fuente del contrato watch↔phone          │
-│                                                                                 │
-│  ← /osd/alarm_state (1 byte: 0=OK, 1=WARNING, 2=ALARM) ─────────────────────  │
-│         │                                                                       │
-│         ▼  (Fase 2.2)                                                           │
-│  AlarmStateManager:                                                             │
-│    0=OK      → sin vibración, UI verde                                          │
-│    1=WARNING → VibrationEffect 100ms amp=80, UI amarilla                        │
-│    2+=ALARM  → VibrationEffect waveform 3×500ms amp=255, UI roja                │
-│         │                                                                       │
-│         ▼                                                                       │
-│  SeizureMonitorService.alarmState (StateFlow<Int>)                              │
-│         │ collectAsState()                                                      │
-│         ▼                                                                       │
-│  MainActivity / SeizureGuardWearApp (Compose) — UI reactiva                    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                   │
-                        Wear Data Layer API
-                     (Bluetooth, sin internet)
-                     MessageClient — fire-and-forget
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                              ANDROID PHONE                                      │
-│                                                                                 │
-│  AlarmActivity (pantalla completa) + sirena                                     │
-│  SMS automático al cuidador                                                     │
-│  Historial de eventos en Room DB                                                │
-└─────────────────────────────────────────────────────────────────────────────────┘
+RELOJ (este repo)                          TELÉFONO (app OSD V5.0)
+─────────────────                          ───────────────────────
+Acelerómetro 25Hz (TYPE_ACCELEROMETER)
+  → magnitud √(x²+y²+z²) en milli-g
+  → ring buffer
+  → chunks de ~125 muestras (~5s)
+        │  Wear Data Layer
+        │  /osd/accel_data  {"samples":[...]}
+        ▼
+                                           SdDataSourceAw recibe y acumula 750
+                                           → ExecuTorch + deepEpiCnn_Run24.pte
+                                           → prob de convulsión → umbral
+                                           → alarma + sirena + SMS al cuidador
+        ┌──────────────────────────────────────┘
+        │  /osd/alarm_state  {"alarm_state":N}
+        ▼
+Vibración háptica + UI (OK / WARNING / ALARM)
 ```
+
+**El reloj NO infiere.** Solo captura, transmite y reacciona. El modelo, el umbral y las alertas
+son responsabilidad de la app OSD. El reloj es un *data source Android Wear* compatible con
+`SdDataSourceAw`. Ver engram `architecture/seizureguard-executorch-api`.
 
 ---
 
-## El modelo CNN v0.24 — lo que necesitás saber como data scientist
+## El modelo DeepEpiCnn Run24 — lo que necesitás saber como data scientist
+
+> **Importante:** este modelo **NO corre en este repo** — lo corre la app OSD V5.0 en el teléfono,
+> con **PyTorch ExecuTorch** (`org.pytorch:executorch-android:1.0.1`), cargando
+> `deepEpiCnn_2026_01_24_Run24.pte`. Lo explicamos igual para que entiendas qué hace con los datos
+> que tu reloj le manda.
 
 ### Qué aprende el modelo
 
@@ -115,14 +69,14 @@ La CNN aprende a reconocer **patrones de movimiento característicos de convulsi
 ### Arquitectura
 
 ```
-Input TFLite: (1, 750, 1)   ← tensor del modelo (30 s a 25 Hz)
-Transporte Wear /osd/accel_data: N floats LE (N×4 bytes) — N no tiene que ser 750;
-  p. ej. chunks de 125 (~5 s) que el teléfono acumula hasta 750 (DEC-039)
+Input ExecuTorch: (1, 1, 750)   ← tensor real del modelo (30 s a 25 Hz)
+Transporte Wear /osd/accel_data: el reloj manda JSON {"samples":[...]} en milli-g
+  (chunks de ~125 muestras / ~5 s que OSD acumula hasta 750 — DEC-039)
 
-Input: (1, 750, 1)
+Input: (1, 1, 750)
   = 1 muestra del batch
-  × 750 timesteps (30 segundos a 25Hz)
   × 1 feature (magnitud vectorial en milli-g)
+  × 750 timesteps (30 segundos a 25Hz)
          │
    ┌─────▼──────────────────┐
    │  Conv1D layers         │  Detectan patrones locales en el tiempo
@@ -150,96 +104,70 @@ El modelo fue entrenado por el proyecto [OpenSeizureDetector](https://github.com
 
 | Métrica | Valor |
 |---------|-------|
-| Sensibilidad (recall TC) | ~97% |
-| Tasa de falsas alarmas | ~7% |
-| Tamaño del modelo | 204.5 KB |
-| Latencia de inferencia | ~15-30ms (CPU Wear OS) |
+| Modelo / runtime | DeepEpiCnn Run24 (`.pte`) · PyTorch ExecuTorch |
+| Dónde corre | En el teléfono, dentro de la app OSD V5.0 (no en el reloj) |
+| Tamaño del modelo | ~425 KB (`deepEpiCnn_2026_01_24_Run24.pte`) |
+| Tensor de input | `(1, 1, 750)` |
 | Ventana temporal (modelo) | 30 segundos (750 muestras a 25Hz) — distinto del tamaño N de cada mensaje `accel_data` (DEC-039) |
+| Validación | Graham Jones reportó buena detección con Run24 en PineTime |
 
-### Por qué TFLite y no el modelo .h5 o .pt original
-
-TFLite es el formato de inferencia optimizado de TensorFlow para dispositivos con recursos limitados. El proceso es:
-
-```
-Entrenamiento (PC/GPU)         Despliegue (reloj)
-─────────────────────────      ──────────────────────────
-Keras model (.h5)              cnn_v024.tflite
-  └── tf.lite.TFLiteConverter  └── tflite.Interpreter
-        (cuantización,               (C++, sin Python,
-         optimización)                sin TF completo)
-```
-
-El `.tflite` es un FlatBuffer (formato binario eficiente). Este proyecto usa el modelo ya convertido. Si en el futuro querés reentrenar, necesitás el `.h5` o `.keras` original más los datos OSDB.
 
 ---
 
 ## Arquitectura del proyecto Android
 
-### Concepto de multi-módulo
+### Módulo único: `:wear`
 
-El proyecto tiene dos apps separadas que se comunican:
+Este repo tiene **un solo módulo**, la app del reloj:
 
 ```
 OpenSeizure/                         ← carpeta raíz del proyecto
-├── wear/                            ← app del reloj (Wear OS)
-│   └── com.seizureguard.wear
-└── phone/                           ← app del teléfono (Android)
-    └── com.seizureguard.phone
+└── wear/                            ← app del reloj (Wear OS)
+    └── com.seizureguard.wear
 ```
 
-Esto es como tener dos microservicios en el mismo repositorio. Cada uno tiene su propio `build.gradle.kts` (su `requirements.txt`), sus propias dependencias, y se compila independientemente.
+El "teléfono" en este sistema es la **app OpenSeizureDetector V5.0** (un proyecto aparte que
+instalás en el celular). Ella recibe los datos del reloj, corre el modelo y dispara las alarmas.
+Por eso acá **no hay módulo `:phone` propio** — se retiró cuando confirmamos que OSD ya hace todo eso.
 
-**Analogía para data scientists:** es como tener un `training/` y un `serving/` en el mismo repo. El módulo `wear` hace la inferencia; el módulo `phone` hace la presentación de resultados.
+**Analogía para data scientists:** este repo es solo el `serving/` del sensor — captura y
+transmite los datos. El `model/` y el `inference/` viven en la app OSD, no acá.
 
 ### Estructura de archivos
 
 ```
 OpenSeizure/
-├── settings.gradle.kts          ← "este proyecto tiene 2 módulos: :wear y :phone"
+├── settings.gradle.kts          ← "este proyecto tiene 1 módulo: :wear"
 ├── build.gradle.kts             ← configuración global (solo declara qué versiones de
 │                                   plugins existen, no los aplica)
+├── gradle.properties            ← config global (android.useAndroidX, etc.)
 ├── gradle/
 │   └── libs.versions.toml       ← Version Catalog: todas las versiones centralizadas
 │                                   (el pip freeze / pyproject.toml de Android)
 ├── DECISIONS.md                 ← Por qué tomamos cada decisión técnica
-├── TODOS.md                     ← Trabajo identificado pero fuera del scope actual
+├── HARDWARE_RUNBOOK.md          ← Pruebas reales con el reloj + la app OSD (sin Android Studio)
+├── CAREGIVER_GUIDE.md           ← Guía para el cuidador (no técnico)
+├── CLINICAL_SIGNOFF.md          ← Constantes clínicas (se firman en la config de OSD)
 │
-├── wear/                        ← Módulo del reloj
-│   ├── build.gradle.kts         ← dependencias del reloj (TFLite, Compose Wear, etc.)
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── AndroidManifest.xml   ← permisos + declaración de la app
-│   │   │   ├── assets/
-│   │   │   │   └── cnn_v024.tflite   ← el modelo CNN (204.5 KB)
-│   │   │   └── java/com/seizureguard/wear/
-│   │   │       ├── MainActivity.kt   ← pantalla principal: toggle inicio/stop
-│   │   │       ├── logging/
-│   │   │       │   └── CsvLogger.kt          ← logging de muestras a CSV (Fase 1.6)
-│   │   │       ├── ml/
-│   │   │       │   ├── TFLiteModelLoader.kt  ← carga el modelo en memoria
-│   │   │       │   └── CircularBuffer.kt     ← ring buffer 750 muestras (Fase 1.5); envío Data Layer = N floats por mensaje (DEC-039)
-│   │   │       └── service/
-│   │   │           └── SeizureMonitorService.kt  ← ForegroundService nocturno
-│   │   └── test/
-│   │       ├── assets/
-│   │       │   └── model_fixture.tflite  ← modelo mínimo para tests (no producción)
-│   │       └── java/com/seizureguard/wear/
-│   │           ├── WearModuleTest.kt
-│   │           ├── logging/
-│   │           │   └── CsvLoggerTest.kt      ← tests del logger CSV (Robolectric)
-│   │           ├── ml/
-│   │           │   ├── TFLiteModelLoaderTest.kt  ← tests del loader (Robolectric)
-│   │           │   └── CircularBufferTest.kt     ← tests del ring buffer (Robolectric)
-│   │           └── service/
-│   │               └── SeizureMonitorServiceTest.kt  ← tests del service (Robolectric)
-│
-└── phone/                       ← Módulo del teléfono
-    ├── build.gradle.kts
-    └── src/main/
-        ├── AndroidManifest.xml
-        └── java/com/seizureguard/phone/
-            └── MainActivity.kt
+└── wear/                        ← Módulo del reloj (ÚNICO módulo del repo)
+    ├── build.gradle.kts         ← dependencias del reloj (Compose Wear, Wear Data Layer, etc.
+    │                              SIN TFLite/ExecuTorch — la inferencia es de OSD)
+    ├── src/
+    │   ├── main/java/com/seizureguard/wear/
+    │   │   ├── MainActivity.kt              ← pantalla principal: toggle inicio/stop
+    │   │   ├── logging/CsvLogger.kt         ← logging de muestras a CSV (Fase 1.6)
+    │   │   ├── ml/CircularBuffer.kt         ← ring buffer 750 muestras (Fase 1.5)
+    │   │   ├── data/WearDataLayerManager.kt ← protocolo OSD (JSON samples / alarm_state)
+    │   │   ├── alarm/AlarmStateManager.kt   ← vibración según el alarmState de OSD
+    │   │   └── service/SeizureMonitorService.kt  ← ForegroundService nocturno (captura+transporte)
+    │   └── test/java/com/seizureguard/wear/
+    │       ├── WearModuleTest.kt
+    │       ├── logging/CsvLoggerTest.kt          ← tests del logger CSV (Robolectric)
+    │       ├── ml/CircularBufferTest.kt          ← tests del ring buffer (Robolectric)
+    │       └── data/WearDataLayerManagerTest.kt  ← tests del protocolo OSD (Robolectric)
 ```
+
+> El modelo, su loader y el módulo `:phone` ya no están en el repo: la inferencia la hace la app OSD.
 
 ---
 
@@ -251,54 +179,11 @@ OpenSeizure/
 | **Gradle + Version Catalog** | Gestión de dependencias y build | pip + pyproject.toml |
 | **Wear OS SDK (API 30-34)** | SDK del sistema operativo del reloj | La API de un dispositivo IoT |
 | **Jetpack Compose** | UI declarativa (solo pantallas básicas por ahora) | React pero para Android |
-| **TFLite 2.14.0** | Runtime de inferencia del modelo CNN | onnxruntime o tflite-runtime en Python |
+| **PyTorch ExecuTorch** | Runtime de inferencia del modelo — corre **en la app OSD**, no en este repo | onnxruntime / torch en Python |
 | **Kotlin Coroutines** | Concurrencia sin bloquear el hilo principal | asyncio en Python |
 | **KSP** | Generador de código en tiempo de compilación | Equivalente a Cython/codegen |
-| **Room** | Base de datos SQLite con ORM | SQLAlchemy, para el módulo phone |
-| **Wear Data Layer** | Canal de comunicación Bluetooth watch→phone | gRPC o WebSocket entre procesos |
+| **Wear Data Layer** | Canal de comunicación Bluetooth reloj→app OSD | gRPC o WebSocket entre procesos |
 | **Robolectric** | Tests de Android que corren en JVM (sin dispositivo) | pytest-mock para código Android |
-
----
-
-## Qué hace `TFLiteModelLoader` (Fase 0.3)
-
-Este es el primer componente de ML del proyecto. Su única responsabilidad: **cargar el archivo `.tflite` del APK a memoria** de forma segura.
-
-```
-APK (almacenamiento del reloj)
-  └── assets/cnn_v024.tflite   ← empaquetado en el APK sin comprimir
-           │
-           │  AssetManager.openFd()  ← abre un file descriptor al asset
-           ▼
-  AssetFileDescriptor
-           │
-           │  FileInputStream.channel.map()  ← memory-mapping (mmap)
-           ▼
-  MappedByteBuffer              ← el modelo en memoria, listo para TFLite
-           │
-           │  (en Fase 2.1)
-           ▼
-  tflite.Interpreter(buffer)   ← crea el intérprete que hace la inferencia
-```
-
-**Por qué memory-mapping y no leer los bytes directamente:**
-
-Memory-mapping (`mmap`) le dice al sistema operativo que trate el archivo como si fuera memoria RAM. La CPU accede solo a las páginas que necesita, el OS gestiona el caché. Para un modelo de 204KB es casi instantáneo y no duplica el uso de memoria.
-
-**Por qué `suspend fun` (coroutine):**
-
-Leer del disco nunca puede correr en el "main thread" (el hilo que maneja la UI y los sensores). Si bloqueás el main thread por más de ~5 segundos, el sistema operativo mata la app con ANR (Application Not Responding). Las coroutines de Kotlin son la solución idiomática — `suspend fun` con `Dispatchers.IO` garantiza que la carga corre en un hilo de I/O.
-
-```kotlin
-// En Python, esto sería algo así:
-async def load_model(path: str) -> bytes:
-    async with aiofiles.open(path, 'rb') as f:
-        return await f.read()
-
-// En Kotlin:
-suspend fun load(context: Context, modelFileName: String): MappedByteBuffer =
-    withContext(Dispatchers.IO) { ... }
-```
 
 ---
 
@@ -316,11 +201,6 @@ wear/src/test/
 │   ├── smokeTest                           tests que el módulo compila
 │   ├── modelConstants_inputShapeIsCorrect  750 samples × 25Hz = 30 seg
 │   └── sensorSampling_frequencyIs25Hz
-│
-├── ml/TFLiteModelLoaderTest.kt            ← Tests del loader (Robolectric)
-│   ├── modelLoads_withValidFixture_returnsBuffer    happy path
-│   ├── modelLoad_returnsNonEmptyBuffer              buffer.limit() > 0
-│   └── modelLoad_withMissingFile_throwsModelLoadException  error path
 │
 ├── ml/CircularBufferTest.kt               ← Tests del ring buffer (Fase 1.5)
 │   ├── buffer_startsEmpty                           size == 0, isFull == false
@@ -346,32 +226,24 @@ wear/src/test/
 │   ├── csvLogger_filename_containsTimestamp         nombre sigue patrón raw_accel_YYYYMMDD_HHmmss.csv
 │   └── csvLogger_open_secondCall_returnsNull        segundo open() retorna null
 │
-├── data/WearDataLayerManagerTest.kt      ← Tests del WearDataLayerManager (Fase 2.1)
-│   ├── floatsToBytes_roundTrip_preservesValues          serialización sin pérdida
-│   ├── floatsToBytes_750samples_produces3000bytes        750 × 4 bytes = 3000
-│   ├── floatsToBytes_isLittleEndian                      1.0f → [0x00,0x00,0x80,0x3F]
-│   ├── bytesToFloats_emptyArray_returnsEmptyFloatArray   caso borde array vacío
-│   ├── sequentialTestData_hasCorrectValues               protocolo de validación Graham Jones
-│   ├── alarmStatePath_matchesOsdProtocol                 contrato "/osd/alarm_state"
-│   └── accelDataPath_matchesOsdProtocol                 contrato "/osd/accel_data"
-│
-└── service/SeizureMonitorServiceTest.kt   ← Tests del ForegroundService (Robolectric)
-    ├── service_onCreate_doesNotCrash               el Service arranca sin crash
-    ├── service_onCreate_registersNotification      notificación persistente registrada
-    ├── service_onBind_returnsNull                  es un started service, no bound
-    ├── service_actionStart_doesNotCrash            smoke test de ACTION_START
-    ├── serviceCompanion_startIntent_hasCorrectAction  factory method correcto
-    ├── serviceCompanion_stopIntent_hasCorrectAction   factory method correcto
-    ├── wakeLock_afterActionStart_isHeld            WakeLock adquirido al iniciar (Fase 1.2)
-    ├── wakeLock_afterOnDestroy_isReleased          WakeLock liberado al destruir (Fase 1.2)
-    ├── wakeLock_isPartialWakeLock                  tipo PARTIAL, no FULL (Fase 1.2)
-    ├── wakeLock_hasCorrectTag                      tag "SeizureGuard::MonitoringWakeLock" (Fase 1.2)
-    ├── sensorManager_afterActionStart_isRegistered     listener registrado al iniciar (Fase 1.3)
-    ├── sensorManager_afterActionStop_isUnregistered    listener desregistrado al parar (Fase 1.3)
-    ├── sensorManager_afterOnDestroy_isUnregistered     listener desregistrado en onDestroy (Fase 1.3)
-    ├── sensorManager_samplingPeriod_is25Hz             contrato 40,000µs = 40ms = 25Hz (Fase 1.3)
-    └── sensorManager_usesRawAccelerometer_notLinearAcceleration   TYPE_ACCELEROMETER (Fase 1.3)
+└── data/WearDataLayerManagerTest.kt      ← Tests del protocolo OSD (formato JSON, Fase A)
+    ├── samplesToJson_producesSamplesArrayWithCorrectCount   {"samples":[...]} con N elementos
+    ├── samplesToJson_preservesValuesInOrder                 valores en orden (1,2,3,...)
+    ├── samplesToJson_sequentialPattern_matchesGrahamProtocol  [1.0..750.0] para validación
+    ├── samplesToJson_emptyArray_producesEmptySamples        caso borde array vacío
+    ├── parseAlarmState_readsAlarmStateFromOsdJson           {"alarm_state":N} → N (0/1/2)
+    ├── parseAlarmState_toleratesExtraFieldsAndWhitespace    robusto a campos extra
+    ├── parseAlarmState_returnsNullOnMalformed_withoutCrashing  payload roto → null, no crashea
+    ├── alarmStatePath_matchesOsdProtocol                    contrato "/osd/alarm_state"
+    └── accelDataPath_matchesOsdProtocol                     contrato "/osd/accel_data"
 ```
+
+**Resultado:** `./gradlew :wear:test` corre **32 tests, todos verdes** (WearModuleTest 3,
+CircularBufferTest 10, CsvLoggerTest 10, WearDataLayerManagerTest 9).
+
+> ⚠️ Hay 2 tests más — `alarm/AlarmStateManagerTest.kt` y `service/SeizureMonitorServiceTest.kt` —
+> que **no compilan** contra Robolectric 4.12.2 (usan una API de shadows que cambió). Están
+> pendientes de arreglo; hasta entonces, el `:wear:test` completo no incluye esos dos.
 
 **¿Qué es Robolectric?**
 
@@ -385,7 +257,7 @@ Necesita watch o emulador   →   Corre en la PC, sin dispositivo
 Requiere ADB conectado      →   ./gradlew :wear:test
 ```
 
-**El fixture `model_fixture.tflite`** es un modelo TFLite mínimo válido (144 bytes, FlatBuffer v3) generado con Python + flatbuffers. Permite testear el mecanismo de carga sin el modelo real. No es el CNN de producción — ese es `cnn_v024.tflite`.
+> Cómo correr los tests sin Android Studio (build por línea de comandos): ver `BUILD_SETUP.md`.
 
 ---
 
@@ -430,7 +302,7 @@ print(f"\nMagnitud media: {df['magnitude'].mean():.3f} milli-g")
 # ≈ 1000 milli-g → TYPE_ACCELEROMETER funcionando (1g de gravedad en reposo)
 ```
 
-**Qué verificar antes de pasar a Fase 2.1 (inferencia TFLite):**
+**Qué verificar en los datos crudos antes de confiar en la detección:**
 
 | Métrica | Valor esperado | Cómo verificarlo |
 |---------|---------------|-----------------|
@@ -477,81 +349,24 @@ Solo cuando ambos pasos pasen, el transporte está validado y se puede conectar 
 
 Hay dos tipos de tests con propósitos distintos:
 
-```
-Tests unitarios (Robolectric)            Tests instrumented
-────────────────────────────────         ────────────────────────────────────────
-src/test/                                src/androidTest/
-Sin dispositivo, corre en la PC          Requiere Samsung Watch 8 conectado
-./gradlew :wear:test                     ./gradlew :wear:connectedAndroidTest
-Testa el MECANISMO de carga              Testa la carga desde el APK REAL
-Usa fixture de 144 bytes                 Usa cnn_v024.tflite empaquetado
-```
+Los tests unitarios (Robolectric, en `src/test/`) corren en la PC, sin dispositivo. Para
+correrlos sin Android Studio, ver `BUILD_SETUP.md`.
 
 ### Tests unitarios (sin watch)
 
 ```bash
 ./gradlew :wear:test
 
-# Output esperado:
-# WearModuleTest > smokeTest PASSED
-# WearModuleTest > modelConstants_inputShapeIsCorrect PASSED
-# WearModuleTest > sensorSampling_frequencyIs25Hz PASSED
-# TFLiteModelLoaderTest > modelLoads_withValidFixture_returnsBuffer PASSED
-# TFLiteModelLoaderTest > modelLoad_returnsNonEmptyBuffer PASSED
-# TFLiteModelLoaderTest > modelLoad_withMissingFile_throwsModelLoadException PASSED
-# CircularBufferTest > buffer_startsEmpty PASSED
-# CircularBufferTest > buffer_afterAddingLessThanCapacity_isNotFull PASSED
-# CircularBufferTest > buffer_afterAddingExactCapacity_isFull PASSED
-# CircularBufferTest > buffer_snapshot_returnsElementsInChronologicalOrder PASSED
-# CircularBufferTest > buffer_afterOverflow_containsMostRecentSamples PASSED
-# CircularBufferTest > buffer_snapshot_whenNotFull_returnsEmptyArray PASSED
-# CircularBufferTest > buffer_reset_clearsAllSamples PASSED
-# CircularBufferTest > buffer_snapshot_returnsIndependentCopy PASSED
-# CircularBufferTest > buffer_magnitude_calculatedCorrectly PASSED
-# CircularBufferTest > buffer_concurrentAccess_doesNotCorrupt PASSED
-# CsvLoggerTest > csvLogger_open_createsFile PASSED
-# CsvLoggerTest > csvLogger_open_writesHeader PASSED
-# CsvLoggerTest > csvLogger_write_appendsRow PASSED
-# CsvLoggerTest > csvLogger_write_beforeOpen_doesNotCrash PASSED
-# CsvLoggerTest > csvLogger_close_flushesData PASSED
-# CsvLoggerTest > csvLogger_close_isIdempotent PASSED
-# CsvLoggerTest > csvLogger_isLogging_afterOpen_isTrue PASSED
-# CsvLoggerTest > csvLogger_isLogging_afterClose_isFalse PASSED
-# CsvLoggerTest > csvLogger_filename_containsTimestamp PASSED
-# CsvLoggerTest > csvLogger_open_secondCall_returnsNull PASSED
-# SeizureMonitorServiceTest > service_onCreate_doesNotCrash PASSED
-# SeizureMonitorServiceTest > service_onCreate_registersNotification PASSED
-# SeizureMonitorServiceTest > service_onBind_returnsNull PASSED
-# SeizureMonitorServiceTest > service_actionStart_doesNotCrash PASSED
-# SeizureMonitorServiceTest > serviceCompanion_startIntent_hasCorrectAction PASSED
-# SeizureMonitorServiceTest > serviceCompanion_stopIntent_hasCorrectAction PASSED
-# SeizureMonitorServiceTest > wakeLock_afterActionStart_isHeld PASSED
-# SeizureMonitorServiceTest > wakeLock_afterOnDestroy_isReleased PASSED
-# SeizureMonitorServiceTest > wakeLock_isPartialWakeLock PASSED
-# SeizureMonitorServiceTest > wakeLock_hasCorrectTag PASSED
-# SeizureMonitorServiceTest > sensorManager_afterActionStart_isRegistered PASSED
-# SeizureMonitorServiceTest > sensorManager_afterActionStop_isUnregistered PASSED
-# SeizureMonitorServiceTest > sensorManager_afterOnDestroy_isUnregistered PASSED
-# SeizureMonitorServiceTest > sensorManager_samplingPeriod_is25Hz PASSED
-# SeizureMonitorServiceTest > sensorManager_usesRawAccelerometer_notLinearAcceleration PASSED
+# Output esperado (32 tests, todos verdes):
+# WearModuleTest ............. 3 tests PASSED
+# CircularBufferTest ........ 10 tests PASSED
+# CsvLoggerTest ............. 10 tests PASSED
+# WearDataLayerManagerTest ... 9 tests PASSED   (formato JSON del protocolo OSD)
 # BUILD SUCCESSFUL
 ```
 
-### Tests instrumented (con watch conectado — Fase 0.4)
-
-```bash
-# 1. Conectar el watch
-./scripts/connect_watch.sh 192.168.x.x   # IP del reloj
-
-# 2. Correr los tests instrumented
-./gradlew :wear:connectedAndroidTest
-
-# Output esperado en el watch:
-# TFLiteModelLoaderInstrumentedTest > modelLoads_fromInstalledApk_returnsBuffer PASSED
-# TFLiteModelLoaderInstrumentedTest > modelLoads_fromInstalledApk_bufferSizeMatchesRealModel PASSED
-# TFLiteModelLoaderInstrumentedTest > modelLoads_fromInstalledApk_bufferMatchesExpectedSize PASSED
-# TFLiteModelLoaderInstrumentedTest > modelLoad_withNonExistentFile_throwsModelLoadException PASSED
-```
+> ⚠️ `AlarmStateManagerTest` y `SeizureMonitorServiceTest` existen pero **no compilan** contra
+> Robolectric 4.12.2 (API de shadows cambiada) — pendientes de arreglo.
 
 ---
 
@@ -591,11 +406,8 @@ Ajustes → Opciones de desarrollador
 # Build + install en el watch
 ./scripts/deploy_wear.sh
 
-# Ver logs en tiempo real
-adb logcat -s SeizureGuard:D TFLiteModelLoader:D
-
-# Correr tests instrumented en el watch
-./gradlew :wear:connectedAndroidTest
+# Ver logs en tiempo real (reloj + lo que recibe la app OSD)
+adb logcat -s SeizureGuard:D WearDataLayerManager:D SdDataSourceAw:D
 ```
 
 ### Qué hace cada script
@@ -603,35 +415,39 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 | Script | Qué hace |
 |--------|---------|
 | `scripts/connect_watch.sh [IP]` | Conecta al watch via ADB, verifica estado, muestra modelo/Android version |
-| `scripts/deploy_wear.sh` | Build debug + instala el APK + verifica que el .tflite NO está comprimido |
+| `scripts/deploy_wear.sh` | Build debug + instala el APK del reloj |
 | `scripts/deploy_wear.sh --tests-only` | Solo corre tests unitarios (sin watch) |
 
 ---
 
-## Cómo abrir el proyecto en Android Studio
+## Cómo compilar y testear (sin Android Studio)
 
-1. `File → Open` → seleccionar la carpeta `OpenSeizure/`
-2. Android Studio detecta `settings.gradle.kts` y configura el proyecto automáticamente
-3. Esperar el Gradle Sync (primera vez: descarga ~200MB de dependencias)
-4. Para correr tests unitarios: click derecho en `TFLiteModelLoaderTest.kt` → Run
-5. Para tests instrumented: conectar el watch primero, luego click derecho → Run
+Este proyecto se buildea por **línea de comandos**, no requiere Android Studio. El paso a paso
+completo (instalar JDK 17, Android SDK cmdline-tools, `local.properties` y el gradle wrapper)
+está en **`BUILD_SETUP.md`**. Una vez configurado:
+
+```powershell
+$env:JAVA_HOME = "...\jdk-17..."   # JDK 17 (ver BUILD_SETUP.md)
+$env:ANDROID_HOME = "C:\Android"
+.\gradlew.bat :wear:test           # corre los tests unitarios
+.\gradlew.bat :wear:assembleDebug  # genera el APK del reloj
+```
 
 ### Requisitos
 
-- Android Studio Hedgehog (2023.1.1) o superior
-- JDK 17 (incluido en Android Studio)
-- Android SDK API 34
-- Samsung Galaxy Watch 8 (para Fase 0.4+)
+- JDK 17 (AGP 8.5 no garantiza el 21)
+- Android SDK API 34 + build-tools 34 (cmdline-tools, sin Android Studio)
+- Samsung Galaxy Watch 8 + la app OpenSeizureDetector V5.0 en el teléfono (para pruebas reales)
 
 ---
 
 ## Plan de desarrollo por fases
 
 ### Fase 0: Setup del proyecto (COMPLETADA ✅)
-- [x] **0.1** Estructura multi-módulo `:wear` + `:phone` — Smoke tests verdes
-- [x] **0.2** Stack completo de dependencias (TFLite, Coroutines, Room, KSP, Lifecycle, Compose)
-- [x] **0.3** `TFLiteModelLoader.kt` + modelo `cnn_v024.tflite` descargado e integrado (209,456 bytes, TFL3) + 3 tests Robolectric
-- [x] **0.4** ADB Wireless — scripts de conexión/deploy + 4 tests instrumented (TODO-001 resuelto)
+- [x] **0.1** Estructura del módulo `:wear` — Smoke tests verdes (el `:phone` se retiró luego: la inferencia es de OSD)
+- [x] **0.2** Stack de dependencias (Coroutines, Wear Compose, Wear Data Layer, KSP). **Sin TFLite/ExecuTorch** — la inferencia corre en la app OSD
+- [x] **0.3** Entorno de build por CLI sin Android Studio (`BUILD_SETUP.md`) + 32 tests unitarios verdes
+- [x] **0.4** ADB Wireless — scripts de conexión/deploy al reloj
 
 ### Fase 1: Captura de sensores (wear)
 - [x] **1.1** ForegroundService con notificación persistente ("SeizureGuard activo") + UI toggle en MainActivity
@@ -672,21 +488,21 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - **D.4** End-to-end: simular convulsión → OSD alarma + SMS — Field-Done [ ]
 - **D.5** Test nocturno + ajuste de umbral en la **config de la app OSD** (firma clínica) — Field-Done [ ]
 
-### Fase 5: Mejora del modelo (futuro)
+### Fase 5: Mejora del modelo (futuro — lo hace OSD)
+> El modelo lo entrena y distribuye OpenSeizureDetector. Esta fase es contribución upstream, no de este repo.
 - [ ] Solicitar acceso a datos OSDB y analizar el dataset
-- [ ] Reentrenar CNN con datos adicionales
-- [ ] A/B testing CNN v0.24 vs modelo nuevo
+- [ ] Comparar DeepEpiCnn Run24 vs versiones futuras del modelo
 - [ ] Agregar HR + SpO2 como features adicionales
-- [ ] Google Play Store
+- [ ] (no aplica a este repo) Google Play Store
 
 ---
 
-## Obtener el modelo `cnn_v024.tflite`
+## El modelo `deepEpiCnn_2026_01_24_Run24.pte`
 
-El modelo real ya está incluido en el repositorio (`wear/src/main/assets/cnn_v024.tflite`, 204.5 KB). Fue descargado directamente del repositorio open-source de OpenSeizureDetector:
+El modelo **no vive en este repo** — lo trae y lo corre la app **OpenSeizureDetector V5.0**. Es un
+modelo PyTorch exportado a ExecuTorch (`.pte`), recomendado por OSD en `osdapi.org.uk`.
 
-**Fuente:** [OpenSeizureDetector/Android_Pebble_SD](https://github.com/OpenSeizureDetector/Android_Pebble_SD)
-`app/src/main/assets/cnn_v0.24.tflite`
+**Fuente:** [OpenSeizureDetector/Android_Pebble_SD](https://github.com/OpenSeizureDetector/Android_Pebble_SD) (rama `beta`, V5.0) — ahí está el `.pte`, la dependencia `org.pytorch:executorch-android:1.0.1` y el código de inferencia (`SdAlgMl.java`).
 
 Licencia: GPL v3 (el proyecto completo hereda esta licencia).
 

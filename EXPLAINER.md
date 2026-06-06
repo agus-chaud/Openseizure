@@ -4,6 +4,26 @@
 
 ---
 
+> ## ⚠️ IMPORTANTE — Arquitectura actualizada (2026-06-05)
+>
+> Gran parte de este documento describe una arquitectura **vieja** donde **el reloj corría la
+> inferencia con TensorFlow Lite**. **Eso ya no es así.** Lo vigente:
+>
+> - El reloj **NO infiere**. Es solo un sensor inteligente: captura el acelerómetro a 25Hz, lo
+>   convierte a milli-g, y se lo manda a la app **OpenSeizureDetector V5.0** por Bluetooth
+>   (Wear Data Layer). Recibe de vuelta el estado de alarma y vibra.
+> - La inferencia corre **en el teléfono, dentro de la app OSD**, con **PyTorch ExecuTorch** y el
+>   modelo **`deepEpiCnn_2026_01_24_Run24.pte`** — NO con TFLite ni `cnn_v024.tflite`.
+> - El tensor real del modelo es **`(1, 1, 750)`** (este doc dice `(1, 750, 1)` en varios lados:
+>   está desactualizado).
+> - Este repo es **un solo módulo (`:wear`)**; no hay app de teléfono propia.
+>
+> Leé las secciones de abajo entendiendo que **todo lo que diga "el reloj infiere" o "TFLite"
+> es historia, no el estado actual.** La parte de captura de sensores (TYPE_ACCELEROMETER,
+> 25Hz, ring buffer, milli-g) **sí sigue vigente** — eso es lo que el reloj realmente hace.
+
+---
+
 ## El problema que estamos resolviendo
 
 Las convulsiones tónico-clónicas nocturnas son las más peligrosas de todas. La persona está dormida, no puede pedir ayuda, y el cuidador tampoco está despierto. Los dispositivos comerciales que detectan esto cuestan entre USD 500 y USD 2000. SeizureGuard es la alternativa open-source: toma datos del acelerómetro de un Samsung Galaxy Watch 8, los pasa por un modelo CNN, y si detecta una convulsión, despierta al cuidador en el teléfono.

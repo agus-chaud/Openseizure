@@ -8,6 +8,34 @@ La pregunta "por qué" es más valiosa que el "qué" — el código ya explica e
 
 ---
 
+## ⚠️ CAMBIO DE ARQUITECTURA (2026-06-05) — leer antes que nada
+
+Varias decisiones tempranas de este registro quedaron **SUPERADAS** por un giro de arquitectura.
+Como en un buen registro de decisiones, **no las borramos** (el "por qué" histórico sigue siendo
+valioso), pero quedan marcadas como superadas:
+
+**Lo vigente hoy:**
+- El reloj es solo un **data source Android Wear** compatible con `SdDataSourceAw` de la app
+  **OpenSeizureDetector V5.0**. El reloj **NO infiere** — captura accel a 25Hz, lo manda en
+  milli-g por `/osd/accel_data` y recibe `/osd/alarm_state`.
+- La inferencia corre **en el teléfono, dentro de la app OSD**, con **PyTorch ExecuTorch** y el
+  modelo **`deepEpiCnn_2026_01_24_Run24.pte`** (NO TFLite, NO `cnn_v024.tflite`). Tensor real:
+  **`(1, 1, 750)`** (no `(1,750,1)`). Dependencia: `org.pytorch:executorch-android:1.0.1`.
+- Este repo es **módulo único `:wear`**. El módulo `:phone` propio fue **retirado** (lo reemplaza
+  la app OSD).
+
+**Decisiones SUPERADAS por este cambio** (válidas como historia, no como estado actual):
+- **DEC-002** (multi-módulo `:wear` + `:phone`) → hoy módulo único `:wear`.
+- **DEC-006, 007, 010, 011, 017** (todo lo de `TFLiteModelLoader` / `Interpreter` TFLite) → la
+  inferencia es de OSD con ExecuTorch; el loader y el modelo se borraron del repo.
+- **DEC-040** (`PhoneCircularBuffer`) → el módulo `:phone` se retiró.
+- Toda mención a tensor `(1, 750, 1)` → el real es `(1, 1, 750)`.
+
+Fuente de verdad de lo nuevo: engram `architecture/seizureguard-executorch-api` y
+`architecture/seizureguard-aw-contract`. Lo que sigue debajo es el historial original.
+
+---
+
 ## DEC-001: Kotlin nativo sobre Progressive Web App (PWA)
 
 **Fase:** 0.1 | **Fecha:** Marzo 2026

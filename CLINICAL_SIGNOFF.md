@@ -1,12 +1,5 @@
 # CLINICAL SIGNOFF — Constantes clínicas pendientes de firma humana
 
-> Este archivo es la **cola de decisiones clínicas** de SeizureGuard. El agente NUNCA decide
-> estos valores por sí mismo: los extrae, documenta el tradeoff en lenguaje vida/muerte, y los
-> deja acá para que un humano (idealmente con criterio clínico / literatura de OpenSeizureDetector)
-> los **firme**. Ninguna fase puede pasar a **Field-Done** mientras tenga constantes sin firmar.
-
-Custodiado por la skill `safety-reviewer`. Ver `architecture/seizureguard-finisher-agent` en engram.
-
 > **⚠️ ARQUITECTURA (2026-06-05):** la inferencia y los umbrales corren en la **app OSD V5.0**, no
 > en este repo. Por lo tanto estos umbrales (0.5/0.8) **se CONFIGURAN en la app OpenSeizureDetector**,
 > no se hardcodean en nuestro código. La "firma" acá significa: el humano decide qué valor poner en

@@ -13,12 +13,28 @@
     <!-- Foreground Service: mantiene el monitoreo activo de noche -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <!--
+        Android 14 (API 34): un foreground service de tipo "health" exige, ADEMÁS de
+        FOREGROUND_SERVICE_HEALTH, AL MENOS UNO de un grupo de permisos de sensores.
+        HIGH_SAMPLING_RATE_SENSORS es de tipo "normal" (se otorga al instalar, sin diálogo)
+        y satisface ese requisito. Sin esto, startForeground() lanza SecurityException y la app
+        crashea al iniciar el monitoreo (validado en hardware, Watch 8 / Wear OS).
+    -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
 
     <!-- WakeLock: evita que el CPU duerma durante el monitoreo -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Vibración para las alarmas -->
     <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+        Android 13+ (API 33): mostrar notificaciones requiere este permiso, que el usuario
+        debe conceder en runtime. Sin él, el foreground service corre igual pero su
+        notificación persistente NO se ve. Lo ideal es que MainActivity lo pida en runtime
+        (pendiente); para probar ya, se puede otorgar por adb (ver HARDWARE_RUNBOOK).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Necesario para comunicación con la Companion App -->
     <uses-permission android:name="android.permission.INTERNET" />

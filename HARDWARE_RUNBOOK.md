@@ -110,7 +110,17 @@ C:\Android\platform-tools\adb.exe devices
 ## 3. Instalar la app del reloj
 
 Primero **compilás** la app (la convertís en un archivo instalable, el APK), después la **instalás**
-en el reloj:
+en el reloj.
+
+> ⚠️ **Importante:** `gradlew.bat` solo funciona si la consola está **parada dentro de la carpeta
+> del proyecto**. Si te dice "no se reconoce como comando", es que estás en otra carpeta. Entrá
+> primero con `cd` y seteá Java/SDK (cada ventana nueva los pierde):
+> ```powershell
+> cd C:\Users\Dell\Agus\OpenSeizure
+> $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
+> $env:ANDROID_HOME = "C:\Android"
+> dir gradlew.bat   # si te lo lista, estás bien parado
+> ```
 
 ```powershell
 # Compilar la app del reloj (genera el APK):

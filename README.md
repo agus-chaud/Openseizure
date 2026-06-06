@@ -26,11 +26,14 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 
 ## Cómo funciona: el pipeline completo
 
-> **⚠️ Nota de arquitectura:** el diagrama de abajo todavía dibuja la inferencia **en el reloj**.
-> Eso quedó **viejo**. La decisión vigente (2026-06-05) es que la inferencia corre **en el
-> teléfono** (chunks de 125 @ ~5s desde el reloj → teléfono acumula 750 → CNN → `alarmState` de
-> vuelta al reloj). El diagrama se redibuja en una fase futura. Ver Fase 2 y engram
-> `architecture/seizureguard-inference-location`.
+> **⚠️ ARQUITECTURA VIGENTE (2026-06-05) — el diagrama de abajo quedó VIEJO:**
+> El reloj de este proyecto **alimenta la app oficial OpenSeizureDetector V5.0** (rama beta),
+> que YA corre el modelo `deepEpiCnn_Run24.pte` con ExecuTorch **en el teléfono** y dispara las
+> alarmas/SMS. **Este proyecto NO construye un phone app ni corre inferencia propia.** El reloj
+> es un *data source Android Wear* compatible con `SdDataSourceAw` de OSD: captura accel a 25Hz,
+> lo manda en milli-g por Wear Data Layer (`/osd/accel_data`) y recibe el estado de alarma
+> (`/osd/alarm_state`). El modelo, el umbral y las alertas son responsabilidad de la app OSD.
+> Ver engram `architecture/seizureguard-executorch-api`. El módulo `:phone` propio queda obsoleto.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -638,41 +641,36 @@ adb logcat -s SeizureGuard:D TFLiteModelLoader:D
 - [x] **1.5** Ring buffer circular de 750 muestras + cálculo de magnitud vectorial en milli-g
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
-### Fase 2: Inferencia TFLite (EN EL TELÉFONO — ver nota de arquitectura)
+### Arquitectura: el reloj alimenta la app OSD V5.0 (NO construimos phone app)
 
-> **⚠️ Corrección de arquitectura (2026-06-05):** la inferencia corre **en el teléfono**, NO en
-> el reloj. El reloj solo captura, bufferea y envía chunks de 125 muestras (~5s) por Wear Data
-> Layer; el teléfono acumula 750 (6×125), corre la CNN `cnn_v024.tflite` sobre el tensor
-> `(1,750,1)` con **stride de inferencia de 5s** (ventanas de 30s solapadas, patrón OSD/Graham), y
-> devuelve el `alarmState` al reloj. Las versiones anteriores de este README describían la
-> inferencia en el reloj — eso quedó **viejo**. Ver engram `architecture/seizureguard-inference-location`.
+La inferencia, el umbral y las alarmas son responsabilidad de la **app OpenSeizureDetector V5.0**
+(rama beta). Este repo solo aporta el **lado reloj**, compatible con `SdDataSourceAw`.
 
 Cada fase se trackea en **dos estados**: **Agent-Done** (código + tests verdes + Safety Reviewer
-PASS + PR aprobado por humano) y **Field-Done** (validado en hardware/nocturno por el humano).
-El proyecto no está terminado hasta que todo sea Field-Done.
+PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, por el humano).
 
-- [x] **2.1** Wear Data Layer (reloj → teléfono): `WearDataLayerManager` + protocolo OSD `/osd/accel_data` + `/osd/alarm_state` + validación Graham Jones + **DEC-039** (contrato bytes: N floats LE vs tensor 750)
-- [x] **2.2** Recepción de alarmState + vibración háptica + UI reactiva: `AlarmStateManager` (OK/WARNING/ALARM) + `StateFlow` en Service + `collectAsState()` en Compose — 7 tests Robolectric
-- **2.3** Inferencia en el teléfono cada ventana (stride 5s) + log de probabilidades — Agent-Done [ ] / Field-Done [ ]
-- **2.4** Máquina de estados: OK → WARNING → ALARM (umbral + N ventanas → `CLINICAL_SIGNOFF.md`) — Agent-Done [ ] / Field-Done [ ]
-- **2.5** Vibración háptica en estado ALARM (reloj, vía `/osd/alarm_state`) — Agent-Done [ ] / Field-Done [ ]
-- **2.6** Benchmark de batería (objetivo: ≥8h) — hardware-gated, ver `HARDWARE_RUNBOOK.md` — Field-Done [ ]
+#### Fase A: Compatibilidad reloj ↔ OSD V5.0
+- [x] (base) Captura 25Hz, milli-g, CircularBuffer 750, Wear Data Layer `/osd/accel_data` + `/osd/alarm_state`, haptics+UI (Fases 0/1/2.1/2.2)
+- **A.1** Verificar contrato contra `SdDataSourceAw.java` (paths + bytes) — Agent-Done [ ]
+- **A.2** Alinear tamaño de chunk con lo que espera OSD (DEC-039) — Agent-Done [ ]
+- **A.3** Modo debug de números secuenciales para validación de Graham — Agent-Done [ ]
 
-### Fase 3: Companion App (phone) — incluye inferencia (ver nota Fase 2)
-- **3.1** Wear Data Layer: canal watch → phone + acumulación 6×125 → tensor 750 — Agent-Done [ ] / Field-Done [ ]
-- **3.2** AlarmActivity full-screen con sirena — Agent-Done [ ] / Field-Done [ ]
-- **3.3** SMS automático al cuidador (ruta crítica — valida Safety Reviewer + `CAREGIVER_GUIDE.md`) — Agent-Done [ ] / Field-Done [ ]
-- **3.4** Pantalla de configuración (umbral → `CLINICAL_SIGNOFF.md`, contacto, nombre del paciente) — Agent-Done [ ] / Field-Done [ ]
-- **3.5** Room DB: historial de eventos con timestamp (KSP, no kapt) — Agent-Done [ ] / Field-Done [ ]
+#### Fase B: Retirar el módulo :phone (código muerto)
+- **B.1** Borrar `phone/` (la inferencia la hace OSD) — Agent-Done [ ]
+- **B.2** Quitar `:phone` de `settings.gradle.kts` + borrar restos de ML (`.pte`, TFLite) — Agent-Done [ ]
+- **B.3** Verificar que `:wear` compila y sus tests pasan — Agent-Done [ ]
 
-### Fase 4: Integración y testing real (hardware-gated — ver `HARDWARE_RUNBOOK.md`)
-> Estas fases SOLO las puede ejecutar un humano con el Watch 8 físico. El agente prepara el
-> runbook e interpreta resultados; el humano firma Field-Done.
-- **4.1** Test E2E manual (simular convulsión con movimiento del reloj) — Field-Done [ ]
-- **4.2** Test nocturno real (8 horas de sueño con monitoreo activo) — Field-Done [ ]
-- **4.3** Análisis de falsas alarmas + tuning del umbral (firma en `CLINICAL_SIGNOFF.md`) — Field-Done [ ]
-- **4.4** Edge cases: watch sacado, batería baja, Bluetooth perdido — Field-Done [ ]
-- **4.5** UI polish: Tile de Wear OS + complicación — Agent-Done [ ] / Field-Done [ ]
+#### Fase C: Documentación + comunidad
+- **C.1** Actualizar README/CAREGIVER_GUIDE/CLINICAL_SIGNOFF a la arquitectura "reloj → OSD" — Agent-Done [ ]
+- **C.2** Post en GitHub discussion #69 (definir interfaz AndroidWear) — Agent-Done [ ]
+
+#### Fase D: Validación de campo (hardware-gated — ver `HARDWARE_RUNBOOK.md`)
+> SOLO un humano con el Watch 8 + la app OSD instalada. El agente prepara el runbook e interpreta.
+- **D.1** Instalar OSD V5.0 beta APK + developer mode + activar AW data source — Field-Done [ ]
+- **D.2** Validación secuencial `[1.0..750.0]` (orden correcto en OSD) — Field-Done [ ]
+- **D.3** Bench test: reloj quieto → un eje ~1000 milli-g — Field-Done [ ]
+- **D.4** End-to-end: simular convulsión → OSD alarma + SMS — Field-Done [ ]
+- **D.5** Test nocturno + ajuste de umbral en la **config de la app OSD** (firma clínica) — Field-Done [ ]
 
 ### Fase 5: Mejora del modelo (futuro)
 - [ ] Solicitar acceso a datos OSDB y analizar el dataset

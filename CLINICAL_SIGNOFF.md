@@ -7,6 +7,11 @@
 
 Custodiado por la skill `safety-reviewer`. Ver `architecture/seizureguard-finisher-agent` en engram.
 
+> **⚠️ ARQUITECTURA (2026-06-05):** la inferencia y los umbrales corren en la **app OSD V5.0**, no
+> en este repo. Por lo tanto estos umbrales (0.5/0.8) **se CONFIGURAN en la app OpenSeizureDetector**,
+> no se hardcodean en nuestro código. La "firma" acá significa: el humano decide qué valor poner en
+> la configuración de la app OSD, con criterio clínico — sigue siendo una decisión de vida/muerte.
+
 ---
 
 ## Cómo firmar

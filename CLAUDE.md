@@ -1,7 +1,12 @@
 # SeizureGuard — Project Instructions
 
 App de detección de convulsiones nocturnas para Samsung Galaxy Watch 8.
-Stack: Kotlin 2.0.21 + Wear OS 4 + TFLite 2.14.0. Multi-módulo: `:wear` + `:phone`.
+Stack: Kotlin 2.0.21 + Wear OS 4. Módulo único: `:wear`.
+
+ARQUITECTURA (2026-06-05): el reloj es un *data source Android Wear* compatible con
+`SdDataSourceAw` que alimenta la app **OpenSeizureDetector V5.0** (rama beta). La inferencia
+(modelo deepEpiCnn Run24 + ExecuTorch), el umbral y las alarmas/SMS corren en la app OSD, NO en
+este repo. Este repo NO tiene runtime de ML. Ver engram `architecture/seizureguard-executorch-api`.
 
 ---
 

@@ -25,6 +25,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true   // genera BuildConfig (BuildConfig.DEBUG) — AGP 8 lo apaga por defecto
     }
 
     compileOptions {
@@ -34,11 +35,6 @@ android {
 
     kotlinOptions {
         jvmTarget = "1.8"
-    }
-
-    // Necesario para que TFLite no se excluya del APK
-    aaptOptions {
-        noCompress += "tflite"
     }
 
     // Requerido para que Robolectric pueda leer src/test/assets/
@@ -62,12 +58,11 @@ dependencies {
     implementation(libs.androidx.wear.compose.material)
     implementation(libs.androidx.wear.compose.foundation)
 
-    // Wear Data Layer (comunicación con el phone)
+    // Wear Data Layer (comunicación con la app OSD que corre la inferencia)
     implementation(libs.play.services.wearable)
 
-    // TFLite — se integra en Fase 0.3
-    implementation(libs.tensorflow.lite)
-    implementation(libs.tensorflow.lite.support)
+    // NOTA: sin TFLite/ExecuTorch en el reloj. La inferencia corre en la app OSD V5.0
+    // (ver engram architecture/seizureguard-executorch-api). El reloj solo captura y transmite.
 
     // Coroutines — imprescindible para el ForegroundService (Fase 1.1)
     implementation(libs.kotlinx.coroutines.android)
@@ -82,6 +77,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)   // ApplicationProvider en tests Robolectric
 
     // Instrumented tests (en el watch físico — Fase 0.4)
     androidTestImplementation(libs.androidx.junit)

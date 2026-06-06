@@ -5,24 +5,22 @@ import android.util.Log
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
- * Gestiona la comunicación Wear Data Layer entre el reloj y el teléfono.
+ * Gestiona la comunicación Wear Data Layer entre el reloj y la app OpenSeizureDetector V5.0.
  *
- * Protocolo OSD (compatible con SdDataSourceAw.java de OpenSeizureDetector V5):
- *   /osd/accel_data   → reloj envía N floats en milli-g (payload variable: N×4 bytes LE; ver DEC-039)
- *   /osd/alarm_state  → teléfono responde con 1 byte (0=OK, 1=WARNING, 2=ALARM)
+ * IMPORTANTE (Fase A, 2026-06-05): el formato de los mensajes se ADAPTA a lo que
+ * `SdDataSourceAw.java` de OSD ya espera (no al revés). Por eso:
  *
- * Analogía Python:
- *   Es como un socket cliente que envía bytes y recibe una respuesta.
- *   El Wear Data Layer maneja la reconexión Bluetooth automáticamente.
+ *   /osd/accel_data   → reloj envía JSON {"samples":[m0, m1, ...]} (magnitudes en milli-g, UTF-8).
+ *                       OSD intenta parsear este formato PRIMERO (json.has("samples")).
+ *   /osd/alarm_state  → OSD responde JSON {"alarm_state": <int>, "alarm_phrase": "<texto>"} (UTF-8).
  *
- * Cómo funciona internamente:
- *   Wearable.getMessageClient() devuelve un cliente que envía mensajes
- *   al nodo (node) conectado — en este caso, el teléfono Android pareado.
- *   `getConnectedNodes()` descubre el nodo automáticamente.
+ * Antes el reloj mandaba floats binarios LE crudos y esperaba 1 byte de vuelta — eso NO matcheaba
+ * el parser de OSD (que en su fallback binario lee int16, no float32, y responde JSON). Ver engram
+ * `architecture/seizureguard-aw-contract`.
  *
  * @param context Contexto Android. Debe ser el applicationContext del Service.
  */
@@ -33,26 +31,21 @@ class WearDataLayerManager(private val context: Context) {
     }
 
     /**
-     * Envía una ventana de datos del acelerómetro al teléfono.
-     *
-     * El array de floats se serializa a ByteBuffer little-endian antes de enviar.
-     * El teléfono deserializa en el mismo orden. El **tamaño del payload es variable**:
-     * `samples.size` define N; el mensaje ocupa `N × 4` bytes (N no tiene que coincidir
-     * con los 750 timesteps del tensor TFLite — ver DEC-039).
+     * Envía una ventana de datos del acelerómetro a la app OSD como JSON {"samples":[...]}.
      *
      * @param samples FloatArray de magnitud en milli-g (típicamente 125 por chunk de transporte;
-     *                en modo secuencial debug, puede llevar numeración continua para verificar orden global).
+     *                en modo secuencial debug puede llevar numeración continua para verificar orden).
      */
     suspend fun sendAccelData(samples: FloatArray) {
-        val bytes = floatsToBytes(samples)
+        val bytes = samplesToJsonBytes(samples)
         sendToAllNodes(PATH_ACCEL_DATA, bytes)
     }
 
     /**
-     * Registra un listener para recibir el alarmState del teléfono.
-     * El teléfono envía 1 byte: el alarmState (0=OK, 1=WARNING, 2=ALARM, etc.)
+     * Registra un listener para recibir el alarmState de la app OSD.
+     * OSD envía JSON: {"alarm_state": <int>, "alarm_phrase": "<texto>"}.
      *
-     * @param onAlarmState Callback que recibe el alarmState como Int.
+     * @param onAlarmState Callback que recibe el alarmState como Int (0=OK, 1=WARNING, 2+=ALARM).
      * @return El listener registrado — guardarlo para poder removerlo después.
      */
     fun addAlarmStateListener(
@@ -60,9 +53,16 @@ class WearDataLayerManager(private val context: Context) {
     ): MessageClient.OnMessageReceivedListener {
         val listener = MessageClient.OnMessageReceivedListener { event ->
             if (event.path == PATH_ALARM_STATE && event.data.isNotEmpty()) {
-                val alarmState = event.data[0].toInt()
-                Log.d(TAG, "alarmState recibido del teléfono: $alarmState")
-                onAlarmState(alarmState)
+                val alarmState = parseAlarmState(event.data)
+                if (alarmState != null) {
+                    Log.d(TAG, "alarmState recibido de OSD: $alarmState")
+                    onAlarmState(alarmState)
+                } else {
+                    // No crasheamos el listener ante un payload ilegible: lo logueamos fuerte.
+                    // (Un mensaje malformado de OSD NO debe tumbar la recepción de futuros estados.)
+                    Log.e(TAG, "alarm_state ilegible (no es el JSON OSD esperado): " +
+                        String(event.data, Charsets.UTF_8))
+                }
             }
         }
         messageClient.addListener(listener)
@@ -78,27 +78,26 @@ class WearDataLayerManager(private val context: Context) {
     }
 
     /**
-     * Serializa un FloatArray a ByteArray en formato little-endian.
-     * Little-endian es el orden que usa SdDataSourceAw.java al deserializar.
-     *
-     * Analogía Python:
-     *   import struct
-     *   bytes = struct.pack(f'<{len(samples)}f', *samples)
+     * Serializa las magnitudes (milli-g) a JSON {"samples":[...]} en UTF-8.
+     * Es el formato que SdDataSourceAw.java intenta parsear primero (json.has("samples"),
+     * leyendo cada valor con samples.getDouble(i)).
      */
-    fun floatsToBytes(samples: FloatArray): ByteArray {
-        val buffer = ByteBuffer.allocate(samples.size * Float.SIZE_BYTES)
-            .order(ByteOrder.LITTLE_ENDIAN)
-        samples.forEach { buffer.putFloat(it) }
-        return buffer.array()
+    fun samplesToJsonBytes(samples: FloatArray): ByteArray {
+        val arr = JSONArray()
+        for (s in samples) arr.put(s.toDouble())
+        val obj = JSONObject().put("samples", arr)
+        return obj.toString().toByteArray(Charsets.UTF_8)
     }
 
     /**
-     * Deserializa un ByteArray a FloatArray (little-endian).
-     * Útil para tests y para verificar round-trip de datos.
+     * Parsea el alarm_state que envía OSD: {"alarm_state": <int>, "alarm_phrase": "..."}.
+     * Retorna null si el payload no es el JSON esperado (el caller loguea y lo ignora,
+     * sin crashear — preferimos perder un mensaje malformado a tumbar el listener).
      */
-    fun bytesToFloats(bytes: ByteArray): FloatArray {
-        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        return FloatArray(bytes.size / Float.SIZE_BYTES) { buffer.getFloat() }
+    fun parseAlarmState(data: ByteArray): Int? = try {
+        JSONObject(String(data, Charsets.UTF_8)).getInt("alarm_state")
+    } catch (e: Exception) {
+        null
     }
 
     private suspend fun sendToAllNodes(path: String, data: ByteArray) {

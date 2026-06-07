@@ -78,6 +78,52 @@ class WearDataLayerManager(private val context: Context) {
     }
 
     /**
+     * Envía el estado/configuración del reloj a OSD por /osd/settings.
+     * OSD lo espera para marcar `haveSettings = true` y dejar de reportar "Data source fault".
+     * Formato que parsea SdDataSourceAw.handleSettings(): {"battery":<0-100>, "sample_freq":25}.
+     *
+     * @param batteryPct nivel de batería del reloj (0-100).
+     * @param sampleFreq frecuencia de muestreo en Hz (25 por defecto).
+     */
+    suspend fun sendSettings(batteryPct: Int, sampleFreq: Int = 25) {
+        sendToAllNodes(PATH_SETTINGS, settingsToJsonBytes(batteryPct, sampleFreq))
+    }
+
+    /** Serializa los settings al JSON que espera OSD: {"battery":N,"sample_freq":F}. */
+    fun settingsToJsonBytes(batteryPct: Int, sampleFreq: Int): ByteArray {
+        val obj = JSONObject()
+            .put("battery", batteryPct)
+            .put("sample_freq", sampleFreq)
+        return obj.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /**
+     * Registra un listener para el pedido de settings de OSD (/osd/send_settings con payload "start").
+     * Cuando OSD arranca la fuente Android Wear, manda "start"; el reloj debe responder con /osd/settings.
+     *
+     * @param onStartRequest callback que se invoca cuando OSD pide los settings.
+     * @return el listener registrado — guardarlo para removerlo en onDestroy().
+     */
+    fun addSendSettingsListener(
+        onStartRequest: () -> Unit
+    ): MessageClient.OnMessageReceivedListener {
+        val listener = MessageClient.OnMessageReceivedListener { event ->
+            if (event.path == PATH_SEND_SETTINGS) {
+                val payload = String(event.data, Charsets.UTF_8).trim()
+                Log.d(TAG, "send_settings recibido de OSD: '$payload'")
+                if (payload == "start") onStartRequest()
+            }
+        }
+        messageClient.addListener(listener)
+        return listener
+    }
+
+    /** Remueve el listener registrado con [addSendSettingsListener]. */
+    fun removeSendSettingsListener(listener: MessageClient.OnMessageReceivedListener) {
+        messageClient.removeListener(listener)
+    }
+
+    /**
      * Serializa las magnitudes (milli-g) a JSON {"samples":[...]} en UTF-8.
      * Es el formato que SdDataSourceAw.java intenta parsear primero (json.has("samples"),
      * leyendo cada valor con samples.getDouble(i)).
@@ -121,8 +167,10 @@ class WearDataLayerManager(private val context: Context) {
     }
 
     companion object {
-        const val PATH_ACCEL_DATA  = "/osd/accel_data"
-        const val PATH_ALARM_STATE = "/osd/alarm_state"
+        const val PATH_ACCEL_DATA    = "/osd/accel_data"
+        const val PATH_ALARM_STATE   = "/osd/alarm_state"
+        const val PATH_SETTINGS      = "/osd/settings"       // reloj → OSD: batería + freq
+        const val PATH_SEND_SETTINGS = "/osd/send_settings"  // OSD → reloj: pide settings ("start")
         private const val TAG = "WearDataLayerManager"
     }
 }

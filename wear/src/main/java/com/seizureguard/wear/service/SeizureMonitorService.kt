@@ -10,6 +10,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.BatteryManager
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
@@ -114,6 +115,12 @@ class SeizureMonitorService : Service() {
      * que se destruyó → memory leak.
      */
     private var alarmStateListener: MessageClient.OnMessageReceivedListener? = null
+
+    /**
+     * Listener del pedido de settings de OSD (/osd/send_settings "start").
+     * Se remueve en onDestroy() para evitar leaks (igual que alarmStateListener).
+     */
+    private var sendSettingsListener: MessageClient.OnMessageReceivedListener? = null
 
     /**
      * Controla si el logging a CSV está activo.
@@ -279,6 +286,7 @@ class SeizureMonitorService : Service() {
         // podría llegar un mensaje del teléfono exactamente en el momento del shutdown.
         // Removerlo primero evita que el callback intente usar un Service ya destruido.
         alarmStateListener?.let { dataLayerManager.removeAlarmStateListener(it) }
+        sendSettingsListener?.let { dataLayerManager.removeSendSettingsListener(it) }
         stopSensorCollection()
         csvLogger.close()
         releaseWakeLock()
@@ -310,6 +318,37 @@ class SeizureMonitorService : Service() {
         alarmStateListener = dataLayerManager.addAlarmStateListener { alarmState ->
             onAlarmStateReceived(alarmState)
         }
+        // Fase A: handshake de settings con OSD.
+        // OSD manda /osd/send_settings "start" cuando arranca la fuente Android Wear, y espera
+        // que el reloj responda /osd/settings (batería + freq). Sin esto, OSD reporta "Data
+        // source fault" (no setea haveSettings). Ver architecture/seizureguard-aw-contract.
+        sendSettingsListener = dataLayerManager.addSendSettingsListener {
+            Log.d(TAG, "OSD pidió settings → respondiendo /osd/settings")
+            sendWatchSettings()
+        }
+        // Enviar settings proactivamente: OSD pudo haber mandado "start" antes de que
+        // registráramos el listener (carrera de arranque). Mandarlo ya cubre ese caso.
+        sendWatchSettings()
+    }
+
+    /**
+     * Envía a OSD el estado del reloj (batería + frecuencia) por /osd/settings.
+     * Es la respuesta al "start" de OSD y lo que hace que deje de reportar "Data source fault".
+     */
+    private fun sendWatchSettings() {
+        val battery = currentBatteryPct()
+        val freqHz = 1_000_000 / SENSOR_SAMPLING_PERIOD_US   // 40_000µs → 25Hz
+        serviceScope.launch {
+            dataLayerManager.sendSettings(battery, freqHz)
+            Log.d(TAG, "Settings enviados a OSD: battery=$battery%, sample_freq=${freqHz}Hz")
+        }
+    }
+
+    /** Nivel de batería del reloj (0-100). Retorna -1 si no se puede leer. */
+    private fun currentBatteryPct(): Int {
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+        return if (pct in 0..100) pct else -1
     }
 
     // ─── SensorManager ────────────────────────────────────────────────────────

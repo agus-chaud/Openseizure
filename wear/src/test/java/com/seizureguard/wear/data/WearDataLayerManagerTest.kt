@@ -112,6 +112,22 @@ class WearDataLayerManagerTest {
         assertNull(manager.parseAlarmState("""{"otra_cosa":1}""".toByteArray(Charsets.UTF_8)))
     }
 
+    // ─── settings handshake (battery + sample_freq) ──────────────────────────
+
+    @Test
+    fun `settingsToJson produces the format OSD handleSettings expects`() {
+        val json = JSONObject(String(manager.settingsToJsonBytes(87, 25), Charsets.UTF_8))
+
+        assertEquals("battery debe ser el int que parsea OSD", 87, json.getInt("battery"))
+        assertEquals("sample_freq debe ser el int que parsea OSD", 25, json.getInt("sample_freq"))
+    }
+
+    @Test
+    fun `sendSettingsPath matches OSD protocol`() {
+        assertEquals("/osd/settings", WearDataLayerManager.PATH_SETTINGS)
+        assertEquals("/osd/send_settings", WearDataLayerManager.PATH_SEND_SETTINGS)
+    }
+
     // ─── contratos de path ───────────────────────────────────────────────────
 
     @Test

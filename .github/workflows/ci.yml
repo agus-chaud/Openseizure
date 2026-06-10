@@ -22,18 +22,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # AGP 8.5.2 requiere JDK 17. Temurin es la distro recomendada.
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       # Cachea ~/.gradle para que los runs siguientes no re-descarguen dependencias.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # Los runners ubuntu-latest ya traen el Android SDK preinstalado y exponen
       # ANDROID_SDK_ROOT, asi que Gradle resuelve compileSdk=34 sin local.properties.
@@ -46,7 +46,7 @@ jobs:
       # Si algo falla, sube los reportes HTML para poder diagnosticar desde la web.
       - name: Subir reportes de test y lint
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reportes-wear
           path: |

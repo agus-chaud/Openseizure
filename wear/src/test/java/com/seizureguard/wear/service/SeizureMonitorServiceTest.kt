@@ -644,4 +644,26 @@ class SeizureMonitorServiceTest {
             wakeLockAfterFirstStart === wakeLockAfterSecondStart
         )
     }
+
+    /**
+     * C2 (Critical) — T3 Fase 1: el modo validación NO debe estar activo por defecto.
+     *
+     * Bug que blinda este test:
+     *   `isSequentialMode` defaulteaba a `BuildConfig.DEBUG`. En todo build de debug recién
+     *   instalado, el reloj le mandaba a OSD números sintéticos `[1,2,3,...]` en lugar del
+     *   acelerómetro real — el detector procesaba basura sin que nadie se enterara.
+     *
+     * Por qué este assert lo detecta:
+     *   Los tests unitarios corren en la variante debug → `BuildConfig.DEBUG == true`. Si alguien
+     *   revierte el default a `BuildConfig.DEBUG`, `isSequentialMode` volvería a ser true acá y el
+     *   test fallaría. El default correcto (false) hace que un build fresco mande datos reales.
+     */
+    @Test
+    fun sequentialMode_isDisabledByDefault() {
+        assertFalse(
+            "isSequentialMode debe ser false por defecto (incluso en debug): un build recién " +
+                    "instalado tiene que mandar datos REALES a OSD, no sintéticos. Ver DEC-046 / T3.",
+            SeizureMonitorService.isSequentialMode
+        )
+    }
 }

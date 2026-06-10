@@ -796,18 +796,24 @@ class SeizureMonitorService : Service() {
         const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 60 * 1000L
 
         /**
-         * Fase 2.1 — Modo de validación del transporte (protocolo de Graham Jones).
+         * Modo de validación del transporte (protocolo de Graham Jones).
          *
          * Cuando es true, onWindowReady() envía números secuenciales continuos
-         * entre chunks en lugar de datos reales. Permite verificar que el teléfono
+         * entre chunks en lugar de datos reales. Sirve para verificar que el teléfono
          * recibe los floats en el orden correcto antes de conectar datos reales.
          *
-         * Paso 1 (isSequentialMode = true): verificar orden de llegada.
-         * Paso 2 (isSequentialMode = false): reloj quieto → ~1000 milli-g en un eje.
+         * T3 — Fase 1 (Critical C2): el default es **false**, SIEMPRE — incluso en builds
+         * debug. Antes defaulteaba a `BuildConfig.DEBUG`, así que CUALQUIER build de debug
+         * recién instalado le mandaba datos sintéticos a OSD por defecto: el detector recibía
+         * basura en vez del acelerómetro real y nadie se enteraba. En software de seguridad de
+         * vida eso es inaceptable.
          *
-         * Cambiar a false cuando el transporte esté verificado end-to-end.
+         * Hoy, para activar el modo validación hay que setear esta flag explícitamente
+         * (sigue gateado por BuildConfig.DEBUG en onWindowReady, así que en release nunca
+         * tiene efecto). En T3 — Fase 2 se agrega un opt-in vía extra del Intent, y en
+         * Fase 3 un aviso visible en la notificación/UI mientras esté activo.
          */
-        var isSequentialMode: Boolean = BuildConfig.DEBUG
+        var isSequentialMode: Boolean = false
 
         /** Crea el Intent para iniciar el monitoreo desde cualquier parte de la app. */
         fun startIntent(context: android.content.Context) =

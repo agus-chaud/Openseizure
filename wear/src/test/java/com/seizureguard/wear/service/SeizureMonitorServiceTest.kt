@@ -11,7 +11,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -496,16 +495,15 @@ class SeizureMonitorServiceTest {
 
     // ─── Tests de contrato — Milestone 0 / T1 ────────────────────────────────
     //
-    // Estos tests describen el comportamiento CORRECTO que el Service todavía NO
-    // tiene. Están marcados @Ignore porque HOY fallan (rojos) — son la red de
-    // seguridad para refactorizar el camino crítico sin romperlo.
+    // Nacieron como red de seguridad del camino crítico del Service: describen el
+    // comportamiento CORRECTO y se escribieron ANTES del fix (verificados en rojo).
     //
-    //   - Los tests de C1 se vuelven verdes al cerrar T4 (manejar restart con
-    //     intent=null sin quedar en estado zombie).
-    //   - El test de H1 se vuelve verde al cerrar T5 (onMonitoringStart idempotente).
+    //   - C1 (servicio zombie) → cerrado en T4: el restart con intent=null reanuda
+    //     el monitoreo o se apaga, nunca queda zombie.
+    //   - H1 (doble arranque)  → cerrado en T5: onMonitoringStart() es idempotente,
+    //     un segundo ACTION_START no adquiere un segundo WakeLock.
     //
-    // CUANDO SE CIERREN T4/T5: quitar el @Ignore de cada test y verificar que pasa.
-    // Si pasa, el fix funciona. Si falla, el fix está incompleto. Es así de fácil.
+    // Ya están activos (sin @Ignore): hoy pasan en verde y blindan contra regresiones.
 
     /**
      * C1 (Critical) — Restart por START_STICKY no debe dejar un servicio zombie.
@@ -617,7 +615,6 @@ class SeizureMonitorServiceTest {
      *   getLatestWakeLock() devuelve la MISMA instancia antes y después del segundo start.
      */
     @Test
-    @Ignore("H1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T5. Ver audit/wear-2026-06.")
     fun service_doubleActionStart_doesNotAcquireSecondWakeLock() {
         // Arrange
         val context = ApplicationProvider.getApplicationContext<Application>()

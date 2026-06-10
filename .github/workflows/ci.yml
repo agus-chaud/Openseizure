@@ -1,0 +1,55 @@
+name: CI
+
+# Corre en cada push a main y en cada Pull Request.
+# Objetivo: que ningun cambio (propio o de un contribuidor externo) entre sin
+# pasar los tests unitarios y el lint del modulo :wear. Es la red de seguridad
+# del proyecto ahora que el repo se publica en la org OpenSeizureDetector.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Si llegan varios pushes seguidos a la misma rama/PR, cancela los runs viejos
+# y deja solo el ultimo: ahorra minutos de CI sin perder cobertura.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests + lint (:wear)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # AGP 8.5.2 requiere JDK 17. Temurin es la distro recomendada.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Cachea ~/.gradle para que los runs siguientes no re-descarguen dependencias.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Los runners ubuntu-latest ya traen el Android SDK preinstalado y exponen
+      # ANDROID_SDK_ROOT, asi que Gradle resuelve compileSdk=34 sin local.properties.
+      - name: Tests unitarios (Robolectric, JVM)
+        run: ./gradlew :wear:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew :wear:lintDebug --no-daemon --stacktrace
+
+      # Si algo falla, sube los reportes HTML para poder diagnosticar desde la web.
+      - name: Subir reportes de test y lint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-wear
+          path: |
+            wear/build/reports/tests/
+            wear/build/reports/lint-results-*.html
+          if-no-files-found: ignore

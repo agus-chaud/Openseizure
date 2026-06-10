@@ -409,7 +409,9 @@ El tamaño exacto del `MappedByteBuffer` debe coincidir con `AssetFileDescriptor
 | `START_STICKY` | Se reinicia automáticamente con `intent = null`. |
 | `START_REDELIVER_INTENT` | Se reinicia con el último Intent reenviado. |
 
-**Elección: `START_STICKY`.** Si el OS mata el Service en condiciones de memoria extrema (muy raro con WakeLock activo, pero posible), Android lo reinicia. El Intent llega `null` — manejado en `onStartCommand()` con el `when` que ignora los casos `null`. El monitoreo nocturno no puede quedar detenido sin que el usuario lo sepa.
+**Elección: `START_STICKY`.** Si el OS mata el Service en condiciones de memoria extrema (muy raro con WakeLock activo, pero posible), Android lo reinicia. El Intent llega `null`.
+
+> ⚠️ **Actualizado por DEC-044 (T4):** la versión original de Fase 1.1 *ignoraba* el caso `null` en el `when`. Eso resultó ser un bug Critical (servicio zombie: notificación visible sin monitoreo real). Hoy el restart con `intent=null` se maneja explícitamente — reanuda o se apaga, nunca queda zombie. Ver DEC-044.
 
 ### IMPORTANCE_LOW para el canal de notificación
 
@@ -1069,6 +1071,134 @@ El protocolo OSD define solo 3 estados clínicamente relevantes: normal, sospech
 **Por qué inferir en cada chunk post warm-up:** Mantiene latencia acotada respecto al último dato recibido y coincide con el paso de 125 muestras del plan de transporte (actualización cada ~5 s de señal nueva entrando en la ventana de 30 s).
 
 **Archivos afectados:** `PhoneCircularBuffer.kt`, `PhoneAccelChunkProcessor.kt`, `DataLayerListenerService.kt`.
+
+---
+
+## DEC-041: Tests de contrato escritos en rojo ANTES del fix (red de seguridad)
+
+**Fase:** Auditoría / Milestone 0 (T1) | **Fecha:** Junio 2026
+
+**Decisión:** Antes de tocar el camino crítico del `SeizureMonitorService`, escribir tests que
+describen el comportamiento **correcto deseado**, verlos **fallar (rojo)**, y recién después
+implementar el fix. Mientras el fix no existe, los tests quedan marcados `@Ignore` con referencia
+al hallazgo, para no romper el CI.
+
+**Por qué primero el test y verlo en rojo:**
+Un test que nunca viste fallar no es una red de seguridad, es una esperanza. Si lo escribís
+después del fix, no sabés si testea lo correcto. Verlo en rojo primero garantiza que el test
+**clava donde tiene que clavar**; cuando pasa a verde, sabés que el fix es real.
+
+**Dos lecciones concretas de este proceso (quedaron como evidencia, no como teoría):**
+
+1. **Falso verde detectado.** El primer test de H1 medía la cantidad de *listeners de sensor*
+   tras un doble arranque. Pero Android (y `ShadowSensorManager`) **deduplican** el registro del
+   mismo objeto listener → daba 1 aunque el bug existiera. Se reescribió para medir el **WakeLock**
+   (cada arranque crea una instancia distinta = el leak real). Moraleja: un test que da verde con
+   el bug presente es peor que no tener test.
+2. **Gotcha de Robolectric.** `assertSame(msg, wakeLockA, wakeLockB)` lanza `NullPointerException`
+   en `PowerManager$WakeLock.toString()` (`mToken is null`) al construir el mensaje de fallo,
+   ocultando la causa. Solución: comparar con `===` y usar `assertTrue` sobre el booleano.
+
+**Archivos afectados:** `wear/src/test/.../service/SeizureMonitorServiceTest.kt` (sección "Tests de contrato").
+
+---
+
+## DEC-042: CI con GitHub Actions (tests + lint en cada push y PR)
+
+**Fase:** Auditoría / Milestone 0 (T2) | **Fecha:** Junio 2026
+
+**Decisión:** Un workflow `.github/workflows/ci.yml` que corre `:wear:testDebugUnitTest` y
+`:wear:lintDebug` en cada push a `main` y cada Pull Request (JDK 17 Temurin, cache de Gradle).
+
+**Por qué:** El repo ya tenía >1.600 líneas de tests que nadie corría automáticamente — una red
+guardada en el placard. Más aún yendo a la org pública OpenSeizureDetector: un contribuidor
+externo debe saber al instante si rompió algo, sin depender de que alguien lo recuerde.
+
+**Dos gotchas que el propio CI nos enseñó (fallando):**
+- **`exit 126` (permiso denegado):** git tenía `gradlew` como `100644` (no ejecutable); en el
+  runner Linux `./gradlew` no corría. Fix: `git update-index --chmod=+x gradlew` (queda `100755`),
+  sirve para CI y para cualquier clon.
+- **Node 20 deprecado:** las actions corrían sobre Node 20 (forzado a Node 24 el 16/06/2026). Se
+  actualizaron a los majors vigentes: checkout v6, setup-java v5, setup-gradle v6, upload-artifact v7.
+  Versiones verificadas con `gh api repos/<repo>/releases/latest`, no de memoria.
+
+**Regla de trabajo:** siempre verificar `:wear:testDebugUnitTest` y `:wear:lintDebug` **localmente**
+antes de pushear — el CI confirma, no descubre.
+
+---
+
+## DEC-043: Flujo rama + Pull Request obligatorio (no push directo a main)
+
+**Fase:** Auditoría / Milestone 0 | **Fecha:** Junio 2026
+
+**Decisión:** Todo cambio entra por una rama y un PR; `main` está protegido con un *ruleset* que
+exige el check de CI verde. El repo se hizo **público** para que la protección de ramas sea gratis
+(GitHub la cobra en repos privados).
+
+**Por qué terminó siendo PR obligatorio aunque se eligió "sin require pull request":**
+El "required status check" **bloquea el push directo** a `main`. Es un huevo-y-gallina: GitHub
+exige que el check esté verde *antes* de aterrizar el commit, pero el check solo corre *después*.
+La única forma de resolverlo es por PR, donde el CI corre sobre la rama antes del merge.
+
+**Flujo consolidado:**
+```
+git checkout -b fix/xxx → commit → git push -u origin fix/xxx
+gh pr create → gh pr checks <n> --watch (esperar verde)
+gh pr merge <n> --merge --delete-branch → git checkout main → git pull
+```
+
+**Por qué está bien:** Sin querer, la ruleset impuso el flujo profesional correcto para un repo
+público con aportes externos. Nada entra a `main` sin pasar la red de tests.
+
+---
+
+## DEC-044: Restart con `intent=null` — reanudar o apagarse, nunca quedar zombie (Critical C1)
+
+**Fase:** Auditoría / Milestone 1 (T4) | **Fecha:** Junio 2026
+
+**Decisión:** `onStartCommand()` maneja explícitamente el caso `intent=null` (restart por
+`START_STICKY` tras un kill del OS) en `onRestartAfterKill()`: si el monitoreo estaba activo,
+**reanuda**; si no, hace `stopSelf()`.
+
+**El bug que arregla (era Critical):**
+Cuando el OS mataba el Service por memoria y lo recreaba con `intent=null`, el `when` no matcheaba
+ninguna rama: **no se readquiría el WakeLock ni el sensor**, pero `onCreate()` ya había mostrado la
+notificación persistente. Resultado: el reloj decía "monitoreando" sin capturar **un solo dato**.
+En software de seguridad de vida, ese es el peor estado posible: **confianza falsa**.
+
+**Cómo:** se persiste si el monitoreo está activo en `SharedPreferences` (`KEY_WAS_MONITORING`).
+Detalle clave del diseño: **solo `ACTION_STOP` (parada explícita del usuario) limpia el flag**; un
+kill del OS NO lo borra. Así el restart sabe distinguir "me mataron mientras cuidaba" (→ reanudar)
+de "el usuario ya había parado" (→ apagarse).
+
+**Tests:** `service_restartWithNullIntent_whileWasMonitoring_resumesMonitoring` y
+`service_restartWithNullIntent_whenNotMonitoring_stopsSelf` (escritos en rojo según DEC-041, hoy verdes).
+
+**Archivos afectados:** `wear/src/main/.../service/SeizureMonitorService.kt`.
+
+---
+
+## DEC-045: `onMonitoringStart()` idempotente — un flag de instancia (High H1)
+
+**Fase:** Auditoría / Milestone 1 (T5) | **Fecha:** Junio 2026
+
+**Decisión:** `onMonitoringStart()` retorna sin hacer nada si ya está monitoreando, usando un flag
+de instancia `isMonitoringActive` (se resetea en `onMonitoringStop()`).
+
+**El bug que arregla:**
+Un segundo `ACTION_START` (doble tap, o el OS reenviando el intent) re-ejecutaba el arranque:
+`acquireWakeLock()` reasignaba el campo `wakeLock` a uno **nuevo** y lo adquiría, dejando el primero
+held **para siempre** (la batería del reloj se drena de noche). También duplicaba los listeners de
+`MessageClient`.
+
+**Por qué un flag de instancia y no el `KEY_WAS_MONITORING` de DEC-044:**
+Son dos cosas distintas. `isMonitoringActive` vive **con la instancia** del Service (idempotencia
+en caliente). `KEY_WAS_MONITORING` es **persistente** y sobrevive a un kill del OS (para reanudar).
+Mezclarlos confundiría dos responsabilidades.
+
+**Test:** `service_doubleActionStart_doesNotAcquireSecondWakeLock` (rojo→verde según DEC-041).
+
+**Archivos afectados:** `wear/src/main/.../service/SeizureMonitorService.kt`.
 
 ---
 

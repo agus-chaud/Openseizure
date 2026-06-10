@@ -528,7 +528,6 @@ class SeizureMonitorServiceTest {
      *   reanuda el monitoreo: WakeLock held + sensor registrado de nuevo.
      */
     @Test
-    @Ignore("C1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T4. Ver audit/wear-2026-06.")
     fun service_restartWithNullIntent_whileWasMonitoring_resumesMonitoring() {
         // Arrange — primer ciclo de monitoreo normal
         val context = ApplicationProvider.getApplicationContext<Application>()
@@ -580,7 +579,6 @@ class SeizureMonitorServiceTest {
      *   notificación falsa.
      */
     @Test
-    @Ignore("C1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T4. Ver audit/wear-2026-06.")
     fun service_restartWithNullIntent_whenNotMonitoring_stopsSelf() {
         // Arrange — Service recién creado, nunca recibió ACTION_START
         val service = Robolectric.buildService(SeizureMonitorService::class.java)

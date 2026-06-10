@@ -236,21 +236,11 @@ class SeizureMonitorService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> onMonitoringStart()
-            ACTION_STOP  -> {
-                // Desregistrar el sensor ANTES de stopSelf() para evitar que el
-                // callback siga llegando durante el shutdown del Service.
-                stopSensorCollection()
-                // Fase 1.6: cerrar el CSV logger antes de que el Service muera.
-                // flush() garantiza que los últimos datos llegan al disco.
-                csvLogger.close()
-                // Limpiar estado de transporte: el próximo monitoreo empieza desde cero.
-                // Sin esto, las primeras ventanas del siguiente ciclo mezclarían
-                // datos del monitoreo anterior con datos nuevos.
-                accelerometerBuffer.reset()
-                samplesSinceLastChunk = 0
-                sequentialSampleCounter = 0L
-                stopSelf()
-            }
+            ACTION_STOP  -> onMonitoringStop()
+            // intent=null (o sin action): el OS reinició el Service por START_STICKY
+            // tras matarlo. No hay action que inspeccionar — decidimos según si
+            // estábamos monitoreando antes del kill. Ver onRestartAfterKill().
+            else         -> onRestartAfterKill()
         }
         // START_STICKY: si el OS mata el service, lo reinicia con intent=null
         return START_STICKY
@@ -307,6 +297,10 @@ class SeizureMonitorService : Service() {
      * La inferencia TFLite corre en el teléfono (architecture/seizureguard-inference-location).
      */
     private fun onMonitoringStart() {
+        // T4: persistir la intención de monitorear. Si el OS mata el Service y lo
+        // reinicia con intent=null, onRestartAfterKill() lee este flag para reanudar.
+        // Solo ACTION_STOP lo pone en false — un kill del OS NO lo limpia (queremos reanudar).
+        setWasMonitoring(true)
         acquireWakeLock()
         startSensorCollection()
         // Fase 1.6: iniciar logging a CSV en builds de debug
@@ -350,6 +344,68 @@ class SeizureMonitorService : Service() {
         val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
         return if (pct in 0..100) pct else -1
     }
+
+    /**
+     * Detiene el monitoreo de forma limpia (el usuario tocó "Parar").
+     *
+     * Pone wasMonitoring=false ANTES de cualquier otra cosa: este es el único camino
+     * que marca "el usuario quiso parar". Así, si el OS reinicia el Service después de
+     * un stop explícito, onRestartAfterKill() NO reanuda (no había nada que reanudar).
+     */
+    private fun onMonitoringStop() {
+        setWasMonitoring(false)
+        // Desregistrar el sensor ANTES de stopSelf() para evitar que el
+        // callback siga llegando durante el shutdown del Service.
+        stopSensorCollection()
+        // Fase 1.6: cerrar el CSV logger antes de que el Service muera.
+        // flush() garantiza que los últimos datos llegan al disco.
+        csvLogger.close()
+        // Limpiar estado de transporte: el próximo monitoreo empieza desde cero.
+        // Sin esto, las primeras ventanas del siguiente ciclo mezclarían
+        // datos del monitoreo anterior con datos nuevos.
+        accelerometerBuffer.reset()
+        samplesSinceLastChunk = 0
+        sequentialSampleCounter = 0L
+        stopSelf()
+    }
+
+    /**
+     * T4 — Maneja el restart por START_STICKY (onStartCommand con intent=null).
+     *
+     * El bug que esto arregla (C1, Critical):
+     *   Cuando el OS mata el Service por presión de memoria, lo recrea y llama
+     *   onStartCommand(intent=null). Antes, `when (intent?.action)` no matcheaba
+     *   ninguna rama → no se readquiría el WakeLock ni se re-registraba el sensor,
+     *   PERO onCreate() ya había mostrado la notificación. Resultado: notificación
+     *   diciendo "monitoreando" mientras NO se capturaba nada. El peor estado posible
+     *   en software de seguridad de vida: confianza falsa.
+     *
+     * Comportamiento correcto:
+     *   - Si estábamos monitoreando antes del kill → reanudar (onMonitoringStart).
+     *   - Si no → stopSelf(): no tiene sentido un foreground service que no monitorea.
+     */
+    private fun onRestartAfterKill() {
+        if (wasMonitoring()) {
+            Log.w(TAG, "Service reiniciado por el OS (intent=null) — reanudando monitoreo")
+            onMonitoringStart()
+        } else {
+            Log.i(TAG, "Service reiniciado por el OS (intent=null) sin monitoreo previo — stopSelf()")
+            stopSelf()
+        }
+    }
+
+    /** Persiste si el monitoreo está activo, para sobrevivir a un kill del OS (T4). */
+    private fun setWasMonitoring(value: Boolean) {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_WAS_MONITORING, value)
+            .apply()
+    }
+
+    /** true si el monitoreo estaba activo antes de un eventual kill del OS (T4). */
+    private fun wasMonitoring(): Boolean =
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_WAS_MONITORING, false)
 
     // ─── SensorManager ────────────────────────────────────────────────────────
 
@@ -620,6 +676,14 @@ class SeizureMonitorService : Service() {
         const val NOTIFICATION_ID = 1
         const val ACTION_START    = "com.seizureguard.wear.START_MONITORING"
         const val ACTION_STOP     = "com.seizureguard.wear.STOP_MONITORING"
+
+        /**
+         * T4 — Persistencia mínima para sobrevivir a un kill del OS.
+         * KEY_WAS_MONITORING guarda si el monitoreo estaba activo, para que
+         * onRestartAfterKill() decida reanudar o apagarse tras un restart con intent=null.
+         */
+        const val PREFS_NAME         = "seizure_monitor_prefs"
+        const val KEY_WAS_MONITORING = "was_monitoring"
 
         /**
          * Fase 2.2 — Estado actual del monitoreo observable desde la UI.

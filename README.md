@@ -321,14 +321,17 @@ Antes de conectar el modelo CNN al Data Layer, verificar que el transporte Bluet
 
 ### Paso 1: modo secuencial (`isSequentialMode = true` — activo por defecto en DEBUG)
 
-El reloj envía `[1.0, 2.0, ..., 750.0]` en lugar de datos reales. En el logcat del teléfono verificar:
+El reloj envía números secuenciales **como JSON** `{"samples":[1.0, 2.0, 3.0, ...]}` (chunks de
+125, con numeración continua entre chunks) en lugar de datos reales. En el logcat del teléfono:
 
 ```
 adb logcat -s SdDataSourceAw:D
-# Si el transporte funciona: "Received 750 floats: [1.0, 2.0, 3.0, ...]"
-# Si hay inversión de bytes: "[4.0, 3.0, 2.0, 1.0, ...]" → bug en serialización
-# Si hay fragmentación: "[0.0, 1.401e-45, ...]" → bug en ByteOrder
+# Si el transporte funciona: los samples llegan en orden 1,2,3,... a través de los chunks
+# Si hay desorden: los valores llegan salteados o repetidos → problema de transporte/orden
 ```
+
+> Nota: el contrato de transporte es **JSON UTF-8**, no binario. Ver DEC-046 en `DECISIONS.md`.
+> Queda **por confirmar** si este protocolo de validación de Graham sigue vigente (ver T3 del plan).
 
 ### Paso 2: reloj quieto (`isSequentialMode = false`)
 

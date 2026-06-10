@@ -2,9 +2,19 @@
 
 Items identificados durante reviews pero fuera del scope de la fase actual.
 
+> ⚠️ **TODO-001 y TODO-002 quedaron OBSOLETOS** con el cambio de arquitectura del 2026-06-05:
+> la inferencia (modelo, `Interpreter`, ExecuTorch) la hace la app **OpenSeizureDetector V5.0** en
+> el teléfono — este repo NO tiene runtime de ML ni archivo `.tflite`/`.pte`. Se mantienen abajo
+> como historia. No hay nada que hacer en ellos.
+>
+> **Trabajo abierto real (auditoría, junio 2026):** Críticos/Highs del módulo `:wear`. Cerrados:
+> T1 (tests de contrato), T2 (CI), T4 (servicio zombie, C1), T5 (idempotencia, H1). **Pendiente
+> el último Critical: T3** (el modo secuencial manda datos sintéticos a OSD por defecto en debug).
+> El detalle del plan vive en engram (`audit/wear-2026-06`).
+
 ---
 
-## TODO-001: androidTest para verificar aaptOptions noCompress en APK real
+## TODO-001: androidTest para verificar aaptOptions noCompress en APK real  *(OBSOLETO)*
 
 **What:** Test instrumented en `wear/src/androidTest/` que carga `cnn_v024.tflite` desde el APK empaquetado (no desde test assets).
 
@@ -22,7 +32,7 @@ Items identificados durante reviews pero fuera del scope de la fase actual.
 
 ---
 
-## TODO-002: Definir ownership del Interpreter en TFLiteInferenceEngine
+## TODO-002: Definir ownership del Interpreter en TFLiteInferenceEngine  *(OBSOLETO)*
 
 **What:** Documentar (o implementar) quién crea, cachea y cierra el `tflite.Interpreter` en `TFLiteInferenceEngine`.
 

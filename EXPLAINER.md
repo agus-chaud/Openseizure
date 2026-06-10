@@ -17,6 +17,7 @@
 > - El tensor real del modelo es **`(1, 1, 750)`** (este doc dice `(1, 750, 1)` en varios lados:
 >   está desactualizado).
 > - Este repo es **un solo módulo (`:wear`)**; no hay app de teléfono propia.
+> - El transporte reloj→OSD es **JSON UTF-8** (`{"samples":[...]}`), no binario. Ver DEC-046.
 >
 > Leé las secciones de abajo entendiendo que **todo lo que diga "el reloj infiere" o "TFLite"
 > es historia, no el estado actual.** La parte de captura de sensores (TYPE_ACCELEROMETER,

@@ -907,6 +907,10 @@ stopSensorCollection() → csvLogger.close() → accelerometerBuffer.reset() →
 
 ## DEC-034: Serialización little-endian para el ByteBuffer de accel_data
 
+> ⚠️ **SUPERADA por DEC-046 (Fase A, junio 2026).** El transporte ya NO es binario
+> little-endian: hoy es **JSON `{"samples":[...]}`** en UTF-8, para matchear lo que
+> `SdDataSourceAw` de OSD parsea primero. Se mantiene como historia. Ver DEC-046.
+
 **Fase:** 2.1 | **Fecha:** Abril 2026
 
 **Decisión:** Serializar los floats de `accel_data` en `ByteOrder.LITTLE_ENDIAN` antes de enviarlos via `MessageClient` (cantidad de floats variable; ver DEC-039).
@@ -930,6 +934,13 @@ payload = struct.pack(f'<{len(samples)}f', *samples)
 ---
 
 ## DEC-035: Modo secuencial como primer test de transporte (protocolo Graham Jones)
+
+> ⚠️ **Actualizado por DEC-046:** el modo secuencial sigue existiendo, pero hoy envía
+> `N` números secuenciales **como JSON `{"samples":[...]}`** (no binario), donde `N` es el
+> tamaño del chunk de transporte (`TRANSPORT_CHUNK_SIZE = 125`), con numeración **continua
+> entre chunks** para validar el orden global. La idea (verificar transporte antes que datos
+> reales) sigue vigente; el formato y el `N` cambiaron. **Pendiente de confirmar** si el
+> protocolo de validación de Graham sigue activo (ver T3 en el plan de auditoría).
 
 **Fase:** 2.1 | **Fecha:** Abril 2026
 
@@ -1027,9 +1038,14 @@ El protocolo OSD define solo 3 estados clínicamente relevantes: normal, sospech
 
 ## DEC-039: Contrato OSD wear ↔ phone (transporte de bytes)
 
+> ⚠️ **SUPERADA por DEC-046 (Fase A, junio 2026).** Esta entrada describe el contrato **binario**
+> (floats little-endian, alarm_state de 1 byte) que ya **NO se usa**. El contrato vigente es **JSON**
+> y suma el handshake de settings. La **única fuente de verdad actual es DEC-046.** Se mantiene
+> debajo como historia del diseño binario original.
+
 **Fase:** 2.1+ (documentación de contrato) | **Fecha:** Mayo 2026
 
-**Decisión:** Esta entrada es la **única fuente de verdad** para el protocolo de mensajes entre reloj y teléfono (paths, payload binario, endianness, unidades y relación con el tensor del modelo). DEC-033 y DEC-034 describen el mecanismo (`MessageClient`) y la serialización; aquí se congela el contrato completo.
+**Decisión:** Esta entrada era la única fuente de verdad para el protocolo de mensajes entre reloj y teléfono (paths, payload binario, endianness, unidades y relación con el tensor del modelo). DEC-033 y DEC-034 describen el mecanismo (`MessageClient`) y la serialización; aquí se congelaba el contrato completo.
 
 ### Paths (`MessageClient`)
 
@@ -1202,12 +1218,57 @@ Mezclarlos confundiría dos responsabilidades.
 
 ---
 
+## DEC-046: Contrato OSD wear ↔ phone en JSON (Fase A) — FUENTE DE VERDAD ACTUAL
+
+**Fase:** A | **Fecha:** Junio 2026
+
+**Decisión:** El reloj habla con la app OSD V5.0 usando **mensajes JSON UTF-8** sobre `MessageClient`,
+adaptándose al formato que `SdDataSourceAw.java` de OSD **ya espera** (no al revés). Esta entrada
+**reemplaza** el contrato binario de DEC-034 y DEC-039.
+
+> **Por qué cambió:** OSD parsea `accel_data` como JSON primero (`json.has("samples")`), y su
+> fallback binario lee `int16`, no `float32`. Mandar floats binarios little-endian (DEC-034) NO
+> matcheaba ese parser → datos basura silenciosos. Adaptarse a JSON es lo que hace que OSD funcione.
+
+### Paths (`MessageClient`)
+
+| Path | Dirección | Payload (JSON UTF-8) |
+|------|-----------|----------------------|
+| `/osd/accel_data` | watch → phone | `{"samples":[m0, m1, ...]}` — `N` magnitudes en **milli-g**. Hoy `N = TRANSPORT_CHUNK_SIZE = 125` (~5 s a 25 Hz); OSD acumula hasta 750 para inferir. |
+| `/osd/alarm_state` | phone → watch | `{"alarm_state": <int>, "alarm_phrase": "<texto>"}`. El reloj lee `alarm_state` (0=OK, 1=WARNING, 2+=ALARM). Payload ilegible → se loguea y se ignora, no crashea. |
+| `/osd/settings` | watch → phone | `{"battery": <0-100>, "sample_freq": <Hz>}`. Respuesta al handshake; sin esto OSD reporta "Data source fault". |
+| `/osd/send_settings` | phone → watch | Texto plano `"start"`: OSD pide los settings al arrancar la fuente Android Wear. |
+
+### Handshake de settings (lo que evita "Data source fault")
+
+OSD manda `/osd/send_settings` con `"start"` al iniciar la fuente. El reloj debe responder
+`/osd/settings` con batería + frecuencia. El reloj además los manda **proactivamente** al arrancar
+el monitoreo (por si OSD mandó `"start"` antes de que el listener estuviera registrado — carrera de
+arranque). Ver `architecture/seizureguard-aw-contract` en engram.
+
+### Tensor del modelo vs tamaño del mensaje
+
+| Concepto | Valor | Notas |
+|----------|-------|-------|
+| **Input del modelo** | **`(1, 1, 750)`** | ExecuTorch (`.pte`), NO TFLite. 750 timesteps × 25 Hz = 30 s. Corre en el teléfono dentro de OSD. |
+| **Floats por mensaje `accel_data`** | `N = 125` (chunk) | El teléfono interpreta `samples.length`; acumula chunks hasta 750. `N` (transporte) ≠ 750 (timesteps del tensor). |
+
+### Unidades y frecuencia
+
+- Magnitud `√(x²+y²+z²)` convertida a **milli-g** (DEC-023/024). En reposo ~1000 milli-g.
+- Sensor a 25 Hz (período 40 ms, DEC-024). Un mensaje `accel_data` cada ~5 s (al llenar el chunk).
+
+**Referencias de código:** `WearDataLayerManager` (`PATH_ACCEL_DATA`, `PATH_ALARM_STATE`,
+`PATH_SETTINGS`, `PATH_SEND_SETTINGS`, `samplesToJsonBytes`, `parseAlarmState`, `settingsToJsonBytes`).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |
 |----|---------|------|--------|
-| DEC-017 | Ownership del `tflite.Interpreter` — ¿quién lo crea, quién lo cierra? | 2.1 | Pendiente (ver TODO-002) |
-| DEC-018 | Umbral de decisión: ¿0.5 o valor calibrado contra OSDB? | 2.4 | Pendiente |
-| DEC-019 | Frecuencia de inferencia: ¿cada ventana nueva (cada 40ms) o cada 5s? | 2.3 | Pendiente |
-| DEC-020 | Protocolo de mensajes Wear Data Layer: JSON vs Protobuf vs bytes raw | 3.1 | Pendiente — DEC-033 resuelve el mecanismo (MessageClient), no el formato |
-| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | Pendiente |
+| DEC-017 | Ownership del `Interpreter` de inferencia | — | **Obsoleta** — la inferencia la hace OSD (ExecuTorch en el teléfono), no este repo |
+| DEC-018 | Umbral de decisión: ¿0.5 o valor calibrado contra OSDB? | 2.4 | **Obsoleta para este repo** — el umbral vive en OSD, no en el reloj |
+| DEC-019 | Frecuencia de inferencia: ¿cada ventana nueva o cada 5s? | 2.3 | **Obsoleta para este repo** — la inferencia es de OSD |
+| DEC-020 | Protocolo de mensajes Wear Data Layer: formato del payload | 3.1 | **Resuelta por DEC-046** — JSON UTF-8 |
+| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | Pendiente (Fase 1.4 opcional) |

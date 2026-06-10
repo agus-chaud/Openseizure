@@ -51,7 +51,8 @@ $env:ANDROID_HOME = "C:\Android"
 .\gradlew.bat :wear:test
 ```
 
-Si todo está bien, al final ves **`BUILD SUCCESSFUL`** ("compilación exitosa") y 32 tests en verde.
+Si todo está bien, al final ves **`BUILD SUCCESSFUL`** ("compilación exitosa") y los tests en verde
+(59 tests al día de hoy).
 
 ---
 

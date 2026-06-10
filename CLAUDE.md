@@ -221,9 +221,10 @@ Correr cuando haya una versión nueva de gstack disponible.
 | Code gen | KSP | 2.0.21-1.0.28 |
 | Wear OS SDK | API 30–34 | target: Galaxy Watch 8 |
 | UI | Jetpack Compose for Wear OS | BOM 2024.05.00 |
-| ML | TensorFlow Lite | 2.14.0 |
-| Modelo | CNN v0.24.tflite | 205KB, input (1,750,1) |
+| ML (inferencia) | **Corre en la app OSD, no en este repo** | ExecuTorch + `deepEpiCnn_2026_01_24_Run24.pte`, tensor `(1,1,750)` |
 | Sensores | SensorManager (25Hz) | + Samsung SDK opcional |
-| Comunicación | Wear Data Layer API | — |
-| DB | Room | 2.6.1 |
+| Comunicación | Wear Data Layer API (JSON, DEC-046) | — |
 | Coroutines | kotlinx-coroutines | 1.8.1 |
+
+> Nota: este repo (módulo único `:wear`) **no tiene runtime de ML**. No hay TFLite ni Room: la
+> inferencia, el umbral y las alarmas son de la app OpenSeizureDetector V5.0 en el teléfono.

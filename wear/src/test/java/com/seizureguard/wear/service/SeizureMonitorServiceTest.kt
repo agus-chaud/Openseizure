@@ -11,6 +11,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -490,6 +491,162 @@ class SeizureMonitorServiceTest {
             "El Service NO debe registrar TYPE_LINEAR_ACCELERATION (sin gravedad). " +
                     "Daría magnitud ≈ 0 milli-g en reposo, fuera del dominio de entrenamiento del modelo.",
             shadowSensorManager.hasListener(listener, linearAcceleration)
+        )
+    }
+
+    // ─── Tests de contrato — Milestone 0 / T1 ────────────────────────────────
+    //
+    // Estos tests describen el comportamiento CORRECTO que el Service todavía NO
+    // tiene. Están marcados @Ignore porque HOY fallan (rojos) — son la red de
+    // seguridad para refactorizar el camino crítico sin romperlo.
+    //
+    //   - Los tests de C1 se vuelven verdes al cerrar T4 (manejar restart con
+    //     intent=null sin quedar en estado zombie).
+    //   - El test de H1 se vuelve verde al cerrar T5 (onMonitoringStart idempotente).
+    //
+    // CUANDO SE CIERREN T4/T5: quitar el @Ignore de cada test y verificar que pasa.
+    // Si pasa, el fix funciona. Si falla, el fix está incompleto. Es así de fácil.
+
+    /**
+     * C1 (Critical) — Restart por START_STICKY no debe dejar un servicio zombie.
+     *
+     * Escenario real:
+     *   El OS mata el Service por presión de memoria → onDestroy() libera WakeLock y
+     *   desregistra el sensor. Como onStartCommand devuelve START_STICKY, el OS recrea
+     *   el Service y llama onCreate() (que hace startForeground → notificación visible)
+     *   y luego onStartCommand(intent=null, ...).
+     *
+     * Bug actual:
+     *   onStartCommand() hace `when (intent?.action)` — con intent=null ninguna rama
+     *   matchea, así que NO se readquiere el WakeLock ni se re-registra el sensor.
+     *   Resultado: notificación persistente diciendo "monitoreando" mientras NO se
+     *   captura ni una sola muestra. El paciente cree que está protegido y no lo está.
+     *   Este es el peor estado posible en software de seguridad de vida.
+     *
+     * Comportamiento esperado (post-T4):
+     *   Si el reloj estaba monitoreando antes del kill, el restart con intent=null
+     *   reanuda el monitoreo: WakeLock held + sensor registrado de nuevo.
+     */
+    @Test
+    @Ignore("C1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T4. Ver audit/wear-2026-06.")
+    fun service_restartWithNullIntent_whileWasMonitoring_resumesMonitoring() {
+        // Arrange — primer ciclo de monitoreo normal
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val startIntent = SeizureMonitorService.startIntent(context)
+        val shadowSensorManager = shadowOf(
+            context.getSystemService(SensorManager::class.java)
+        )
+        shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+
+        // El usuario inició el monitoreo y el Service corrió normalmente…
+        val firstRun = Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
+            .create()
+            .startCommand(0, 1)
+        // …y el OS lo mató por memoria (onDestroy libera todo).
+        firstRun.destroy()
+
+        // Act — el OS recrea el Service (START_STICKY) y entrega intent=null
+        val restarted = Robolectric.buildService(SeizureMonitorService::class.java)
+            .create()
+            .get()
+        restarted.onStartCommand(null, 0, 2)
+
+        // Assert — el monitoreo debe haberse reanudado, no quedar zombie
+        assertTrue(
+            "Tras un restart con intent=null estando monitoreando, el sensor debe " +
+                    "re-registrarse — sin esto la notificación miente y no se captura nada.",
+            shadowSensorManager.listeners.isNotEmpty()
+        )
+        assertNotNull(
+            "Tras el restart debe readquirirse un WakeLock para sostener la CPU.",
+            ShadowPowerManager.getLatestWakeLock()
+        )
+        assertTrue(
+            "El WakeLock readquirido debe estar held.",
+            ShadowPowerManager.getLatestWakeLock().isHeld
+        )
+    }
+
+    /**
+     * C1 (Critical) — Restart sin haber estado monitoreando debe apagarse, no quedar zombie.
+     *
+     * Escenario:
+     *   El OS recrea el Service con intent=null pero el usuario NUNCA inició el monitoreo
+     *   (o lo había detenido antes del kill). No hay nada que reanudar.
+     *
+     * Comportamiento esperado (post-T4):
+     *   El Service llama stopSelf() y no adquiere WakeLock. No tiene sentido mantener vivo
+     *   un foreground service que no monitorea — solo gastaría batería y mostraría una
+     *   notificación falsa.
+     */
+    @Test
+    @Ignore("C1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T4. Ver audit/wear-2026-06.")
+    fun service_restartWithNullIntent_whenNotMonitoring_stopsSelf() {
+        // Arrange — Service recién creado, nunca recibió ACTION_START
+        val service = Robolectric.buildService(SeizureMonitorService::class.java)
+            .create()
+            .get()
+
+        // Act — restart del OS con intent=null sin monitoreo previo
+        service.onStartCommand(null, 0, 1)
+
+        // Assert — debe apagarse solo, sin sostener la CPU
+        assertTrue(
+            "Sin monitoreo previo, un restart con intent=null debe llamar stopSelf() " +
+                    "en lugar de quedar como foreground service zombie.",
+            shadowOf(service).isStoppedBySelf
+        )
+    }
+
+    /**
+     * H1 (High) — onMonitoringStart() debe ser idempotente (no readquirir WakeLock).
+     *
+     * Bug actual:
+     *   Dos ACTION_START seguidos (p. ej. el usuario toca "Iniciar" dos veces, o el OS
+     *   reenvía el intent) ejecutan onMonitoringStart() dos veces. acquireWakeLock()
+     *   reasigna el campo `wakeLock` a un WakeLock NUEVO y lo adquiere, dejando el
+     *   primero held para siempre (power leak): onDestroy() solo libera el último.
+     *   También duplica los listeners de MessageClient.
+     *
+     * Por qué este test mide el WakeLock y NO el listener del sensor:
+     *   El sensor usa SIEMPRE el mismo objeto `sensorEventListener`, y tanto Android
+     *   como ShadowSensorManager DEDUPLICAN el registro de un listener idéntico — así
+     *   que contar listeners de sensor da 1 aunque el bug exista (falso verde). El leak
+     *   real es el WakeLock, y ahí sí se ve: cada arranque crea una instancia distinta.
+     *
+     * Comportamiento esperado (post-T5):
+     *   El segundo ACTION_START es un no-op → NO se crea un segundo WakeLock, así que
+     *   getLatestWakeLock() devuelve la MISMA instancia antes y después del segundo start.
+     */
+    @Test
+    @Ignore("H1: rojo verificado hoy (assert falla). Quitar @Ignore al cerrar T5. Ver audit/wear-2026-06.")
+    fun service_doubleActionStart_doesNotAcquireSecondWakeLock() {
+        // Arrange
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val startIntent = SeizureMonitorService.startIntent(context)
+        val shadowSensorManager = shadowOf(
+            context.getSystemService(SensorManager::class.java)
+        )
+        shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+
+        // Act — primer ACTION_START
+        val controller = Robolectric.buildService(SeizureMonitorService::class.java, startIntent)
+            .create()
+            .startCommand(0, 1)
+        val wakeLockAfterFirstStart = ShadowPowerManager.getLatestWakeLock()
+
+        // …y un segundo ACTION_START sobre el MISMO Service
+        controller.get().onStartCommand(startIntent, 0, 2)
+        val wakeLockAfterSecondStart = ShadowPowerManager.getLatestWakeLock()
+
+        // Assert — debe ser la MISMA instancia: el segundo start no adquirió nada nuevo.
+        // Comparamos la identidad con === y asertamos sobre el booleano (no con assertSame
+        // pasando los WakeLocks directo): WakeLock.toString() de Robolectric lanza NPE al
+        // construir el mensaje de fallo, ocultando la causa real. Así el rojo queda limpio.
+        assertTrue(
+            "Un segundo ACTION_START no debe adquirir un nuevo WakeLock — debe ser no-op. " +
+                    "Adquirir uno nuevo abandona el primero held para siempre (power leak).",
+            wakeLockAfterFirstStart === wakeLockAfterSecondStart
         )
     }
 }

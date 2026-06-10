@@ -225,6 +225,13 @@ class SeizureMonitorService : Service() {
      */
     private var wakeLock: PowerManager.WakeLock? = null
 
+    /**
+     * T5 — Flag en memoria de "monitoreo activo" para hacer onMonitoringStart()
+     * idempotente. Distinto del flag persistente KEY_WAS_MONITORING (que sobrevive
+     * a un kill del OS): este vive con la instancia del Service y se resetea al parar.
+     */
+    private var isMonitoringActive = false
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onCreate() {
@@ -297,6 +304,15 @@ class SeizureMonitorService : Service() {
      * La inferencia TFLite corre en el teléfono (architecture/seizureguard-inference-location).
      */
     private fun onMonitoringStart() {
+        // T5: idempotencia. Un segundo ACTION_START (doble tap del usuario, o el OS
+        // reenviando el intent) NO debe re-ejecutar el arranque: acquireWakeLock()
+        // reasignaría el campo wakeLock a uno nuevo dejando el primero held para
+        // siempre (power leak), y duplicaría los listeners de MessageClient.
+        if (isMonitoringActive) {
+            Log.d(TAG, "onMonitoringStart() ignorado: el monitoreo ya está activo (idempotente)")
+            return
+        }
+        isMonitoringActive = true
         // T4: persistir la intención de monitorear. Si el OS mata el Service y lo
         // reinicia con intent=null, onRestartAfterKill() lee este flag para reanudar.
         // Solo ACTION_STOP lo pone en false — un kill del OS NO lo limpia (queremos reanudar).
@@ -354,6 +370,7 @@ class SeizureMonitorService : Service() {
      */
     private fun onMonitoringStop() {
         setWasMonitoring(false)
+        isMonitoringActive = false   // T5: permite re-arrancar limpio en el próximo ACTION_START
         // Desregistrar el sensor ANTES de stopSelf() para evitar que el
         // callback siga llegando durante el shutdown del Service.
         stopSensorCollection()

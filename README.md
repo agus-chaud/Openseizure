@@ -238,12 +238,14 @@ wear/src/test/
     └── accelDataPath_matchesOsdProtocol                     contrato "/osd/accel_data"
 ```
 
-**Resultado:** `./gradlew :wear:test` corre **32 tests, todos verdes** (WearModuleTest 3,
-CircularBufferTest 10, CsvLoggerTest 10, WearDataLayerManagerTest 9).
+**Resultado:** `./gradlew :wear:testDebugUnitTest` corre **59 tests, todos verdes** — incluye
+`WearModuleTest`, `CircularBufferTest`, `CsvLoggerTest`, `WearDataLayerManagerTest`,
+`AlarmStateManagerTest` y `SeizureMonitorServiceTest` (este último con los tests de contrato de
+C1/H1, ver DEC-041 y DEC-044/045 en `DECISIONS.md`).
 
-> ⚠️ Hay 2 tests más — `alarm/AlarmStateManagerTest.kt` y `service/SeizureMonitorServiceTest.kt` —
-> que **no compilan** contra Robolectric 4.12.2 (usan una API de shadows que cambió). Están
-> pendientes de arreglo; hasta entonces, el `:wear:test` completo no incluye esos dos.
+> 🤖 **CI activo:** cada push y cada Pull Request corre estos tests + `lintDebug` automáticamente
+> vía GitHub Actions (`.github/workflows/ci.yml`). `main` está protegido: nada entra sin el check
+> en verde. Ver DEC-042 y DEC-043.
 
 **¿Qué es Robolectric?**
 
@@ -355,18 +357,16 @@ correrlos sin Android Studio, ver `BUILD_SETUP.md`.
 ### Tests unitarios (sin watch)
 
 ```bash
-./gradlew :wear:test
+./gradlew :wear:testDebugUnitTest
 
-# Output esperado (32 tests, todos verdes):
-# WearModuleTest ............. 3 tests PASSED
-# CircularBufferTest ........ 10 tests PASSED
-# CsvLoggerTest ............. 10 tests PASSED
-# WearDataLayerManagerTest ... 9 tests PASSED   (formato JSON del protocolo OSD)
+# Output esperado: 59 tests, todos verdes
+# WearModuleTest, CircularBufferTest, CsvLoggerTest,
+# WearDataLayerManagerTest (formato JSON del protocolo OSD),
+# AlarmStateManagerTest, SeizureMonitorServiceTest (incluye tests de contrato C1/H1)
 # BUILD SUCCESSFUL
 ```
 
-> ⚠️ `AlarmStateManagerTest` y `SeizureMonitorServiceTest` existen pero **no compilan** contra
-> Robolectric 4.12.2 (API de shadows cambiada) — pendientes de arreglo.
+> 🤖 Estos mismos tests + `lintDebug` corren en cada push y PR vía GitHub Actions. Ver DEC-042.
 
 ---
 
@@ -446,7 +446,7 @@ $env:ANDROID_HOME = "C:\Android"
 ### Fase 0: Setup del proyecto (COMPLETADA ✅)
 - [x] **0.1** Estructura del módulo `:wear` — Smoke tests verdes (el `:phone` se retiró luego: la inferencia es de OSD)
 - [x] **0.2** Stack de dependencias (Coroutines, Wear Compose, Wear Data Layer, KSP). **Sin TFLite/ExecuTorch** — la inferencia corre en la app OSD
-- [x] **0.3** Entorno de build por CLI sin Android Studio (`BUILD_SETUP.md`) + 32 tests unitarios verdes
+- [x] **0.3** Entorno de build por CLI sin Android Studio (`BUILD_SETUP.md`) + suite de tests unitarios verde (59 tests) + CI en GitHub Actions
 - [x] **0.4** ADB Wireless — scripts de conexión/deploy al reloj
 
 ### Fase 1: Captura de sensores (wear)

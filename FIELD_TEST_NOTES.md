@@ -29,6 +29,18 @@ El reloj está **completo y probado**. Logs reales lo confirman:
 > error estuvieras en modo validación, OSD recibiría basura y nunca detectaría nada. Para una prueba
 > de detección real, arrancá el monitoreo **sin** el extra de validación.
 
+> ## 🩺 Si ves "⚠ MONITOREO DEGRADADO" en el reloj
+>
+> El watchdog (DEC-048) detectó que el pipeline se rompió. Significa una de dos cosas:
+> 1. **El acelerómetro dejó de emitir** (no llegan muestras hace >10s), o
+> 2. **El teléfono se desconectó** (no hay entrega exitosa hace >60s — Bluetooth caído, OSD cerrada,
+>    teléfono fuera de rango).
+>
+> Justamente el bloqueante de campo ("silencio bidireccional") ahora se vería como DEGRADADO en vez
+> de pasar desapercibido. Para diagnosticar: `adb logcat -s SeizureMonitorService:E` (busca
+> "Pipeline DEGRADADO") y revisá la conexión reloj↔teléfono. **Una sesión que pasó por DEGRADADO no
+> es una prueba de detección válida** — el reloj no estuvo mandando datos reales todo el tiempo.
+
 ## 🐛 Bugs encontrados y arreglados en campo
 
 1. **Crash al iniciar el monitoreo** (Android 14): un foreground service tipo `health` exige

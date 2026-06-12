@@ -811,4 +811,69 @@ class SeizureMonitorServiceTest {
         )
         assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
     }
+
+    // ─── Tests nuevos (smart-testing): análisis de bordes y estado inicial ───────
+    //
+    // Enfoques que NO se probaron antes: en vez de valores "claramente viejos/frescos",
+    // atacamos el LÍMITE EXACTO de los umbrales (donde se esconden los off-by-one) y el
+    // contrato de estado inicial del observable. Documentan la regla, no la implementación.
+
+    @Test
+    fun health_exactlyAtSampleThreshold_isStillHealthy() {
+        // Arrange — la última muestra llegó EXACTAMENTE hace SAMPLE_STALE_MS (no más).
+        val lastSample = now - SeizureMonitorService.SAMPLE_STALE_MS
+        // Act
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = lastSample,
+            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+        )
+        // Assert — el umbral es "> SAMPLE_STALE_MS" (estricto): justo en el borde NO es stale.
+        assertEquals(
+            "Exactamente en el umbral (==) NO debe ser DEGRADADO — la condición es estrictamente '>'.",
+            SeizureMonitorService.PipelineHealth.HEALTHY, result
+        )
+    }
+
+    @Test
+    fun health_oneMsPastSampleThreshold_isDegraded() {
+        // Arrange — un milisegundo más allá del umbral.
+        val lastSample = now - (SeizureMonitorService.SAMPLE_STALE_MS + 1)
+        // Act
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = lastSample,
+            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+        )
+        // Assert — cruzar el borde por 1ms ya dispara DEGRADADO (fija el off-by-one).
+        assertEquals(
+            "Un ms más allá del umbral debe ser DEGRADADO.",
+            SeizureMonitorService.PipelineHealth.DEGRADED, result
+        )
+    }
+
+    @Test
+    fun health_exactlyAtWarmupBoundary_startsJudging() {
+        // Arrange — el monitoreo arrancó hace EXACTAMENTE el warm-up, con el sensor stale.
+        val started = now - SeizureMonitorService.WATCHDOG_WARMUP_MS
+        // Act
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = now - 30_000L,
+            lastDeliveryOkAtMs = now - 30_000L, monitoringStartedAtMs = started
+        )
+        // Assert — el warm-up protege con "< WATCHDOG_WARMUP_MS"; justo en el borde ya juzga → DEGRADADO.
+        assertEquals(
+            "Al terminar exactamente el warm-up, el watchdog ya debe juzgar (no seguir protegiendo).",
+            SeizureMonitorService.PipelineHealth.DEGRADED, result
+        )
+    }
+
+    @Test
+    fun pipelineHealth_initialStateIsHealthy() {
+        // Contrato del observable: un consumidor que recién empieza a observar ve HEALTHY,
+        // no un valor indefinido. La UI/diagnóstico se apoyan en este default.
+        assertEquals(
+            "pipelineHealth debe arrancar en HEALTHY.",
+            SeizureMonitorService.PipelineHealth.HEALTHY,
+            SeizureMonitorService.pipelineHealth.value
+        )
+    }
 }

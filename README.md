@@ -25,6 +25,21 @@ Este repo aporta el **lado reloj** (un *data source* Android Wear) que alimenta 
 
 ---
 
+> ## 🛟 Invariante de seguridad #2 — si el monitoreo se rompe, el reloj AVISA
+>
+> El peor estado de una app así no es la alarma falsa: es la **falsa sensación de seguridad** (el
+> sistema dice "todo bien" mientras la red está rota). Un **watchdog** corre cada 30s y vigila que:
+>
+> - el acelerómetro siga emitiendo (sin muestras >10s = sensor muerto), y
+> - las entregas al teléfono sigan llegando (sin entrega exitosa >60s = teléfono desconectado).
+>
+> Si algo falla, el monitoreo pasa a **DEGRADADO**: la notificación cambia a *"⚠ MONITOREO
+> DEGRADADO"*, el reloj vibra con un patrón distinto, y queda registrado. **Una no-detección con
+> el reloj en DEGRADADO NO significa "sin convulsión" — significa "no estoy mirando".**
+> Detalle técnico en `DECISIONS.md` → **DEC-048**.
+
+---
+
 ## Para el lector data scientist: qué es esto y por qué importa
 
 Si venís del mundo de datos y nunca tocaste Android/Kotlin, este proyecto te va a resultar familiar en lo conceptual y nuevo en la implementación. La idea central es simple:

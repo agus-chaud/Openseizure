@@ -761,4 +761,54 @@ class SeizureMonitorServiceTest {
             SeizureMonitorService.isSequentialMode = original
         }
     }
+
+    // ─── Watchdog de salud del pipeline (T8) ─────────────────────────────────
+    //
+    // Testeamos la lógica PURA (evaluateHealth): determinista, sin Android, sin timers.
+    // El loop del watchdog (delay + histéresis) es difícil de testear sin flakiness;
+    // la decisión de salud, que es la parte que importa, vive en esta función pura.
+
+    private val now = 10_000_000L
+    private val pastWarmup = now - (SeizureMonitorService.WATCHDOG_WARMUP_MS + 10_000L)
+
+    @Test
+    fun health_duringWarmup_isHealthyEvenIfStale() {
+        // Recién arrancó (dentro del warm-up) y todo está "viejo": igual debe ser HEALTHY,
+        // porque el primer chunk y el primer handshake tardan unos segundos.
+        val justStarted = now - 5_000L
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = justStarted,
+            lastDeliveryOkAtMs = justStarted, monitoringStartedAtMs = justStarted
+        )
+        assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
+    }
+
+    @Test
+    fun health_freshSampleAndDelivery_isHealthy() {
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = now - 1_000L,
+            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+        )
+        assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
+    }
+
+    @Test
+    fun health_staleSensor_isDegraded() {
+        // El sensor dejó de emitir hace 20s (> SAMPLE_STALE_MS), aunque las entregas estén al día.
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = now - 20_000L,
+            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+        )
+        assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
+    }
+
+    @Test
+    fun health_staleDelivery_isDegraded() {
+        // El sensor emite, pero no hay una entrega exitosa al teléfono hace 70s (> DELIVERY_STALE_MS).
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = now - 1_000L,
+            lastDeliveryOkAtMs = now - 70_000L, monitoringStartedAtMs = pastWarmup
+        )
+        assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
+    }
 }

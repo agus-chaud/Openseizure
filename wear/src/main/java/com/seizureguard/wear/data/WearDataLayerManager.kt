@@ -36,9 +36,9 @@ class WearDataLayerManager(private val context: Context) {
      * @param samples FloatArray de magnitud en milli-g (típicamente 125 por chunk de transporte;
      *                en modo secuencial debug puede llevar numeración continua para verificar orden).
      */
-    suspend fun sendAccelData(samples: FloatArray) {
+    suspend fun sendAccelData(samples: FloatArray): Boolean {
         val bytes = samplesToJsonBytes(samples)
-        sendToAllNodes(PATH_ACCEL_DATA, bytes)
+        return sendToAllNodes(PATH_ACCEL_DATA, bytes)
     }
 
     /**
@@ -146,23 +146,32 @@ class WearDataLayerManager(private val context: Context) {
         null
     }
 
-    private suspend fun sendToAllNodes(path: String, data: ByteArray) {
-        try {
+    /**
+     * @return true si el mensaje se entregó al menos a un nodo, false si no había nodos
+     *   conectados o si hubo una excepción. El watchdog del Service usa este booleano para
+     *   detectar desconexiones prolongadas (antes este método se tragaba todo en silencio).
+     */
+    private suspend fun sendToAllNodes(path: String, data: ByteArray): Boolean {
+        return try {
             val nodes = Wearable.getNodeClient(context)
                 .connectedNodes
                 .await()
 
             if (nodes.isEmpty()) {
                 Log.w(TAG, "No hay nodos conectados — el teléfono no está disponible")
-                return
+                return false
             }
 
+            var anyDelivered = false
             nodes.forEach { node ->
                 messageClient.sendMessage(node.id, path, data).await()
                 Log.d(TAG, "Enviado $path a ${node.displayName} (${data.size} bytes)")
+                anyDelivered = true
             }
+            anyDelivered
         } catch (e: Exception) {
             Log.e(TAG, "Error enviando mensaje Wear Data Layer: $path", e)
+            false
         }
     }
 

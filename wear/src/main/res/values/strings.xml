@@ -12,6 +12,10 @@
     <string name="notification_validation_title">⚠ MODO VALIDACIÓN</string>
     <string name="notification_validation_text">Enviando datos SINTÉTICOS — NO es monitoreo real</string>
 
+    <!-- T8 — Aviso cuando el watchdog detecta que el pipeline está degradado -->
+    <string name="notification_degraded_title">⚠ MONITOREO DEGRADADO</string>
+    <string name="notification_degraded_text">Sin datos o sin conexión al teléfono — revisá el reloj</string>
+
     <!-- Fase 1.1 — Botones de la UI principal -->
     <string name="btn_start_monitoring">Iniciar monitoreo</string>
     <string name="btn_stop_monitoring">Detener monitoreo</string>

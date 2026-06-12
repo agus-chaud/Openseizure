@@ -1263,6 +1263,52 @@ arranque). Ver `architecture/seizureguard-aw-contract` en engram.
 
 ---
 
+## DEC-047: Modo validación apagado por defecto y opt-in explícito (Critical C2)
+
+**Fase:** Auditoría / T3 (fases 1 y 2) | **Fecha:** Junio 2026
+
+**El bug que arreglamos (era Critical):**
+`isSequentialMode` defaulteaba a `BuildConfig.DEBUG`. Cuando está activo, el reloj manda a OSD
+números secuenciales sintéticos (`[1, 2, 3, ...]`) en vez del acelerómetro real — es el "modo
+validación de Graham" para probar el transporte. El problema: como el default era `BuildConfig.DEBUG`,
+**cualquier build de debug recién instalado mandaba datos sintéticos por defecto**. El detector
+procesaba basura y nadie se enteraba. En software de seguridad de vida, inaceptable.
+
+**Decisión (en dos fases):**
+
+- **Fase 1 — default `false` siempre.** Un build fresco, debug o release, manda **datos reales**.
+  Esto solo cierra el agujero. Test: `sequentialMode_isDisabledByDefault` (corre en variante debug,
+  así que si alguien revierte el default a `BuildConfig.DEBUG`, falla).
+
+- **Fase 2 — opt-in explícito.** El modo validación se activa **solo** si el Intent de start lo pide
+  con `EXTRA_VALIDATION_MODE = true` **Y** el build es debug (doble condición en `onStartCommand`).
+  `startIntent(context, validationMode = true)` agrega el extra; el Intent normal de la app
+  (`MainActivity`) nunca lo pone. En release es imposible activarlo, ni a propósito.
+
+```
+# Activar el modo validación por ADB (solo debug):
+adb shell am start-foreground-service \
+  -n com.seizureguard.wear/.service.SeizureMonitorService \
+  -a com.seizureguard.wear.START_MONITORING --ez validation_mode true
+```
+
+**Por qué la doble condición (`BuildConfig.DEBUG && extra`):**
+Defensa en profundidad. Aunque alguien pase el extra en un APK de release (por un bug o un Intent
+malicioso), el `&& BuildConfig.DEBUG` lo bloquea. El modo validación literalmente no existe en producción.
+
+**Falta (Fase 3):** aviso visible ("MODO VALIDACIÓN — datos sintéticos") en notificación/UI mientras
+esté activo, para que durante una sesión de validación nunca pase desapercibido. La seguridad ya está
+garantizada por fases 1 y 2; la fase 3 es ergonomía.
+
+**Tests:** `sequentialMode_isDisabledByDefault`, `actionStart_withValidationExtra_enablesSequentialMode`,
+`actionStart_withoutValidationExtra_leavesSequentialModeOff`. (Los dos últimos restauran el `var`
+global `isSequentialMode` en `finally` para no contaminar otros tests.)
+
+**Archivos afectados:** `wear/src/main/.../service/SeizureMonitorService.kt`. Supera lo que DEC-035
+describía sobre el default del modo secuencial.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

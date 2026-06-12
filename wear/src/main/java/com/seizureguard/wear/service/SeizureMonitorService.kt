@@ -242,7 +242,15 @@ class SeizureMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> onMonitoringStart()
+            ACTION_START -> {
+                // T3 — Fase 2: el modo validación se activa SOLO si el Intent lo pide
+                // explícitamente (EXTRA_VALIDATION_MODE) Y el build es debug. En release,
+                // el `&& BuildConfig.DEBUG` lo deja siempre en false: imposible mandar datos
+                // sintéticos a OSD en producción, ni por accidente ni a propósito.
+                isSequentialMode = BuildConfig.DEBUG &&
+                    intent.getBooleanExtra(EXTRA_VALIDATION_MODE, false)
+                onMonitoringStart()
+            }
             ACTION_STOP  -> onMonitoringStop()
             // intent=null (o sin action): el OS reinició el Service por START_STICKY
             // tras matarlo. No hay action que inspeccionar — decidimos según si
@@ -815,10 +823,28 @@ class SeizureMonitorService : Service() {
          */
         var isSequentialMode: Boolean = false
 
-        /** Crea el Intent para iniciar el monitoreo desde cualquier parte de la app. */
-        fun startIntent(context: android.content.Context) =
+        /**
+         * Extra booleano del Intent de start para activar el modo validación (T3 — Fase 2).
+         * Solo se honra en builds debug (ver onStartCommand). Por defecto false.
+         *
+         * Para activarlo por ADB en desarrollo:
+         *   adb shell am start-foreground-service \
+         *     -n com.seizureguard.wear/.service.SeizureMonitorService \
+         *     -a com.seizureguard.wear.START_MONITORING --ez validation_mode true
+         */
+        const val EXTRA_VALIDATION_MODE = "validation_mode"
+
+        /**
+         * Crea el Intent para iniciar el monitoreo desde cualquier parte de la app.
+         *
+         * @param validationMode si es true, activa el modo validación de Graham (números
+         *   secuenciales en vez de datos reales). Solo tiene efecto en builds debug. Default false
+         *   → datos reales, que es lo correcto para producción y para el uso normal en desarrollo.
+         */
+        fun startIntent(context: android.content.Context, validationMode: Boolean = false) =
             Intent(context, SeizureMonitorService::class.java).apply {
                 action = ACTION_START
+                putExtra(EXTRA_VALIDATION_MODE, validationMode)
             }
 
         /** Crea el Intent para detener el monitoreo. */

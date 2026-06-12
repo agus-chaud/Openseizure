@@ -666,4 +666,65 @@ class SeizureMonitorServiceTest {
             SeizureMonitorService.isSequentialMode
         )
     }
+
+    /**
+     * C2 — T3 Fase 2: el modo validación se activa SOLO con el extra explícito del Intent.
+     *
+     * `startIntent(context, validationMode = true)` agrega EXTRA_VALIDATION_MODE; en un build
+     * debug (los tests corren en variante debug), ACTION_START debe encender isSequentialMode.
+     *
+     * Restauramos el valor original en finally: isSequentialMode es un `var` global del companion,
+     * dejarlo en true contaminaría sequentialMode_isDisabledByDefault u otros tests.
+     */
+    @Test
+    fun actionStart_withValidationExtra_enablesSequentialMode() {
+        val original = SeizureMonitorService.isSequentialMode
+        try {
+            val context = ApplicationProvider.getApplicationContext<Application>()
+            val shadowSensorManager = shadowOf(context.getSystemService(SensorManager::class.java))
+            shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+            val intent = SeizureMonitorService.startIntent(context, validationMode = true)
+
+            Robolectric.buildService(SeizureMonitorService::class.java, intent)
+                .create()
+                .startCommand(0, 1)
+
+            assertTrue(
+                "Con EXTRA_VALIDATION_MODE=true y build debug, ACTION_START debe activar el modo validación.",
+                SeizureMonitorService.isSequentialMode
+            )
+        } finally {
+            SeizureMonitorService.isSequentialMode = original
+        }
+    }
+
+    /**
+     * C2 — T3 Fase 2: sin el extra, ACTION_START deja el modo validación apagado.
+     *
+     * Es la otra mitad del contrato: el Intent normal de la app (`startIntent(context)`, que
+     * usa MainActivity) NUNCA activa datos sintéticos. Partimos de true a propósito para verificar
+     * que ACTION_START sin extra lo vuelve false (no que simplemente quedó en su default).
+     */
+    @Test
+    fun actionStart_withoutValidationExtra_leavesSequentialModeOff() {
+        val original = SeizureMonitorService.isSequentialMode
+        try {
+            SeizureMonitorService.isSequentialMode = true   // estado sucio a propósito
+            val context = ApplicationProvider.getApplicationContext<Application>()
+            val shadowSensorManager = shadowOf(context.getSystemService(SensorManager::class.java))
+            shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+            val intent = SeizureMonitorService.startIntent(context)   // sin validationMode
+
+            Robolectric.buildService(SeizureMonitorService::class.java, intent)
+                .create()
+                .startCommand(0, 1)
+
+            assertFalse(
+                "El Intent normal (sin EXTRA_VALIDATION_MODE) debe dejar el modo validación apagado.",
+                SeizureMonitorService.isSequentialMode
+            )
+        } finally {
+            SeizureMonitorService.isSequentialMode = original
+        }
+    }
 }

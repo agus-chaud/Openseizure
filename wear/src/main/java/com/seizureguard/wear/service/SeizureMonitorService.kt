@@ -321,6 +321,9 @@ class SeizureMonitorService : Service() {
             return
         }
         isMonitoringActive = true
+        // T3 Fase 3: refrescar la notificación para que muestre "MODO VALIDACIÓN" si corresponde
+        // (onCreate la mostró antes de saber el modo).
+        refreshNotification()
         // T4: persistir la intención de monitorear. Si el OS mata el Service y lo
         // reinicia con intent=null, onRestartAfterKill() lee este flag para reanudar.
         // Solo ACTION_STOP lo pone en false — un kill del OS NO lo limpia (queremos reanudar).
@@ -677,10 +680,19 @@ class SeizureMonitorService : Service() {
      * setOngoing(true): el usuario NO puede deslizarla para cerrarla.
      * setCategory(CATEGORY_SERVICE): el OS la trata como notificación de servicio activo.
      * El tap en la notificación abre la MainActivity.
+     *
+     * T3 Fase 3: si el modo validación está activo (datos sintéticos), la notificación lo
+     * grita ("⚠ MODO VALIDACIÓN"). Así, durante una sesión de validación, es imposible
+     * confundirla con monitoreo real de un vistazo.
      */
-    private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle(getString(R.string.notification_monitoring_title))
-        .setContentText(getString(R.string.notification_monitoring_text))
+    private fun buildNotification(): android.app.Notification {
+        val titleRes = if (isSequentialMode)
+            R.string.notification_validation_title else R.string.notification_monitoring_title
+        val textRes = if (isSequentialMode)
+            R.string.notification_validation_text else R.string.notification_monitoring_text
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(titleRes))
+            .setContentText(getString(textRes))
         .setSmallIcon(R.mipmap.ic_launcher)
         .setOngoing(true)
         .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -693,6 +705,17 @@ class SeizureMonitorService : Service() {
             )
         )
         .build()
+    }
+
+    /**
+     * Re-emite la notificación persistente para que refleje el modo actual (T3 Fase 3).
+     * Necesario porque onCreate() ya mostró la notificación ANTES de que onStartCommand()
+     * supiera si el modo validación estaba activo.
+     */
+    private fun refreshNotification() {
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification())
+    }
 
     // ─── Constantes ───────────────────────────────────────────────────────────
 

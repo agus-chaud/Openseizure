@@ -84,6 +84,20 @@ class AlarmStateManager(private val context: Context) {
         )
     }
 
+    /**
+     * Aviso háptico de "monitoreo DEGRADADO" (T8 — watchdog).
+     *
+     * Patrón distinto del de WARNING (un pulso corto) y del de ALARM (3 pulsos fuertes):
+     * dos pulsos medios, para que el usuario distinga "el monitoreo dejó de funcionar"
+     * de "posible convulsión". No es una alarma clínica — es un aviso de mal funcionamiento.
+     */
+    fun vibrateDegraded() {
+        if (!vibrator.hasVibrator()) return
+        val timings    = longArrayOf(0, 250, 150, 250)
+        val amplitudes = intArrayOf(  0, 140,   0, 140)
+        vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+    }
+
     companion object {
         const val ALARM_OK      = 0
         const val ALARM_WARNING = 1

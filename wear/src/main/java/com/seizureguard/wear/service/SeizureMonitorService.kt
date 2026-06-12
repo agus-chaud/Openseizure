@@ -26,11 +26,14 @@ import kotlin.math.sqrt
 import com.seizureguard.wear.alarm.AlarmStateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -64,6 +67,14 @@ import kotlinx.coroutines.launch
  *   El monitoreo nocturno NUNCA debe quedar detenido sin que el usuario lo sepa.
  */
 class SeizureMonitorService : Service() {
+
+    /**
+     * T8 — Salud del pipeline observable. HEALTHY = capturando y entregando bien;
+     * DEGRADED = el watchdog detectó que el sensor o la entrega al teléfono se cortaron.
+     * Nested en la clase (no en el companion) para poder referenciarla desde afuera como
+     * `SeizureMonitorService.PipelineHealth`.
+     */
+    enum class PipelineHealth { HEALTHY, DEGRADED }
 
     /**
      * CoroutineScope vinculado al lifecycle del Service.
@@ -196,11 +207,15 @@ class SeizureMonitorService : Service() {
 
         /**
          * Llamado cuando cambia la precisión del sensor (calibración).
-         * No usamos la precisión en el pipeline actual — es suficiente con los valores.
-         * En Fase 2 se podría loggear si la precisión baja a SENSOR_STATUS_UNRELIABLE.
+         * T8 (M5): logueamos si la precisión cae a no confiable / baja. No degradamos el
+         * pipeline por esto (los valores siguen llegando), pero queda registrado para
+         * diagnosticar después si una sesión tuvo datos de mala calidad.
          */
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
-            // no-op por ahora — se evalúa en Fase 2 si la precisión afecta la inferencia
+            if (accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE ||
+                accuracy == SensorManager.SENSOR_STATUS_ACCURACY_LOW) {
+                Log.w(TAG, "Precisión del acelerómetro baja/no confiable (accuracy=$accuracy)")
+            }
         }
     }
 
@@ -231,6 +246,24 @@ class SeizureMonitorService : Service() {
      * a un kill del OS): este vive con la instancia del Service y se resetea al parar.
      */
     private var isMonitoringActive = false
+
+    /**
+     * T8 — Watchdog de salud del pipeline.
+     *
+     * Detecta fallas silenciosas: sensor que deja de emitir, teléfono desconectado,
+     * entregas que fallan. Todas comparten el mismo veneno — el sistema muestra "todo bien"
+     * mientras la red de seguridad está rota. El watchdog las convierte en estado DEGRADADO
+     * visible (notificación + vibración distintiva).
+     *
+     * - lastSampleAtMs:     marca de la última muestra del acelerómetro recibida.
+     * - lastDeliveryOkAtMs: marca de la última entrega EXITOSA al teléfono.
+     * - monitoringStartedAtMs: para el período de warm-up (no juzgar apenas arranca).
+     */
+    @Volatile private var lastSampleAtMs = 0L
+    @Volatile private var lastDeliveryOkAtMs = 0L
+    private var monitoringStartedAtMs = 0L
+    private var consecutiveUnhealthyChecks = 0
+    private var watchdogJob: Job? = null
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -321,6 +354,15 @@ class SeizureMonitorService : Service() {
             return
         }
         isMonitoringActive = true
+        // T8: arrancar el reloj del watchdog. Inicializamos las marcas a "ahora" para que el
+        // período de warm-up empiece a contar y no marque DEGRADADO apenas arranca.
+        val now = System.currentTimeMillis()
+        monitoringStartedAtMs = now
+        lastSampleAtMs = now
+        lastDeliveryOkAtMs = now
+        consecutiveUnhealthyChecks = 0
+        _pipelineHealth.value = PipelineHealth.HEALTHY
+        startWatchdog()
         // T3 Fase 3: refrescar la notificación para que muestre "MODO VALIDACIÓN" si corresponde
         // (onCreate la mostró antes de saber el modo).
         refreshNotification()
@@ -382,6 +424,11 @@ class SeizureMonitorService : Service() {
     private fun onMonitoringStop() {
         setWasMonitoring(false)
         isMonitoringActive = false   // T5: permite re-arrancar limpio en el próximo ACTION_START
+        // T8: parar el watchdog y volver a estado HEALTHY para el próximo monitoreo.
+        watchdogJob?.cancel()
+        watchdogJob = null
+        consecutiveUnhealthyChecks = 0
+        _pipelineHealth.value = PipelineHealth.HEALTHY
         // Desregistrar el sensor ANTES de stopSelf() para evitar que el
         // callback siga llegando durante el shutdown del Service.
         stopSensorCollection()
@@ -539,6 +586,9 @@ class SeizureMonitorService : Service() {
      * @param z Aceleración en el eje Z (m/s²), con gravedad incluida.
      */
     private fun onAccelerometerSample(x: Float, y: Float, z: Float) {
+        // T8: marcar que el sensor está vivo. El watchdog usa esto para detectar
+        // si el acelerómetro dejó de emitir (sensor muerto → DEGRADADO).
+        lastSampleAtMs = System.currentTimeMillis()
         // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
         val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
         accelerometerBuffer.add(magnitudeMilliG)
@@ -579,9 +629,63 @@ class SeizureMonitorService : Service() {
             } else {
                 window
             }
-            dataLayerManager.sendAccelData(dataToSend)
+            val delivered = dataLayerManager.sendAccelData(dataToSend)
+            // T8: marcar entrega EXITOSA. Si las entregas empiezan a fallar (teléfono
+            // desconectado, Bluetooth caído), lastDeliveryOkAtMs deja de actualizarse y el
+            // watchdog lo detecta. Antes el resultado del envío se ignoraba (H2).
+            if (delivered) lastDeliveryOkAtMs = System.currentTimeMillis()
             if (BuildConfig.DEBUG && isSequentialMode) {
                 sequentialSampleCounter += window.size.toLong()
+            }
+        }
+    }
+
+    // ─── Watchdog de salud del pipeline (T8) ────────────────────────────────────
+
+    /**
+     * Lanza la corutina del watchdog: cada [WATCHDOG_INTERVAL_MS] evalúa la salud del
+     * pipeline y renueva el WakeLock. Vive en serviceScope → se cancela solo en onDestroy().
+     */
+    private fun startWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = serviceScope.launch {
+            while (isActive) {
+                delay(WATCHDOG_INTERVAL_MS)
+                checkPipelineHealth()
+            }
+        }
+    }
+
+    /**
+     * Un "tick" del watchdog. Renueva el WakeLock (M3), evalúa salud con histéresis
+     * y, si el estado cambió, actualiza notificación + vibración + StateFlow.
+     */
+    private fun checkPipelineHealth() {
+        // M3: renovar el WakeLock para que el timeout de 10h nunca expire durante un
+        // monitoreo largo (hasta 10h de uso nocturno). Re-acquire reinicia el timeout.
+        wakeLock?.let { if (it.isHeld) it.acquire(WAKE_LOCK_TIMEOUT_MS) }
+
+        val instant = evaluateHealth(
+            nowMs = System.currentTimeMillis(),
+            lastSampleAtMs = lastSampleAtMs,
+            lastDeliveryOkAtMs = lastDeliveryOkAtMs,
+            monitoringStartedAtMs = monitoringStartedAtMs
+        )
+        // Histéresis: exigimos varios checks DEGRADED seguidos para no oscilar por un bache puntual.
+        consecutiveUnhealthyChecks =
+            if (instant == PipelineHealth.DEGRADED) consecutiveUnhealthyChecks + 1 else 0
+        val effective =
+            if (consecutiveUnhealthyChecks >= UNHEALTHY_CHECKS_FOR_DEGRADED) PipelineHealth.DEGRADED
+            else PipelineHealth.HEALTHY
+
+        if (effective != _pipelineHealth.value) {
+            _pipelineHealth.value = effective
+            refreshNotification()
+            if (effective == PipelineHealth.DEGRADED) {
+                Log.e(TAG, "Pipeline DEGRADADO: sin muestras o sin entregas recientes al teléfono")
+                alarmStateManager.vibrateDegraded()
+            } else {
+                Log.i(TAG, "Pipeline recuperado: HEALTHY")
             }
         }
     }
@@ -686,10 +790,16 @@ class SeizureMonitorService : Service() {
      * confundirla con monitoreo real de un vistazo.
      */
     private fun buildNotification(): android.app.Notification {
-        val titleRes = if (isSequentialMode)
-            R.string.notification_validation_title else R.string.notification_monitoring_title
-        val textRes = if (isSequentialMode)
-            R.string.notification_validation_text else R.string.notification_monitoring_text
+        // Prioridad: DEGRADADO (mal funcionamiento) gana sobre el aviso de modo validación,
+        // que a su vez gana sobre el texto normal de monitoreo.
+        val (titleRes, textRes) = when {
+            _pipelineHealth.value == PipelineHealth.DEGRADED ->
+                R.string.notification_degraded_title to R.string.notification_degraded_text
+            isSequentialMode ->
+                R.string.notification_validation_title to R.string.notification_validation_text
+            else ->
+                R.string.notification_monitoring_title to R.string.notification_monitoring_text
+        }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(titleRes))
             .setContentText(getString(textRes))
@@ -747,6 +857,43 @@ class SeizureMonitorService : Service() {
          */
         private val _alarmState = MutableStateFlow(AlarmStateManager.ALARM_OK)
         val alarmState: StateFlow<Int> = _alarmState.asStateFlow()
+
+        private val _pipelineHealth = MutableStateFlow(PipelineHealth.HEALTHY)
+        val pipelineHealth: StateFlow<PipelineHealth> = _pipelineHealth.asStateFlow()
+
+        /**
+         * T8 — Lógica PURA de evaluación de salud (sin estado, sin Android → fácil de testear).
+         *
+         * Reglas:
+         *  - Durante el warm-up ([WATCHDOG_WARMUP_MS] desde el arranque) siempre HEALTHY: el
+         *    primer chunk tarda ~5s y el primer handshake con el teléfono puede demorar.
+         *  - Pasado el warm-up: DEGRADED si no llegó una muestra del sensor en
+         *    [SAMPLE_STALE_MS], O si no hubo una entrega exitosa al teléfono en [DELIVERY_STALE_MS].
+         *
+         * La histéresis (exigir varios DEGRADED seguidos) la aplica el loop, no esta función.
+         */
+        fun evaluateHealth(
+            nowMs: Long,
+            lastSampleAtMs: Long,
+            lastDeliveryOkAtMs: Long,
+            monitoringStartedAtMs: Long
+        ): PipelineHealth {
+            if (nowMs - monitoringStartedAtMs < WATCHDOG_WARMUP_MS) return PipelineHealth.HEALTHY
+            val sampleStale   = nowMs - lastSampleAtMs > SAMPLE_STALE_MS
+            val deliveryStale = nowMs - lastDeliveryOkAtMs > DELIVERY_STALE_MS
+            return if (sampleStale || deliveryStale) PipelineHealth.DEGRADED else PipelineHealth.HEALTHY
+        }
+
+        /** Cada cuánto corre el watchdog. */
+        const val WATCHDOG_INTERVAL_MS = 30_000L
+        /** Período de gracia tras arrancar el monitoreo antes de empezar a juzgar. */
+        const val WATCHDOG_WARMUP_MS = 60_000L
+        /** Sin muestras del sensor por más de esto → sensor muerto. */
+        const val SAMPLE_STALE_MS = 10_000L
+        /** Sin entregas exitosas al teléfono por más de esto → desconexión (chunks van cada ~5s). */
+        const val DELIVERY_STALE_MS = 60_000L
+        /** Checks DEGRADED consecutivos requeridos para declarar DEGRADED (histéresis). */
+        const val UNHEALTHY_CHECKS_FOR_DEGRADED = 2
 
         /**
          * Capacidad del ring buffer = número de muestras por chunk de transporte.

@@ -17,7 +17,17 @@ El reloj está **completo y probado**. Logs reales lo confirman:
 - **Handshake de settings** implementado y funcionando:
   `Settings enviados a OSD: battery=75%, sample_freq=25Hz` (formato `{"battery":N,"sample_freq":25}`
   en `/osd/settings`, el que parsea `SdDataSourceAw.handleSettings`).
-- 56/56 tests unitarios verdes.
+- 62/62 tests unitarios verdes.
+
+> ## 🛟 ANTES DE CADA PRUEBA — leer esto
+>
+> El reloj manda **datos reales por defecto**. El "modo validación" (números sintéticos `1,2,3,...`
+> para probar el transporte) está **apagado** salvo que lo actives a propósito con
+> `--ez validation_mode true` (solo funciona en builds debug; ver DEC-047).
+>
+> **No leas una "no-detección" como prueba de que todo anda** si no estás seguro del modo: si por
+> error estuvieras en modo validación, OSD recibiría basura y nunca detectaría nada. Para una prueba
+> de detección real, arrancá el monitoreo **sin** el extra de validación.
 
 ## 🐛 Bugs encontrados y arreglados en campo
 

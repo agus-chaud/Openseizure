@@ -8,6 +8,10 @@
     <string name="notification_monitoring_title">SeizureGuard activo</string>
     <string name="notification_monitoring_text">Monitoreando movimientos durante el sueño…</string>
 
+    <!-- T3 Fase 3 — Aviso cuando el modo validación (datos sintéticos) está activo -->
+    <string name="notification_validation_title">⚠ MODO VALIDACIÓN</string>
+    <string name="notification_validation_text">Enviando datos SINTÉTICOS — NO es monitoreo real</string>
+
     <!-- Fase 1.1 — Botones de la UI principal -->
     <string name="btn_start_monitoring">Iniciar monitoreo</string>
     <string name="btn_stop_monitoring">Detener monitoreo</string>

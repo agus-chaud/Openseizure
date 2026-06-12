@@ -727,4 +727,38 @@ class SeizureMonitorServiceTest {
             SeizureMonitorService.isSequentialMode = original
         }
     }
+
+    /**
+     * C2 — T3 Fase 3: con el modo validación activo, la notificación persistente lo avisa.
+     *
+     * Verifica que el título de la notificación activa contiene "VALIDACIÓN" cuando se arrancó
+     * con el extra. Así, durante una sesión de validación, la notificación grita que NO es
+     * monitoreo real y nadie la confunde de un vistazo.
+     */
+    @Test
+    fun validationMode_notificationShowsWarning() {
+        val original = SeizureMonitorService.isSequentialMode
+        try {
+            val context = ApplicationProvider.getApplicationContext<Application>()
+            val shadowSensorManager = shadowOf(context.getSystemService(SensorManager::class.java))
+            shadowSensorManager.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+            val intent = SeizureMonitorService.startIntent(context, validationMode = true)
+
+            Robolectric.buildService(SeizureMonitorService::class.java, intent)
+                .create()
+                .startCommand(0, 1)
+
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
+            val title = notificationManager.activeNotifications.first()
+                .notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+
+            assertTrue(
+                "Con el modo validación activo, la notificación debe avisarlo (título con 'VALIDACIÓN'). " +
+                    "Título actual: $title",
+                title?.contains("VALIDACIÓN") == true
+            )
+        } finally {
+            SeizureMonitorService.isSequentialMode = original
+        }
+    }
 }

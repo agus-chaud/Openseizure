@@ -6,6 +6,22 @@ Este repo aporta el **lado reloj** (un *data source* Android Wear) que alimenta 
 **[OpenSeizureDetector](https://openseizuredetector.org.uk) V5.0**, la cual corre el modelo
 **DeepEpiCnn Run24** (PyTorch ExecuTorch) en el teléfono. **El reloj no infiere.**
 
+---
+
+> ## 🛟 Invariante de seguridad #1 — el reloj SIEMPRE manda datos reales
+>
+> Existe un "modo validación" de desarrollo que manda **números sintéticos** (`1,2,3,...`) en vez
+> del acelerómetro real, para probar el transporte. Si el detector recibe datos sintéticos creyendo
+> que son reales, **una convulsión real no se detecta**. Por eso:
+>
+> - **Está APAGADO por defecto** en todos los builds, incluso debug (`isSequentialMode = false`).
+> - Solo se activa a propósito, con `EXTRA_VALIDATION_MODE=true` en el Intent **y** solo en builds
+>   debug. En **release es imposible activarlo**, ni queriendo.
+> - El Intent normal de la app nunca lo enciende.
+>
+> **Regla para quien prueba en campo:** si dudás de si estás en modo validación, NO confíes en una
+> "no-detección" como señal de que todo anda. Verificá que arrancaste el monitoreo sin el extra.
+> Detalle técnico completo en `DECISIONS.md` → **DEC-047**.
 
 ---
 

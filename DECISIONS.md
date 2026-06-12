@@ -1309,6 +1309,51 @@ describía sobre el default del modo secuencial.
 
 ---
 
+## DEC-048: Watchdog de salud del pipeline (H2, M3, M4, M5)
+
+**Fase:** Auditoría / T8 | **Fecha:** Junio 2026
+
+**El problema (familia de fallas silenciosas):**
+El reloj podía *creer* que monitoreaba cuando en realidad nada llegaba al teléfono. Lo vivimos en
+campo (ver `FIELD_TEST_NOTES.md`: "silencio bidireccional"). El sensor que deja de emitir, el
+Bluetooth que se cae, el teléfono que se desconecta — todas comparten el mismo veneno: el sistema
+muestra "todo bien" mientras la red de seguridad está rota. En software de seguridad de vida,
+**una falla que no avisa es peor que una alarma falsa.**
+
+**Decisión:** Un watchdog (corutina en `serviceScope`) corre cada `WATCHDOG_INTERVAL_MS` (30s) y
+evalúa dos marcas de tiempo: última muestra del sensor (`lastSampleAtMs`) y última entrega
+**exitosa** al teléfono (`lastDeliveryOkAtMs`). Si alguna se pasa de su umbral, pasa a estado
+**DEGRADADO**: notificación "⚠ MONITOREO DEGRADADO", vibración distintiva y `StateFlow pipelineHealth`.
+
+**Un solo componente cierra cuatro hallazgos:**
+- **H2** — `sendAccelData`/`sendToAllNodes` ahora devuelven `Boolean`; el fallo de envío ya no se
+  traga en silencio. `lastDeliveryOkAtMs` solo se actualiza ante una entrega real.
+- **M3** — el watchdog renueva el WakeLock cada tick (`acquire(timeout)` reinicia el contador), así
+  el timeout de 10h nunca expira en un monitoreo largo (uso de hasta 10h nocturno).
+- **M4** — detecta sensor muerto (sin muestras en >`SAMPLE_STALE_MS` = 10s).
+- **M5** — `onAccuracyChanged` loguea precisión baja/no confiable (no degrada, solo registra).
+
+**Decisiones de diseño:**
+- **Función pura `evaluateHealth(now, lastSample, lastDelivery, started)`** — sin estado ni Android,
+  para testearla determinísticamente. El loop (delay + histéresis) NO se testea (flakiness con timers).
+- **Warm-up de 60s** tras arrancar: no juzgar mientras se establece la conexión (el primer chunk
+  tarda ~5s, el handshake puede demorar).
+- **Histéresis** (2 checks DEGRADED seguidos): no oscilar por un bache puntual.
+- **Umbrales:** sensor 10s (a 25Hz, 10s sin muestra es claramente anómalo); entrega 60s (los chunks
+  van cada ~5s, 60s es generoso pero detecta desconexión real).
+- **El reloj vibra en DEGRADADO** aunque la háptica sea secundaria para alarmas clínicas: acá es
+  apropiado, porque una causa típica de DEGRADADO es el **teléfono desconectado** — la alerta tiene
+  que venir del reloj, no del teléfono que no está.
+
+**Tests:** `health_duringWarmup_isHealthyEvenIfStale`, `health_freshSampleAndDelivery_isHealthy`,
+`health_staleSensor_isDegraded`, `health_staleDelivery_isDegraded`.
+
+**Archivos afectados:** `SeizureMonitorService.kt` (watchdog, evaluateHealth, PipelineHealth,
+notificación), `WearDataLayerManager.kt` (envío con Boolean), `AlarmStateManager.kt` (vibrateDegraded),
+`strings.xml`.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

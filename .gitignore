@@ -34,3 +34,6 @@ local.properties
 *.keystore
 keystore.properties
 .gstack/
+
+# Cache local de registro de skills (auto-generado, especifico de esta maquina)
+.atl/

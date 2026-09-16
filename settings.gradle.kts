@@ -16,5 +16,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "SeizureGuard"
 include(":wear")
-// :phone retirado (2026-06-05): la inferencia y las alarmas las hace la app OSD V5.0.
-// Este repo solo aporta el lado reloj. Ver engram architecture/seizureguard-executorch-api.
+include(":phone")
+// :phone reincorporado (watch-osd-message-delivery / Option F, Batch 2): companion bridge que
+// traduce los mensajes DEC-046 del reloj al ingreso HTTP Garmin de OSD (127.0.0.1:8080). La
+// inferencia y las alarmas siguen corriendo en la app OSD V5.0 — este módulo no hace ML.
+// Ver engram architecture/seizureguard-executorch-api y
+// openspec/changes/watch-osd-message-delivery/design.md.

@@ -52,18 +52,18 @@ Parallelizable: T1.1/T1.2 in parallel; T1.3 sequential after T1.1.
 
 ## Batch 2 — `:phone` module scaffold
 
-- [ ] **T2.1** `settings.gradle.kts`: `include(":phone")`, replace the 2026-06-05 removal comment.
+- [x] **T2.1** `settings.gradle.kts`: `include(":phone")`, replace the 2026-06-05 removal comment.
       Modified.
       Satisfies: PCB-1, PCB-2.
       Dependencies: none (independent of Batch 1, but conventionally lands together).
-- [ ] **T2.2** `phone/build.gradle.kts` — minSdk 26, targetSdk 34, `applicationId
+- [x] **T2.2** `phone/build.gradle.kts` — minSdk 26, targetSdk 34, `applicationId
       com.seizureguard.wear`, `namespace com.seizureguard.phone`, reference shared
       `signingConfigs` from T1.1, zero new dependencies (reuse `libs.versions.toml` entries already
       used by `:wear`: core-ktx, play-services-wearable, coroutines, lifecycle; HTTP via
       `HttpURLConnection`, no OkHttp/Retrofit). New file.
       Satisfies: PCB-1, PCB-2, design Architecture Decision #1.
       Dependencies: T1.1, T1.3.
-- [ ] **T2.3** `phone/src/main/AndroidManifest.xml` — baseline application manifest (application
+- [x] **T2.3** `phone/src/main/AndroidManifest.xml` — baseline application manifest (application
       class placeholder, `INTERNET` permission, launcher icon/theme). FGS-specific entries
       (`connectedDevice`, `WAKE_LOCK`, `POST_NOTIFICATIONS`, `BLUETOOTH_CONNECT`,
       `RECEIVE_BOOT_COMPLETED`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) are added incrementally in
@@ -71,7 +71,7 @@ Parallelizable: T1.1/T1.2 in parallel; T1.3 sequential after T1.1.
       auditable against the component that declares it. New file.
       Satisfies: PCB-1.
       Dependencies: T2.2.
-- [ ] **T2.4** Minimal resource scaffold (`strings.xml`, `themes.xml`, launcher icon reuse from
+- [x] **T2.4** Minimal resource scaffold (`strings.xml`, `themes.xml`, launcher icon reuse from
       `:wear` or a placeholder) so the module builds and installs as an empty app. New.
       Dependencies: T2.3.
 

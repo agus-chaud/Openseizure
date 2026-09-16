@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Companion bridge (watch-osd-message-delivery / Option F): talks to OSD's HTTP ingress on
+        127.0.0.1:8080. Loopback only — see design "Threat Matrix" (bind target strictly
+        127.0.0.1, never 0.0.0.0/LAN).
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        Batch 2 (this batch) intentionally stops here. FGS-specific permissions
+        (connectedDevice type declarations, WAKE_LOCK, POST_NOTIFICATIONS, BLUETOOTH_CONNECT,
+        RECEIVE_BOOT_COMPLETED, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) are added incrementally in
+        Batches 5-6 alongside the components that declare/need them (OsdBridgeService,
+        SetupActivity, BootReceiver), so each PR's permission surface is auditable against the
+        component that requires it. See tasks.md T5.1/T6.1.
+    -->
+
+    <application
+        android:name=".PhoneApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SeizureGuardPhone">
+
+        <!--
+            No activities/services declared yet — this batch is a pure scaffold so the module
+            builds and installs as an empty app. SetupActivity (Batch 6), OsdBridgeService
+            (Batch 5a), and BootReceiver (Batch 6) are added in their own batches.
+        -->
+
+    </application>
+
+</manifest>

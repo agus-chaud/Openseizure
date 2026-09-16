@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Plain platform theme — no AppCompat/Material Components dependency added for this
+        scaffold (design decision #1: zero new dependencies). SetupActivity (Batch 6) can
+        introduce Compose theming without needing this to change.
+    -->
+    <style name="Theme.SeizureGuardPhone" parent="@android:style/Theme.DeviceDefault.Light">
+    </style>
+</resources>

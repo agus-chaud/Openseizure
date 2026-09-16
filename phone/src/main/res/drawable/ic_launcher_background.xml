@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reused from :wear (same brand mark) — see wear/src/main/res/drawable/ic_launcher_background.xml -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#1B4F72"/>
+</shape>

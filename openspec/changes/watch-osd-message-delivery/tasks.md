@@ -180,16 +180,16 @@ Parallelizable: T5.3 and T5.4 can be developed in parallel (both depend only on 
 
 ## Batch 6 — `SetupActivity` + `BootReceiver`
 
-- [ ] **T6.1** Extend `phone/src/main/AndroidManifest.xml` — `RECEIVE_BOOT_COMPLETED`,
+- [x] **T6.1** Extend `phone/src/main/AndroidManifest.xml` — `RECEIVE_BOOT_COMPLETED`,
       `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, activity/receiver declarations. Modified.
       Satisfies: PCB-8.
       Dependencies: T5.1.
-- [ ] **T6.2** `phone/.../SetupActivity.kt` — one-shot setup only (no status/receiving screen):
+- [x] **T6.2** `phone/.../SetupActivity.kt` — one-shot setup only (no status/receiving screen):
       request `POST_NOTIFICATIONS` permission, request battery-optimisation exemption, start/stop
       the bridge service, Garmin-data-source instructions text. New.
       Satisfies: PCB-7 (no status UI, headless), PCB-8, design "Notification channels" closing note.
       Dependencies: T5.2 (starts/stops `OsdBridgeService`), T6.1.
-- [ ] **T6.3** `phone/.../boot/BootReceiver.kt` — resumes the bridge service on boot if
+- [x] **T6.3** `phone/.../boot/BootReceiver.kt` — resumes the bridge service on boot if
       `was_bridging` flag is set; on FGS-type boot-eligibility failure, degrade to a high-importance
       "restart the bridge" notification instead of failing silently (Open Question, design). New.
       Satisfies: PCB-8.

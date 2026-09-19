@@ -3,11 +3,14 @@ package com.seizureguard.phone.bridge
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.seizureguard.phone.R
+import com.seizureguard.phone.setup.SetupActivity
 
 const val FAULT_REPOST_MS = 60_000L
 
@@ -85,7 +88,15 @@ internal class BridgeNotifications(
             context, START_FAILURE_NOTIFICATION_ID, faultNotification(context, R.string.bridge_start_failed_text),
         )
 
-        private fun faultNotification(context: Context, textRes: Int): Notification {
+        /** Boot could not restart the bridge: tap opens setup so the user can start it again. */
+        fun postRestartNeeded(context: Context) {
+            val open = PendingIntent.getActivity(
+                context, 0, Intent(context, SetupActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+            )
+            notifySafely(context, START_FAILURE_NOTIFICATION_ID, faultNotification(context, R.string.bridge_restart_needed_text, open))
+        }
+
+        private fun faultNotification(context: Context, textRes: Int, contentIntent: PendingIntent? = null): Notification {
             nm(context).createNotificationChannel(
                 NotificationChannel(
                     FAULT_CHANNEL_ID, context.getString(R.string.bridge_fault_channel),
@@ -102,6 +113,7 @@ internal class BridgeNotifications(
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setOnlyAlertOnce(false) // each 60 s re-post must sound + vibrate again
                 .setOngoing(true)
+                .setContentIntent(contentIntent)
                 .build()
         }
 

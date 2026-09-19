@@ -13,6 +13,19 @@
     <string name="bridge_start_failed_title">SeizureGuard: monitoring is not working</string>
     <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
     <string name="bridge_restart_needed_text">The phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge.</string>
+    <string name="bridge_summary_channel">Morning summary (silent)</string>
+    <string name="summary_title">SeizureGuard: last night</string>
+    <string name="summary_none">No interruptions last night.</string>
+    <plurals name="summary_interrupted">
+        <item quantity="one">Monitoring was interrupted %1$d time (total %2$d min): %3$s.</item>
+        <item quantity="other">Monitoring was interrupted %1$d times (total %2$d min): %3$s.</item>
+    </plurals>
+    <string name="summary_kind_no_watch_data">watch not sending data</string>
+    <string name="summary_kind_osd_unreachable">OSD not reachable</string>
+    <string name="summary_kind_osd_wrong_datasource">OSD wrong data source</string>
+    <string name="summary_kind_osd_rejects_data">OSD rejected data</string>
+    <string name="summary_kind_osd_data_stale">OSD not analysing</string>
+    <string name="summary_kind_service_down">phone stopped</string>
     <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, never with sound or vibration.
 
 Before starting:

@@ -19,6 +19,7 @@ import com.seizureguard.phone.R
 import com.seizureguard.phone.bridge.BridgeHistory
 import com.seizureguard.phone.bridge.BridgePrefs
 import com.seizureguard.phone.bridge.OsdBridgeService
+import com.seizureguard.phone.summary.MorningSummaryReceiver
 
 /** One-shot setup (permissions, battery exemption, start/stop). Deliberately no live status screen. */
 class SetupActivity : Activity() {
@@ -70,6 +71,7 @@ class SetupActivity : Activity() {
 
     private fun launchService() {
         BridgePrefs.setWasBridging(this, true)
+        MorningSummaryReceiver.arm(this)
         OsdBridgeService.start(this)
         toast(R.string.setup_started)
     }

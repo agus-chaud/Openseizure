@@ -49,6 +49,8 @@ internal class BridgeNotifications(private val context: Context) {
         const val STATUS_NOTIFICATION_ID = 4101
         const val START_FAILURE_NOTIFICATION_ID = 4102
         const val FAULT_NOTIFICATION_ID = 4103
+        const val SUMMARY_CHANNEL_ID = "osd_bridge_summary"
+        const val SUMMARY_NOTIFICATION_ID = 4104
         private const val TAG = "BridgeNotifications"
 
         fun faultTextRes(fault: BridgeFault): Int = when (fault) {
@@ -87,6 +89,27 @@ internal class BridgeNotifications(private val context: Context) {
                 context, 0, Intent(context, SetupActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
             )
             notifySafely(context, START_FAILURE_NOTIFICATION_ID, faultNotification(context, R.string.bridge_restart_needed_text, open))
+        }
+
+        /** One silent, dismissible "last night" summary (LOW channel, no sound or vibration). */
+        fun postSummary(context: Context, text: String) {
+            nm(context).createNotificationChannel(
+                NotificationChannel(
+                    SUMMARY_CHANNEL_ID, context.getString(R.string.bridge_summary_channel), NotificationManager.IMPORTANCE_LOW,
+                ).apply { setSound(null, null); enableVibration(false); enableLights(false); setShowBadge(false) }
+            )
+            notifySafely(
+                context, SUMMARY_NOTIFICATION_ID,
+                NotificationCompat.Builder(context, SUMMARY_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .setContentTitle(context.getString(R.string.summary_title))
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setSilent(true)
+                    .setAutoCancel(true)
+                    .build(),
+            )
         }
 
         private fun faultNotification(context: Context, textRes: Int, contentIntent: PendingIntent? = null): Notification {

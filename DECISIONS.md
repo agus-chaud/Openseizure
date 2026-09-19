@@ -1915,7 +1915,7 @@ resumen matutino).
 
 ## DEC-060: Batch 5e (endurecimiento del puente) y reescritura de las guías para el flujo de dos apps
 
-**Fase:** SDD `watch-osd-message-delivery` (Batch 5e, PRs #27 y #28 abiertos, sin mergear; documentación de cuidadores) | **Fecha:** 2026-09-19
+**Fase:** SDD `watch-osd-message-delivery` (Batch 5e, PRs #27 y #28 mergeados con CI verde; documentación de cuidadores) | **Fecha:** 2026-09-19
 
 **Batch 5e (solo `:phone`, sin tocar el reloj):**
 - **`sample_freq` exactamente 25** (`SAMPLE_FREQ_HZ`): cualquier otro valor se descarta y no se reenvía a
@@ -1964,7 +1964,7 @@ habitual es 5 minutos. Confirmarlo con el médico tratante antes de imprimirla.
 **Documentos que siguen mandando por el camino roto:** `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` (le toca el
 Batch 9, T9.1) y `docs/RUNBOOK_EXPORTACION_DATOS.md` todavía indican activar "Android Wear data source".
 
-**Estado:** Batch 7 sigue bloqueado. Falta: mergear el 5e, firmar `techo_latencia_clinica`, revisar el
+**Estado:** Batch 5e mergeado. Batch 7 sigue bloqueado. Falta: firmar `techo_latencia_clinica`, revisar el
 texto médico de la guía y pasar un segundo `safety-reviewer` de re-chequeo.
 
 ---

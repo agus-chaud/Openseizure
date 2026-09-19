@@ -1609,6 +1609,39 @@ DV-1..DV-6 de verificación en hardware siguen siendo obligatorias para consider
 
 ---
 
+## DEC-053: Batches 2–3 de `watch-osd-message-delivery` — scaffold `:phone` y lógica pura del puente
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batches 2, 3a, 3b) | **Fecha:** Septiembre 2026
+
+**Qué se hizo:**
+- **Batch 2 (PR #13):** módulo `:phone` vacío — mismo `applicationId` que `:wear`, `namespace`
+  propio, `minSdk 26`, sin dependencias nuevas. El bloque `signingConfigs` lo declara el propio
+  `phone/build.gradle.kts` leyendo lo que expone `signing.gradle.kts`; Batch 7 (`:wear`) debe
+  replicar ese patrón.
+- **Batch 3a (PR #14):** `OsdPayloadCodec` (JSON + cuerpo `dataObj=` percent-encoded) y
+  `OsdResponseParser` (`PostOutcome`). Cualquier código HTTP distinto de 200 clasifica como
+  `UNREACHABLE`; un 200 con cuerpo desconocido o vacío, como `OSD_PARSE_ERROR`.
+- **Batch 3b (PR #15):** `BridgeHealth` (`BridgeFault` + `evaluate`) y un test de loopback con un
+  `ServerSocket` que verifica los bytes exactos que aceptaría el `NanoHTTPD` de OSD. Los umbrales
+  (30 s / 20 s) son estrictos: exactamente en el límite todavía es `NONE`.
+
+**Contrato verificado contra el código real de OSD (rama beta):** respuestas `OK` / `sendSettings` /
+`ERROR` en `SdDataSource.updateFromJSON`; el marcador de "data source equivocado" es el mensaje
+placeholder de `SdWebServer.java:87`, que vuelve con HTTP 200 cuando la fuente no es "Garmin".
+
+**Decisión de testing:** los tests del codec y del loopback corren con Robolectric
+(`@Config(sdk = [34])`), porque `org.json` en `android.jar` es un stub que lanza "not mocked" en JVM
+puro. El diseño lo permitía; no se agregó ninguna dependencia de runtime.
+
+**Deuda conocida:** el CI (`.github/workflows/ci.yml`) solo corre los tests de `:wear`; los tests de
+`:phone` no tienen red automática. Además el trigger `branches: [main]` no corre en PRs apilados
+sobre otra rama. Pendiente agregar `:phone:testDebugUnitTest` al workflow.
+
+**Estado:** Batches 1–3b mergeados a `main`. Sigue Batch 4 (`OsdHttpForwarder`). El override de
+GATE-0 (DEC-052) sigue vigente; DV-1..DV-6 siguen pendientes.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

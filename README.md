@@ -547,8 +547,8 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 > feature por terminado.
 - [x] **Batch 1** Firma compartida `:wear`/`:phone` (`signing.gradle.kts`) — [PR #12](https://github.com/agus-chaud/Openseizure/pull/12) — Agent-Done
 - [x] **Batch 2** Scaffold del módulo `:phone` (manifest, build.gradle, recursos mínimos) — [PR #13](https://github.com/agus-chaud/Openseizure/pull/13) — Agent-Done
-- [ ] **Batch 3a** Codec/parser puros + tests — Agent-Done
-- [ ] **Batch 3b** BridgeHealth + test de integración loopback — Agent-Done
+- [x] **Batch 3a** Codec/parser puros + tests — [PR #14](https://github.com/agus-chaud/Openseizure/pull/14) — Agent-Done
+- [x] **Batch 3b** BridgeHealth + test de integración loopback — [PR #15](https://github.com/agus-chaud/Openseizure/pull/15) — Agent-Done
 - [ ] **Batch 4** `OsdHttpForwarder` — Agent-Done
 - [ ] **Batch 5a** `OsdBridgeService` (core) — Agent-Done
 - [ ] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` — Agent-Done

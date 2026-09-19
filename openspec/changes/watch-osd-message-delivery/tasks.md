@@ -222,7 +222,7 @@ interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone`
 - [x] **T5d.1** Silent fault presentation: new LOW channel `osd_bridge_fault_silent` (no sound/vibration/lights),
       legacy `osd_bridge_fault` deleted, no timer re-post (`faultAction` posts only on new/changed fault),
       `postStartFailure`/`postRestartNeeded` silent too. Plus T5d.4 setup text (delivered together in PR 5d-1).
-- [ ] **T5d.2** `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
+- [x] **T5d.2** `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
       detection (last-alive timestamp, gap > threshold with `was_bridging` and no clean stop => `SERVICE_DOWN`).
 - [ ] **T5d.3** Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
       LOW channel `osd_bridge_summary`; pure `buildSummary`; armed by `SetupActivity` Start and `BootReceiver`.

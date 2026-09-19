@@ -92,9 +92,14 @@ class OsdBridgeService : Service() {
             { state.fault(SystemClock.elapsedRealtime()) }, freshness, // live fault, not the 10 s-old tick value
         )
         val notifications = BridgeNotifications(this)
+        val (faultLog, liveness) = BridgeHistory.of(this)
         return object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)
-            override fun onHealthTick(fault: BridgeFault) = notifications.onHealthTick(fault)
+            override fun onHealthTick(fault: BridgeFault) {
+                notifications.onHealthTick(fault)
+                faultLog.onFault(fault)
+                liveness.touch()
+            }
         }
     }
 
@@ -105,6 +110,7 @@ class OsdBridgeService : Service() {
             return START_NOT_STICKY
         }
         started = true
+        runCatching { BridgeHistory.onServiceStart(this) }.onFailure { Log.e(TAG, "Could not record service start", it) }
         acquireWakeLock()
         registerMessageListener()
         scope.launch { safeLoop("worker") { runWorker() } }

@@ -127,4 +127,27 @@ class BridgeStateTest {
         assertNull(slot.take())
         assertFalse(slot.offer(3))
     }
+
+    @Test fun listenerRetryBackoff_doublesAndCaps() {
+        val seq = generateSequence(nextListenerRetryDelayMs(null)) { nextListenerRetryDelayMs(it) }.take(8).toList()
+        assertEquals(listOf(5_000L, 10_000L, 20_000L, 40_000L, 60_000L, 60_000L, 60_000L, 60_000L), seq)
+    }
+
+    @Test fun reregister_notDueWhenWatchTalking() {
+        assertFalse(shouldReregisterListener(100_000L, 90_000L, null))
+        assertFalse(shouldReregisterListener(100_000L, 100_000L - LISTENER_REREGISTER_AFTER_MS, null)) // exactly 60 s: not "more than"
+    }
+
+    @Test fun reregister_dueAfterSilenceThenThrottled() {
+        val silentSince = 0L
+        val t = LISTENER_REREGISTER_AFTER_MS + 1
+        assertTrue(shouldReregisterListener(t, silentSince, null))
+        assertFalse(shouldReregisterListener(t + 10_000L, silentSince, t))
+        assertFalse(shouldReregisterListener(t + LISTENER_REREGISTER_MIN_INTERVAL_MS - 1, silentSince, t))
+        assertTrue(shouldReregisterListener(t + LISTENER_REREGISTER_MIN_INTERVAL_MS, silentSince, t))
+    }
+
+    @Test fun reregister_notDueOnceWatchResumesEvenIfNeverRegisteredBefore() {
+        assertFalse(shouldReregisterListener(500_000L, 499_000L, 100_000L))
+    }
 }

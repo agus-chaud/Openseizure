@@ -1642,6 +1642,70 @@ GATE-0 (DEC-052) sigue vigente; DV-1..DV-6 siguen pendientes.
 
 ---
 
+## DEC-054: Batches 4 y 5a de `watch-osd-message-delivery` — forwarder HTTP y servicio del puente
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batches 4 y 5a) | **Fecha:** Septiembre 2026
+
+**Batch 4 (PR #16, mergeado):** `OsdHttpForwarder`. El host es la constante `127.0.0.1` (no se puede
+apuntar a la LAN: el servidor de OSD no tiene autenticación), puerto 8080, timeouts de 4 s, sin
+reintentos, sin cola, sin batching. Las llamadas son **bloqueantes** (no `suspend`): quien las use
+debe llamarlas desde `Dispatchers.IO`. Nunca lanza: un fallo de red da `UNREACHABLE` (POST) o `null`
+(`GET /data`). El parseo del estado de alarma queda para Batch 5b.
+
+**Batch 5a (PRs #17 y #18, abiertos):** el cambio pesaba 670 líneas contra un presupuesto de 400, así
+que se entregó como **dos PRs apilados**: 5a-1 (validación de mensajes + estado de salud) y 5a-2
+(el servicio en primer plano). Decisión tomada con el usuario.
+
+**Hallazgos de la revisión de Batch 3/4 resueltos en 5a:**
+1. **Relojes de salud inicializados en "ahora", no en 0.** Con 0, `evaluate()` reportaba
+   `OSD_UNREACHABLE` / `NO_WATCH_DATA` en el primer tick (falsa alarma al arrancar).
+2. **Latch de fallos.** `BridgeHealth.evaluate()` solo mira el último resultado, así que un
+   `WRONG_DATASOURCE` se borraba con un solo `OK`. El diseño dice "latched immediately" sin definir
+   cuándo se limpia. Se eligió la lectura más segura: `WRONG_DATASOURCE` y `OSD_PARSE_ERROR` se
+   mantienen hasta **2 `OK` consecutivos** (`LATCH_CLEAR_OK_STREAK`; poner 1 para limpiar con uno).
+   `UNREACHABLE` reinicia la racha; `SEND_SETTINGS` es neutro.
+
+**Decisiones de implementación (desviaciones o detalles que el diseño no fijaba):**
+- **DV-1 (falta `BLUETOOTH_CONNECT`):** en API 34+ el servicio NO llama `startForeground`; registra
+  ERROR, muestra una alerta de importancia alta ("el monitoreo NO está funcionando") y se detiene sin
+  reiniciarse. Si `POST_NOTIFICATIONS` también está denegado, esa alerta puede no verse: DV-1 sigue
+  necesitando una prueba en dispositivo real.
+- **Permisos extra:** `FOREGROUND_SERVICE` y `FOREGROUND_SERVICE_CONNECTED_DEVICE`. No estaban en
+  T5.1 pero, con `targetSdk 34`, un servicio `connectedDevice` lanza `SecurityException` sin ellos.
+- **Batería por defecto = 100** si OSD pide los ajustes (`sendSettings`) antes de que el reloj haya
+  mandado los suyos (`DEFAULT_HANDSHAKE_BATTERY`). Evita una falsa alerta de batería baja, pero puede
+  ocultar una batería baja real durante los primeros segundos. **Abierto a revisión.**
+- **Solo los chunks de acelerómetro válidos** reinician el reloj de "sin datos del reloj"; los
+  malformados se descartan y se cuentan, así que una ráfaga de basura termina en `NO_WATCH_DATA`.
+- **Pausa de 250 ms** antes de consultar `/data` solo tras un `OK` de acelerómetro, no tras
+  `SEND_SETTINGS`.
+- El largo exacto del array de acelerómetro (125) y los rangos de `battery` (0..100) y `sample_freq`
+  (1..200) los fijó el agente; validar contra el reloj real.
+
+**Modelo de concurrencia:** el callback de `MessageClient` (hilo principal) solo valida y deja el
+chunk en un slot único "gana el último"; un solo worker lo drena y hace los POST/GET bloqueantes en
+`Dispatchers.IO`. Un OSD lento demora únicamente al worker; hay como máximo un chunk pendiente y los
+reemplazados se cuentan y se loguean (WARN), sin cola ni reintento. Las consultas de estado son
+mutuamente excluyentes. `onDestroy`: quitar listener, liberar WakeLock (con `isHeld`), cerrar canal,
+cancelar scope.
+
+**Verificado contra el código real de OSD (rama beta):** `SdWebServer` llama a `updateFromJSON` en el
+hilo de NanoHTTPD, y `alarmState` se escribe antes de que el POST devuelva. Eso respalda la pausa de
+250 ms. No se encontró nada que contradiga el diseño.
+
+**Sin verificar, no adoptado:** el agente sospechó que declarar otro permiso de instalación (por
+ejemplo `CHANGE_NETWORK_STATE`) permitiría un servicio `connectedDevice` sin `BLUETOOTH_CONNECT` en
+runtime, lo que esquivaría DV-1. No se agregó; conviene confirmarlo en la documentación de Android.
+
+**Deuda:** el CI solo corre los tests de `:wear`, y no se dispara en PRs apilados sobre una rama
+distinta de `main`. Conviene sumar `:phone:testDebugUnitTest` al workflow.
+
+**Estado:** Batches 1–4 mergeados. 5a-1 (#17) y 5a-2 (#18) abiertos, sin mergear. Sigue 5b
+(`AlarmStateRelay` + `BridgeNotifications` + test del servicio). GATE-0 sigue asumido como PASS
+(DEC-052); DV-1..DV-6 pendientes.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

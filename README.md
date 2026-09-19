@@ -549,8 +549,8 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - [x] **Batch 2** Scaffold del módulo `:phone` (manifest, build.gradle, recursos mínimos) — [PR #13](https://github.com/agus-chaud/Openseizure/pull/13) — Agent-Done
 - [x] **Batch 3a** Codec/parser puros + tests — [PR #14](https://github.com/agus-chaud/Openseizure/pull/14) — Agent-Done
 - [x] **Batch 3b** BridgeHealth + test de integración loopback — [PR #15](https://github.com/agus-chaud/Openseizure/pull/15) — Agent-Done
-- [ ] **Batch 4** `OsdHttpForwarder` — Agent-Done
-- [ ] **Batch 5a** `OsdBridgeService` (core) — Agent-Done
+- [x] **Batch 4** `OsdHttpForwarder` — [PR #16](https://github.com/agus-chaud/Openseizure/pull/16) — Agent-Done
+- [ ] **Batch 5a** `OsdBridgeService` (core), en dos PRs apilados — [#17](https://github.com/agus-chaud/Openseizure/pull/17) (validación + estado de salud) y [#18](https://github.com/agus-chaud/Openseizure/pull/18) (servicio) — abiertos, sin mergear
 - [ ] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` — Agent-Done
 - [ ] **Batch 6** `SetupActivity` + `BootReceiver` — Agent-Done
 - [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma, requiere PASS de `safety-reviewer` y checkpoint explícito con el usuario) — Agent-Done

@@ -159,7 +159,7 @@ Parallelizable: none (T5.2 is the integration point for all Batch 3/4 units).
 
 ## Batch 5b — `AlarmStateRelay` + `BridgeNotifications`
 
-- [ ] **T5.3** `phone/.../bridge/AlarmStateRelay.kt` — relays alarm state to the watch via
+- [x] **T5.3** `phone/.../bridge/AlarmStateRelay.kt` — relays alarm state to the watch via
       `/osd/alarm_state` (`{"alarm_state","alarm_phrase"}`) on change and as a 10s keep-alive; never
       fabricates an `alarmState` on companion-side failure (silence, not a fake FAULT code). New.
       Satisfies: PCB-6, WCT-3, WCT-4, design Architecture Decisions #4, #6.

@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
-/** Seam for Batch 5b (AlarmStateRelay, BridgeNotifications). Called from background threads. */
+/** Seam wired to AlarmStateRelay (and BridgeNotifications) in onCreate. Called from background threads. */
 internal interface BridgeObserver {
     /** Raw `GET /data` body after a poll, or null if the poll failed. */
     fun onAlarmDataPolled(body: String?)
@@ -81,6 +81,15 @@ class OsdBridgeService : Service() {
         // Health clocks start "now", not 0, so the first tick cannot raise a false fault.
         state = BridgeState(SystemClock.elapsedRealtime())
         lastPollAtMs = SystemClock.elapsedRealtime()
+        observer = defaultObserver()
+    }
+
+    private fun defaultObserver(): BridgeObserver {
+        val relay = AlarmStateRelay(WearAlarmSender(this)::send) { SystemClock.elapsedRealtime() }
+        return object : BridgeObserver {
+            override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)
+            override fun onHealthTick(fault: BridgeFault) = Unit
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

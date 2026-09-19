@@ -238,7 +238,7 @@ interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone`
 - [x] **T5e.1** `sample_freq` must be exactly 25 (`SAMPLE_FREQ_HZ`); any other value is dropped and counted, never forwarded.
 - [x] **T5e.2** Frozen-sensor chunk (all 125 samples identical, no tolerance) rejected in the parser; not a valid watch
       message, so the silent `NO_WATCH_DATA` fault surfaces it. New rule, not in the signed-constants table.
-- [ ] **T5e.3** Listener resilience: capped-backoff retry of a failed `addListener` (5 s -> 60 s) and self-heal
+- [x] **T5e.3** Listener resilience: capped-backoff retry of a failed `addListener` (5 s -> 60 s) and self-heal
       re-registration after 60 s without a valid watch message (throttled to 1/60 s); pure, injectable-clock decisions.
 
 ---

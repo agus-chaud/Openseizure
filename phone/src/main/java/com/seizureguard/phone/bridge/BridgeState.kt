@@ -7,6 +7,21 @@ const val WAKE_LOCK_TIMEOUT_MS = 10L * 60 * 60 * 1000
 const val LATCH_CLEAR_OK_STREAK = 2        // consecutive OK outcomes needed to clear a latched fault
 const val DEFAULT_HANDSHAKE_BATTERY = 100  // only used if OSD asks for settings before the watch sent any
 
+// Recovery timings (not detection constants): message-listener resilience (safety finding F5).
+const val LISTENER_RETRY_INITIAL_MS = 5_000L
+const val LISTENER_RETRY_MAX_MS = 60_000L
+const val LISTENER_REREGISTER_AFTER_MS = 60_000L      // watch silent this long -> re-add the listener
+const val LISTENER_REREGISTER_MIN_INTERVAL_MS = 60_000L
+
+/** Backoff after a failed listener registration: 5 s, doubling, capped at 60 s. [previousMs] null = first failure. */
+fun nextListenerRetryDelayMs(previousMs: Long?): Long =
+    if (previousMs == null) LISTENER_RETRY_INITIAL_MS else (previousMs * 2).coerceAtMost(LISTENER_RETRY_MAX_MS)
+
+/** Self-heal: re-add the listener when no valid watch message for too long, at most once per interval. */
+fun shouldReregisterListener(nowMs: Long, lastWatchMsgAtMs: Long, lastReregisterAtMs: Long?): Boolean =
+    nowMs - lastWatchMsgAtMs > LISTENER_REREGISTER_AFTER_MS &&
+        (lastReregisterAtMs == null || nowMs - lastReregisterAtMs >= LISTENER_REREGISTER_MIN_INTERVAL_MS)
+
 /** Only an accepted accel POST can have produced a fresh OSD decision worth polling for. */
 fun shouldPollAfterPost(outcome: PostOutcome): Boolean = outcome == PostOutcome.OK
 
@@ -61,6 +76,7 @@ class BridgeState(startMs: Long, private val freshness: OsdDataFreshness? = null
     private var cachedSettings: WatchSettings? = null
 
     @Synchronized fun onValidAccel(nowMs: Long) { lastWatchMsgAtMs = nowMs }
+    @Synchronized fun lastWatchMessageAtMs(): Long = lastWatchMsgAtMs
     @Synchronized fun onMalformed() { malformed++ }
     @Synchronized fun onDropped() { dropped++ }
     @Synchronized fun onSettings(s: WatchSettings) { cachedSettings = s }

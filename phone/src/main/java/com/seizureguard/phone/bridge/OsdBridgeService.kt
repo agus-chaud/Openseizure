@@ -70,7 +70,11 @@ class OsdBridgeService : Service() {
     private lateinit var state: BridgeState
     private lateinit var freshness: OsdDataFreshness
     private var wakeLock: PowerManager.WakeLock? = null
-    private var messageListener: MessageClient.OnMessageReceivedListener? = null
+    private val listenerLock = Any()
+    private var messageListener: MessageClient.OnMessageReceivedListener? = null // guarded by listenerLock
+    private var listenerDestroyed = false                                        // guarded by listenerLock
+    private var listenerRetryDelayMs: Long? = null                               // guarded by listenerLock
+    private var lastReregisterAtMs: Long? = null                                 // health-tick coroutine only
     private var started = false
     @Volatile private var lastPollAtMs = 0L
     private var lastFault = BridgeFault.NONE
@@ -121,8 +125,11 @@ class OsdBridgeService : Service() {
 
     override fun onDestroy() {
         // Order (DEC-022/DEC-025): stop producers -> release WakeLock -> cancel scope -> super last.
-        messageListener?.let { Wearable.getMessageClient(this).removeListener(it) }
-        messageListener = null
+        synchronized(listenerLock) {
+            listenerDestroyed = true // stops retries and re-registration
+            messageListener?.let { Wearable.getMessageClient(this).removeListener(it) }
+            messageListener = null
+        }
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         wake.close()
@@ -165,10 +172,30 @@ class OsdBridgeService : Service() {
     // ── Inbound (main thread, non-blocking) ───────────────────────────────────
 
     private fun registerMessageListener() {
-        val listener = MessageClient.OnMessageReceivedListener { onMessage(it) }
-        messageListener = listener
-        Wearable.getMessageClient(this).addListener(listener)
-            .addOnFailureListener { Log.e(TAG, "MessageClient.addListener failed", it) }
+        synchronized(listenerLock) {
+            if (listenerDestroyed) return
+            val listener = messageListener
+                ?: MessageClient.OnMessageReceivedListener { onMessage(it) }.also { messageListener = it }
+            Wearable.getMessageClient(this).addListener(listener)
+                .addOnSuccessListener { synchronized(listenerLock) { listenerRetryDelayMs = null } }
+                .addOnFailureListener { onListenerRegistrationFailed(it) }
+        }
+    }
+
+    private fun onListenerRegistrationFailed(e: Exception) {
+        val wait = synchronized(listenerLock) {
+            nextListenerRetryDelayMs(listenerRetryDelayMs).also { listenerRetryDelayMs = it }
+        }
+        Log.w(TAG, "MessageClient.addListener failed, retrying in ${wait}ms", e)
+        scope.launch { delay(wait); registerMessageListener() }
+    }
+
+    private fun reregisterMessageListener() {
+        synchronized(listenerLock) {
+            if (listenerDestroyed) return
+            messageListener?.let { Wearable.getMessageClient(this).removeListener(it) }
+            registerMessageListener()
+        }
     }
 
     private fun onMessage(event: MessageEvent) {
@@ -265,6 +292,12 @@ class OsdBridgeService : Service() {
             if (fault != lastFault) Log.w(TAG, "Bridge fault: $lastFault -> $fault")
             lastFault = fault
             observer.onHealthTick(fault)
+            val now = SystemClock.elapsedRealtime()
+            if (shouldReregisterListener(now, state.lastWatchMessageAtMs(), lastReregisterAtMs)) {
+                lastReregisterAtMs = now
+                Log.w(TAG, "No valid watch message for over ${LISTENER_REREGISTER_AFTER_MS}ms: re-registering listener")
+                reregisterMessageListener()
+            }
         }
     }
 

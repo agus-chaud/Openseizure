@@ -14,13 +14,16 @@
         for a connectedDevice foreground service (startForeground throws SecurityException without).
         BLUETOOTH_CONNECT is the runtime prerequisite for the connectedDevice type on API 34
         (granted by SetupActivity in Batch 6; the service faults loudly if it is denied).
-        RECEIVE_BOOT_COMPLETED / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS arrive in Batch 6 (T6.1).
+        Batch 6: RECEIVE_BOOT_COMPLETED (resume after reboot) and REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+        (one-shot exemption prompt from SetupActivity).
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".PhoneApplication"
@@ -30,7 +33,25 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SeizureGuardPhone">
 
-        <!-- Not exported: started only by this app (SetupActivity / BootReceiver in Batch 6). -->
+        <activity
+            android:name=".setup.SetupActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Exported so BOOT_COMPLETED is always delivered; onReceive ignores any other action. -->
+        <receiver
+            android:name=".boot.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Not exported: started only by this app (SetupActivity / BootReceiver). -->
         <service
             android:name=".bridge.OsdBridgeService"
             android:exported="false"

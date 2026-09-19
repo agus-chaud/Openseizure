@@ -147,30 +147,39 @@ El modelo fue entrenado por el proyecto [OpenSeizureDetector](https://github.com
 
 ## Arquitectura del proyecto Android
 
-### Módulo único: `:wear`
+### Módulos: `:wear` + `:phone` (companion bridge, DEC-051/052)
 
-Este repo tiene **un solo módulo**, la app del reloj:
+> ⚠️ **Actualizado (septiembre 2026):** esta sección decía "módulo único `:wear`, no hay `:phone`".
+> Eso dejó de ser cierto — ver DEC-050/051/052 en `DECISIONS.md`. El Wear Data Layer solo entrega
+> mensajes entre apps con el mismo AppKey (`applicationId` + firma), y la app OSD no comparte el
+> nuestro. Por eso se reintrodujo `:phone`, pero con un propósito **distinto** al que tenía antes
+> de retirarse: no hace inferencia ni ML, es un **puente de transporte puro** reloj→OSD.
 
 ```
 OpenSeizure/                         ← carpeta raíz del proyecto
-└── wear/                            ← app del reloj (Wear OS)
-    └── com.seizureguard.wear
+├── wear/                            ← app del reloj (Wear OS) — com.seizureguard.wear
+└── phone/                           ← companion bridge (Android) — mismo applicationId/firma
+                                        que :wear, para que el AppKey del Wear Data Layer coincida
 ```
 
-El "teléfono" en este sistema es la **app OpenSeizureDetector V5.0** (un proyecto aparte que
-instalás en el celular). Ella recibe los datos del reloj, corre el modelo y dispara las alarmas.
-Por eso acá **no hay módulo `:phone` propio** — se retiró cuando confirmamos que OSD ya hace todo eso.
+El "teléfono" en este sistema sigue siendo, del lado de la inferencia, la **app OpenSeizureDetector
+V5.0** (proyecto aparte). Lo que corre `:phone` es solo el tramo intermedio: recibe del reloj por
+`MessageClient`, reenvía por HTTP al `SdWebServer` embebido de OSD (`http://127.0.0.1:8080`, data
+source "Garmin"), y devuelve el estado de alarma. Detalle completo en
+`openspec/changes/watch-osd-message-delivery/design.md`.
 
-**Analogía para data scientists:** este repo es solo el `serving/` del sensor — captura y
-transmite los datos. El `model/` y el `inference/` viven en la app OSD, no acá.
+**Analogía para data scientists:** `:wear` sigue siendo el `serving/` del sensor. `:phone` es el
+adapter/proxy entre ese serving y el `model/`+`inference/` que vive en la app OSD, no un modelo propio.
 
 ### Estructura de archivos
 
 ```
 OpenSeizure/
-├── settings.gradle.kts          ← "este proyecto tiene 1 módulo: :wear"
+├── settings.gradle.kts          ← "este proyecto tiene 2 módulos: :wear, :phone" (desde Batch 2
+│                                   de watch-osd-message-delivery, ver DEC-052)
 ├── build.gradle.kts             ← configuración global (solo declara qué versiones de
 │                                   plugins existen, no los aplica)
+├── signing.gradle.kts           ← firma compartida :wear/:phone (Batch 1, DEC-052)
 ├── gradle.properties            ← config global (android.useAndroidX, etc.)
 ├── gradle/
 │   └── libs.versions.toml       ← Version Catalog: todas las versiones centralizadas
@@ -180,25 +189,31 @@ OpenSeizure/
 ├── CAREGIVER_GUIDE.md           ← Guía para el cuidador (no técnico)
 ├── CLINICAL_SIGNOFF.md          ← Constantes clínicas (se firman en la config de OSD)
 │
-└── wear/                        ← Módulo del reloj (ÚNICO módulo del repo)
-    ├── build.gradle.kts         ← dependencias del reloj (Compose Wear, Wear Data Layer, etc.
-    │                              SIN TFLite/ExecuTorch — la inferencia es de OSD)
-    ├── src/
-    │   ├── main/java/com/seizureguard/wear/
-    │   │   ├── MainActivity.kt              ← pantalla principal: toggle inicio/stop
-    │   │   ├── logging/CsvLogger.kt         ← logging de muestras a CSV (Fase 1.6)
-    │   │   ├── ml/CircularBuffer.kt         ← ring buffer 750 muestras (Fase 1.5)
-    │   │   ├── data/WearDataLayerManager.kt ← protocolo OSD (JSON samples / alarm_state)
-    │   │   ├── alarm/AlarmStateManager.kt   ← vibración según el alarmState de OSD
-    │   │   └── service/SeizureMonitorService.kt  ← ForegroundService nocturno (captura+transporte)
-    │   └── test/java/com/seizureguard/wear/
-    │       ├── WearModuleTest.kt
-    │       ├── logging/CsvLoggerTest.kt          ← tests del logger CSV (Robolectric)
-    │       ├── ml/CircularBufferTest.kt          ← tests del ring buffer (Robolectric)
-    │       └── data/WearDataLayerManagerTest.kt  ← tests del protocolo OSD (Robolectric)
+├── wear/                        ← Módulo del reloj
+│   ├── build.gradle.kts         ← dependencias del reloj (Compose Wear, Wear Data Layer, etc.
+│   │                              SIN TFLite/ExecuTorch — la inferencia es de OSD)
+│   ├── src/
+│   │   ├── main/java/com/seizureguard/wear/
+│   │   │   ├── MainActivity.kt              ← pantalla principal: toggle inicio/stop
+│   │   │   ├── logging/CsvLogger.kt         ← logging de muestras a CSV (Fase 1.6)
+│   │   │   ├── ml/CircularBuffer.kt         ← ring buffer 750 muestras (Fase 1.5)
+│   │   │   ├── data/WearDataLayerManager.kt ← protocolo OSD (JSON samples / alarm_state)
+│   │   │   ├── alarm/AlarmStateManager.kt   ← vibración según el alarmState de OSD
+│   │   │   └── service/SeizureMonitorService.kt  ← ForegroundService nocturno (captura+transporte)
+│   │   └── test/java/com/seizureguard/wear/
+│   │       ├── WearModuleTest.kt
+│   │       ├── logging/CsvLoggerTest.kt          ← tests del logger CSV (Robolectric)
+│   │       ├── ml/CircularBufferTest.kt          ← tests del ring buffer (Robolectric)
+│   │       └── data/WearDataLayerManagerTest.kt  ← tests del protocolo OSD (Robolectric)
+│
+└── phone/                       ← Companion bridge (en construcción, PR por PR — ver Fase E abajo)
+    └── build.gradle.kts         ← mismo applicationId/firma que :wear, cero deps nuevas
+                                    (HttpURLConnection, sin OkHttp/Retrofit)
 ```
 
-> El modelo, su loader y el módulo `:phone` ya no están en el repo: la inferencia la hace la app OSD.
+> El modelo y su loader (`TFLiteModelLoader`, ExecuTorch) no están en este repo: la inferencia la
+> hace la app OSD. El módulo `:phone` sí volvió — no para inferencia, sino como puente de
+> transporte (ver arriba y DEC-051/052).
 
 ---
 
@@ -478,7 +493,7 @@ $env:ANDROID_HOME = "C:\Android"
 ## Plan de desarrollo por fases
 
 ### Fase 0: Setup del proyecto (COMPLETADA ✅)
-- [x] **0.1** Estructura del módulo `:wear` — Smoke tests verdes (el `:phone` se retiró luego: la inferencia es de OSD)
+- [x] **0.1** Estructura del módulo `:wear` — Smoke tests verdes (el `:phone` se retiró luego por duplicar la inferencia de OSD; septiembre 2026 se reintrodujo con otro propósito — ver Fase E)
 - [x] **0.2** Stack de dependencias (Coroutines, Wear Compose, Wear Data Layer, KSP). **Sin TFLite/ExecuTorch** — la inferencia corre en la app OSD
 - [x] **0.3** Entorno de build por CLI sin Android Studio (`BUILD_SETUP.md`) + suite de tests unitarios verde (59 tests) + CI en GitHub Actions
 - [x] **0.4** ADB Wireless — scripts de conexión/deploy al reloj
@@ -491,10 +506,13 @@ $env:ANDROID_HOME = "C:\Android"
 - [x] **1.5** Ring buffer circular de 750 muestras + cálculo de magnitud vectorial en milli-g
 - [x] **1.6** Logging a CSV (para verificar y analizar los datos crudos)
 
-### Arquitectura: el reloj alimenta la app OSD V5.0 (NO construimos phone app)
+### Arquitectura: el reloj alimenta la app OSD V5.0 (vía companion `:phone`, desde septiembre 2026)
 
-La inferencia, el umbral y las alarmas son responsabilidad de la **app OpenSeizureDetector V5.0**
-(rama beta). Este repo solo aporta el **lado reloj**, compatible con `SdDataSourceAw`.
+La inferencia, el umbral y las alarmas siguen siendo responsabilidad de la **app
+OpenSeizureDetector V5.0** (rama beta) — eso no cambió. Lo que sí cambió: el reloj ya no le puede
+hablar directo a OSD por Wear Data Layer (AppKey distinto — DEC-050), así que un módulo `:phone`
+nuevo (mismo AppKey que `:wear`) hace de puente hacia el `SdWebServer` de OSD por HTTP. Ver Fase E
+más abajo y `DEC-051`/`DEC-052`.
 
 Cada fase se trackea en **dos estados**: **Agent-Done** (código + tests verdes + Safety Reviewer
 PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, por el humano).
@@ -505,14 +523,40 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - **A.2** Alinear tamaño de chunk con lo que espera OSD (DEC-039) — Agent-Done [ ]
 - **A.3** Modo debug de números secuenciales para validación de Graham — Agent-Done [ ]
 
-#### Fase B: Retirar el módulo :phone (código muerto)
-- **B.1** Borrar `phone/` (la inferencia la hace OSD) — Agent-Done [ ]
-- **B.2** Quitar `:phone` de `settings.gradle.kts` + borrar restos de ML (`.pte`, TFLite) — Agent-Done [ ]
-- **B.3** Verificar que `:wear` compila y sus tests pasan — Agent-Done [ ]
+#### Fase B: Retirar el módulo :phone (código muerto) — **SUPERADA, ver Fase E**
+> ⚠️ Esta fase se ejecutó (el `:phone` original, de inferencia, se borró). Pero DEC-050 encontró que
+> el Wear Data Layer no entrega mensajes entre apps de distinto AppKey, y DEC-051 eligió reintroducir
+> `:phone` con un propósito distinto (puente de transporte, no inferencia). No es una reversión de
+> esta fase — es un módulo nuevo con otro rol. Se deja como historia, no se re-abren estos ítems.
+- [x] **B.1** Borrar `phone/` (la inferencia la hace OSD) — Agent-Done
+- [x] **B.2** Quitar `:phone` de `settings.gradle.kts` + borrar restos de ML (`.pte`, TFLite) — Agent-Done
+- [x] **B.3** Verificar que `:wear` compila y sus tests pasan — Agent-Done
 
 #### Fase C: Documentación + comunidad
 - **C.1** Actualizar README/CAREGIVER_GUIDE/CLINICAL_SIGNOFF a la arquitectura "reloj → OSD" — Agent-Done [ ]
 - **C.2** Post en GitHub discussion #69 (definir interfaz AndroidWear) — Agent-Done [ ]
+
+#### Fase E: SDD `watch-osd-message-delivery` — companion `:phone` como puente de transporte
+> Causa raíz confirmada en DEC-050 (Wear Data Layer descarta mensajes entre apps con distinto
+> AppKey). Enfoque elegido: DEC-051 (Opción F). Detalle completo en
+> `openspec/changes/watch-osd-message-delivery/{proposal,design,tasks}.md`, espejo en engram
+> `sdd/watch-osd-message-delivery/*`. Se entrega en 10 PRs encadenados (`stacked-to-main`).
+> **GATE-0** (experimento WearSD+OSD-beta en hardware real) fue asumido como PASS por decisión
+> explícita del usuario sin correrlo aún — ver DEC-052 y engram `.../gate-0-override`. Las tareas
+> DV-1..DV-6 (verificación en hardware) siguen pendientes y son obligatorias antes de dar el
+> feature por terminado.
+- [x] **Batch 1** Firma compartida `:wear`/`:phone` (`signing.gradle.kts`) — [PR #12](https://github.com/agus-chaud/Openseizure/pull/12) — Agent-Done
+- [x] **Batch 2** Scaffold del módulo `:phone` (manifest, build.gradle, recursos mínimos) — [PR #13](https://github.com/agus-chaud/Openseizure/pull/13) — Agent-Done
+- [ ] **Batch 3a** Codec/parser puros + tests — Agent-Done
+- [ ] **Batch 3b** BridgeHealth + test de integración loopback — Agent-Done
+- [ ] **Batch 4** `OsdHttpForwarder` — Agent-Done
+- [ ] **Batch 5a** `OsdBridgeService` (core) — Agent-Done
+- [ ] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` — Agent-Done
+- [ ] **Batch 6** `SetupActivity` + `BootReceiver` — Agent-Done
+- [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma, requiere PASS de `safety-reviewer` y checkpoint explícito con el usuario) — Agent-Done
+- [ ] **Batch 8** Handshake de versión/compatibilidad — Agent-Done
+- [ ] **Batch 9** Ajustes de documentación — Agent-Done
+- [ ] **DV-1..DV-6** Verificación en hardware real (Galaxy Watch 8 + OSD beta) — Field-Done
 
 #### Fase D: Validación de campo (hardware-gated — ver `HARDWARE_RUNBOOK.md`)
 > SOLO un humano con el Watch 8 + la app OSD instalada. El agente prepara el runbook e interpreta.

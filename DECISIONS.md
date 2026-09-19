@@ -3,8 +3,7 @@
 Este archivo documenta **por qué** tomamos cada decisión técnica relevante.
 La pregunta "por qué" es más valiosa que el "qué" — el código ya explica el qué.
 
-> Para un data scientist trainee: esto es el log de experimentos, pero para decisiones de ingeniería.
-> Cada entrada es una elección con alternativas consideradas y razones claras.
+> Para un data scientist trainee: esto es el log de experimentos, pero para decisiones de ingeniería. Cada entrada es una elección con alternativas consideradas y razones claras.
 
 ---
 
@@ -22,7 +21,8 @@ valioso), pero quedan marcadas como superadas:
   modelo **`deepEpiCnn_2026_01_24_Run24.pte`** (NO TFLite, NO `cnn_v024.tflite`). Tensor real:
   **`(1, 1, 750)`** (no `(1,750,1)`). Dependencia: `org.pytorch:executorch-android:1.0.1`.
 - Este repo es **módulo único `:wear`**. El módulo `:phone` propio fue **retirado** (lo reemplaza
-  la app OSD).
+  la app OSD). **Actualización (DEC-051):** se reintroduce parcialmente un módulo `:phone` con otro
+  propósito — puente de transporte reloj→OSD, no inferencia.
 
 **Decisiones SUPERADAS por este cambio** (válidas como historia, no como estado actual):
 - **DEC-002** (multi-módulo `:wear` + `:phone`) → hoy módulo único `:wear`.
@@ -1226,6 +1226,11 @@ Mezclarlos confundiría dos responsabilidades.
 adaptándose al formato que `SdDataSourceAw.java` de OSD **ya espera** (no al revés). Esta entrada
 **reemplaza** el contrato binario de DEC-034 y DEC-039.
 
+> ⚠️ **Bloqueante de transporte conocido (DEC-050):** este contrato JSON es correcto (matchea
+> `SdDataSourceAw`), pero hoy los mensajes **no llegan a OSD**: el Wear Data Layer los descarta por
+> *AppKey mismatch* — SeizureGuard y OSD no comparten package name ni certificado de firma. El
+> arreglo está en exploración SDD `watch-osd-message-delivery`. Ver **DEC-050**.
+
 > **Por qué cambió:** OSD parsea `accel_data` como JSON primero (`json.has("samples")`), y su
 > fallback binario lee `int16`, no `float32`. Mandar floats binarios little-endian (DEC-034) NO
 > matcheaba ese parser → datos basura silenciosos. Adaptarse a JSON es lo que hace que OSD funcione.
@@ -1354,6 +1359,256 @@ notificación), `WearDataLayerManager.kt` (envío con Boolean), `AlarmStateManag
 
 ---
 
+## DEC-049: El producto NO guarda historial clínico — el cruce sueño/convulsiones se hace fuera de la app
+
+**Fase:** SDD `context-logging` (exploración) | **Fecha:** Agosto 2026
+
+**El pedido:**
+Además de avisarle al cuidador, poder registrar las variables que el reloj mide (horas y calidad de
+sueño, estrés) asociadas a cada convulsión detectada, para con el tiempo buscar patrones y ayudar a
+reducir la frecuencia.
+
+**Lo que la exploración encontró (los cuatro hechos que decidieron todo):**
+
+1. **El reloj no puede dar sueño ni estrés.** No es una preferencia arquitectónica: Health Connect
+   —donde vive ese dato— **no existe en Wear OS**, solo en el teléfono. Health Services, la API que
+   sí corre en el reloj, expone métricas de fitness en vivo (pulso, distancia, calorías), no fases
+   de sueño ni score de estrés. Agregarle Room al reloj no resolvería nada porque el dato no está ahí.
+2. **La detección es de OSD, un tercero.** Su base local de eventos no declara un `<provider>`
+   exportado, así que ninguna otra app la puede leer sin un cambio upstream. Lo único alcanzable hoy
+   sin tocar OSD es un broadcast implícito (`uk.org.openseizuredetector.dialler.ALARM`), frágil por
+   las restricciones de background de Android 8+.
+3. **La correlación es retrospectiva.** No hace falta capturar nada en tiempo real: con un timestamp
+   del evento alcanza para cruzar después contra datos de sueño ya fechados. Esto baja el requisito
+   de "no perder ningún evento en vivo" a "tener la fecha", y es lo que hace viable la opción barata.
+4. **El dato personal ya es exportable sin construir nada.** La descarga personal de Samsung Health
+   entrega CSVs con sueño, estrés, HRV, pulso, SpO2 y temperatura. El permiso de socio que Samsung
+   exige aplica a *una app que lee el dato en vivo*, **no** al usuario bajándose sus propios datos.
+
+**Decisión:**
+El producto **no incorpora almacenamiento de datos de salud**. El cruce entre convulsiones y
+contexto se hace **fuera de la aplicación**: exportación manual periódica de los eventos de OSD y de
+Samsung Health, unidos por fecha en un análisis offline. Este repo (`:wear`) **no cambia en nada**.
+
+Procedimiento operativo en [`docs/RUNBOOK_EXPORTACION_DATOS.md`](docs/RUNBOOK_EXPORTACION_DATOS.md).
+
+**Por qué esta y no las otras:**
+
+| Alternativa | Por qué se descartó |
+|---|---|
+| Persistencia en el reloj (Room) | El dato de sueño/estrés es inalcanzable desde Wear OS (hecho 1). Además contradice DEC-046 y DEC-030, que definen el reloj como transporte sin memoria a propósito. |
+| App/módulo companion en el teléfono | Reabre el módulo `:phone` retirado, introduce PHI persistente que exige gobernanza que hoy no existe (ver TODO-003), y depende de la señal más débil (el broadcast implícito). Meses de trabajo **antes** del primer dato. Queda disponible si el enfoque elegido demuestra que el dato rinde. |
+| Pedirle a OSD que agregue campos de sueño/estrés a su registro de eventos | Es la opción más limpia a largo plazo —el diario ya es de ellos y le serviría a todos sus usuarios— pero no la controlamos. Vale como conversación upstream en paralelo, no como plan. |
+
+**La razón de fondo (esta es la que importa dentro de seis meses):**
+Hoy hay **cero eventos registrados** — OSD nunca llegó a funcionar con el reloj. Y para que una
+comparación simple sea más que casualidad hacen falta del orden de 20-30 eventos confirmados; para
+mirar dos o tres variables juntas, 30-60. A frecuencias reales de convulsiones nocturnas eso son
+meses o años. **Construir infraestructura de producto para un dataset que todavía no existe es
+invertir en el orden equivocado.** La exportación manual cuesta casi nada y contesta, en unos meses,
+si vale la pena automatizar.
+
+**Riesgo que esta decisión asume explícitamente:**
+OSD detecta ~76% de las convulsiones reportadas y genera falsas alarmas por movimientos repetitivos.
+Contar alarmas crudas como convulsiones corrompe el dato por los dos lados (falsos positivos, y
+falsos negativos que contaminan el grupo de comparación). **La única etiqueta usable es la marca
+manual genuino/falso del Data Sharing de OSD**, que solo existe si se viene registrando desde el
+principio. Está documentado como Fase 1 del runbook.
+
+**Lo que esta decisión NO cierra:**
+El hueco de gobernanza. `CLINICAL_SIGNOFF.md` solo contempla constantes de lógica de detección; no
+tiene categoría para "nueva clase de dato de salud almacenado". Hoy no hace falta porque no se
+almacena nada — pero si algún día se retoma el enfoque companion, ese hueco es bloqueante. Anotado
+como **TODO-003**.
+
+**Archivos afectados:** ninguno del módulo `:wear`. Documentación:
+`docs/RUNBOOK_EXPORTACION_DATOS.md` (nuevo),
+`openspec/changes/context-logging/exploration.md` (la investigación completa con fuentes).
+
+---
+
+## DEC-050: Causa raíz confirmada del fallo de entrega reloj→OSD: AppKey mismatch en el Wear Data Layer
+
+**Fase:** SDD `watch-osd-message-delivery` (exploración) | **Fecha:** Agosto–Septiembre 2026
+
+**Decisión:** Registrar la causa raíz **confirmada** del bloqueante de campo. La Wear Data Layer API
+solo entrega mensajes entre apps que comparten **package name Y certificado de firma** (Google lo
+llama "AppKey" = `packageName` + hash del signing cert). Google Play Services
+(`com.google.android.gms.persistent`) en el teléfono aplica ese filtro **antes** de que corra
+cualquier listener de app. SeizureGuard (`com.seizureguard.wear`, firmado con una debug key propia)
+y OSD (`uk.org.openseizuredetector`, release key de Graham) no comparten ninguno de los dos, así que
+cada mensaje reloj→teléfono se descarta con la línea de log
+`Failed to deliver message to AppKey[<oculto#...>, <hash hex de 40 chars del signing cert>]`.
+
+**Qué reemplaza:** la hipótesis "OSD desactualizado" de la prueba de campo de junio 2026 (ver
+`FIELD_TEST_NOTES.md`), que atribuía el "Data source fault" a que la V5.0.5 instalada no traía el
+`SdDataSourceAw` completo (esa parte vivía en la rama `beta`, fusionada al release en V5.0.8).
+**Esa hipótesis quedó refutada:** con OSD V5.0.8, V5.0.9 y la beta actual —todas con `SdDataSourceAw`
+completo— el fallo es idéntico. Estar en una versión sin el soporte de reloj terminado era un
+problema secundario real, pero no es por lo que la conexión falla.
+
+**Evidencia:**
+
+- **Logcat simultáneo de los dos dispositivos (2026-08-29):** con el logcat del teléfono a la vista,
+  la línea `Failed to deliver message to AppKey[...]` la emite `com.google.android.gms.persistent`
+  (Play Services), no OSD. El mensaje muere en el router de GMS; `SdDataSourceAw` nunca lo ve.
+- **WearSD (`github.com/OpenSeizureDetector/WearSD`), la app de reloj oficial de OSD, funciona por
+  una única razón:** declara `applicationId = uk.org.openseizuredetector` (igual que la app de
+  teléfono) y se firma con la misma key. Usa el mismo patrón runtime (`MessageClient` +
+  `NodeClient.connectedNodes`, sin `WearableListenerService` ni `<capability>` xml) y los mismos
+  paths que SeizureGuard. Lo único distinto es la identidad (package + firma).
+- **El flag `com.google.android.wearable.standalone` queda descartado como causa:** WearSD lo tiene
+  igual que SeizureGuard.
+
+**Qué se descartó como salida:**
+
+| Alternativa | Por qué no |
+|---|---|
+| `DataClient` en vez de `MessageClient` | Mismo scoping por firma. No ayuda. |
+| `CapabilityClient` / descubrimiento por capability | Mismo scoping por firma. No ayuda. |
+| Parchear `SdDataSourceAw` para aceptar un package de terceros | Sobre el Data Layer es imposible: GMS descarta el mensaje antes de la entrega; `MessageClient`/`DataClient` no le dan a OSD forma de recibirlo. |
+| "Shim" en el teléfono bajo `uk.org.openseizuredetector` reinyectando en OSD | OSD lee su data source en proceso, no por IPC. Sin efecto. |
+
+No existe patrón soportado de mensajería Data Layer cross-package.
+
+**Implicación:** cualquier arreglo que siga usando el Wear Data Layer exige que SeizureGuard presente
+el **mismo AppKey que el build de OSD con el que habla** — es decir, mismo `applicationId`
+(`uk.org.openseizuredetector`) y el mismo certificado de firma que la app OSD *instalada*. Como la
+release keystore privada de Graham no es obtenible, eso solo cierra si el teléfono corre una OSD
+compilada y firmada por el propio usuario. La alternativa que **no** depende del Data Layer es BLE:
+SeizureGuard como periférico BLE hablándole a `SdDataSourceBLE` de OSD, igual que BangleSD y
+PineTimeSD (bypassa Play Services y la regla de AppKey por completo).
+
+**Estado:** causa raíz **CONFIRMADA**. El enfoque del fix ya está **ELEGIDO** — ver **DEC-051**
+(Opción F: companion app `:phone` en el teléfono con el mismo AppKey que `:wear`, que reenvía a OSD
+por HTTP al `SdWebServer` embebido). Queda descartada la Opción A que se barajaba acá (SeizureGuard
+adopta `applicationId = uk.org.openseizuredetector`, mantiene `namespace = com.seizureguard.wear`, y
+comparte una signing key con una OSD de teléfono compilada localmente): Graham no la endorsó.
+Exploración y propuesta en `openspec/changes/watch-osd-message-delivery/`; espejo en engram
+`sdd/watch-osd-message-delivery/explore`, detalle en
+`architecture/seizureguard-aw-appkey-delivery-failure`.
+
+**Documentación corregida junto con esta decisión:** `FIELD_TEST_NOTES.md` (bloque de
+actualización), `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` (sección de causa real y paso 1) y
+`docs/RUNBOOK_EXPORTACION_DATOS.md` (mención de paso en Fase 0).
+
+**Archivos afectados:** ninguno del módulo `:wear` (el fix aún no está decidido). Solo documentación.
+
+---
+
+## DEC-051: Enfoque elegido para el fallo de entrega reloj→OSD: companion app en el teléfono (Opción F)
+
+**Fase:** SDD `watch-osd-message-delivery` (propuesta) | **Fecha:** Septiembre 2026
+
+**Decisión:** Adoptar la **Opción F**. En vez de cambiar la identidad del reloj o depender de una
+OSD compilada por el usuario:
+
+- El reloj (`:wear`) mantiene `applicationId = com.seizureguard.wear` y todo su pipeline (sensores,
+  `CircularBuffer`, máquina de estados, guard DEC-047, watchdog DEC-048) sin cambios de lógica.
+- Se agrega un **módulo `:phone`** nuevo al proyecto SeizureGuard, con **el mismo `applicationId` y
+  la misma clave de firma** que `:wear`. Con eso el AppKey del Wear Data Layer coincide (las dos
+  apps son del mismo autor) y los mensajes reloj→`:phone` se entregan.
+- El `:phone` recibe `/osd/accel_data` y `/osd/settings` por `MessageClient` en un foreground
+  service propio, y los reenvía a OSD como HTTP `POST /data` / `POST /settings` a
+  `http://127.0.0.1:8080` (servidor `SdWebServer` embebido en OSD, verificado en la rama beta:
+  NanoHTTPD puerto 8080 → `mSdDataSource.updateFromJSON(...)`).
+- En OSD el usuario selecciona el data source **"Garmin"** (`SdDataSourceGarmin` es el receptor
+  pasivo de ese POST). OSD queda como el **APK oficial de releases** — sin cambios en el código de
+  OSD, sin compilar OSD.
+- El estado de alarma vuelve al reloj vía el `:phone` (mecanismo y latencia máxima los define
+  `sdd-design`; candidato: `:phone` hace `GET /data` a `SdWebServer` y reenvía `/osd/alarm_state` al
+  reloj por `MessageClient`).
+
+**Por qué sobre las alternativas:**
+
+| Opción | Veredicto |
+|---|---|
+| A — el reloj adopta `uk.org.openseizuredetector` + firma compartida con una OSD compilada por el usuario | No endorsada por Graham; obliga a mantener una OSD propia para siempre; choca con la identidad de WearSD. **Descartada como dirección.** |
+| B — reemplazar la app de reloj por WearSD | Pierde el watchdog/DEGRADED (DEC-048) y el guard (DEC-047); igual necesita firma compartida; ~6 h de batería. **Solo se conserva como experimento de validación.** |
+| C — el reloj como periférico BLE | Graham: el SO del reloj Wear OS "probablemente controla el stack de Bluetooth", lo hace difícil. **Despriorizada.** |
+| D — mensajería Data Layer cross-package | Técnicamente imposible; solo serviría un ingreso nuevo del lado de OSD (ej. Android Broadcasts). **Fuera de alcance.** |
+
+**Basado en:** recomendación por mail de Graham Jones (mantenedor de OSD) — patrón "companion app en
+el teléfono, igual que el detector de Garmin". Ver **DEC-050** (causa raíz confirmada) y
+`openspec/changes/watch-osd-message-delivery/` (exploración + propuesta; espejo engram
+`sdd/watch-osd-message-delivery/explore` #1195 y `.../proposal` #1198).
+
+**Decisiones cerradas con el usuario** (entran a spec y diseño):
+
+1. Retorno del estado de alarma reloj←OSD: mecanismo y tope de latencia **los define `sdd-design`**.
+2. Manejo de fallo del `:phone`: **notificación de fallo al cuidador, SIN pantalla de estado**.
+   Headless con aviso claro si deja de recibir del reloj o de reenviar a OSD.
+3. `minSdk` del `:phone`: **API 26** (Android 8) — cubre el Samsung A52, coincide con el piso de OSD.
+4. El código actual del reloj que habla directo a OSD (`WearDataLayerManager` → OSD): **se deja
+   detrás de un flag de compilación**, no se borra.
+5. Experimento de validación (WearSD + OSD beta, `docs/EXPERIMENTO_WEARSD_OSD_BETA.md`): **en
+   paralelo, NO bloqueante**; el usuario lo corre cuando tenga el reloj, antes de `sdd-apply`. Si
+   falla, se frena antes de escribir código.
+
+**Reversión parcial de la decisión del 2026-06-05** (borrado de `:phone` como "código muerto que
+duplicaba la inferencia de OSD"): este `:phone` **no hace inferencia, ni umbral, ni SMS** — es un
+puente de transporte puro, necesario solo porque OSD no puede recibir mensajes Data Layer de una app
+de otro package. Propósito distinto, no la redundancia que se removió.
+
+**Estado:** enfoque **ELEGIDO**. Pendiente: `sdd-spec` + `sdd-design` (en curso), luego `sdd-tasks`
+(PRs encadenados: el cambio supera el presupuesto de 400 líneas). `safety-reviewer` PASS
+**obligatorio** antes de cualquier PR (toca la ruta de la alarma). El experimento de validación
+corre antes de `sdd-apply`.
+
+**Archivos afectados (previstos):** `settings.gradle.kts` y build raíz (re-agregar `:phone`); nuevo
+`phone/` (bridge service, listener MessageClient, forwarder HTTP, watchdog watch→companion,
+notificación de fallo); `wear/src/main/java/com/seizureguard/wear/data/WearDataLayerManager.kt` (el
+peer pasa a ser el companion, detrás de flag);
+`wear/src/main/java/com/seizureguard/wear/service/SeizureMonitorService.kt` (la salud de entrega mide
+reloj→companion); config de firma compartida `:wear`/`:phone`;
+`docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `README.md` (instalación de dos APKs, data source = Garmin).
+
+---
+
+## DEC-052: Batch 1 de `watch-osd-message-delivery` — firma compartida `:wear`/`:phone`
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 1 de 9) | **Fecha:** Septiembre 2026
+
+**Decisión:** Primer PR de la cadena (`sdd/watch-osd-delivery-01-signing`, PR #12) que sienta la base
+para que el futuro módulo `:phone` (Batch 2) comparta `applicationId` + certificado de firma con
+`:wear` — condición necesaria para que el AppKey del Wear Data Layer coincida (ver DEC-050, causa
+raíz confirmada, y DEC-051, enfoque elegido).
+
+**Qué se agregó (T1.1–T1.3 de `tasks.md`):**
+- `signing.gradle.kts` (raíz): un único bloque `signingConfigs` que lee `keystore.properties`
+  (gitignoreado) y lo expone vía `rootProject.extra` para que cualquier módulo lo consuma más
+  adelante.
+- `keystore.properties.template`: valores placeholder, sin secretos reales, para que quien clone el
+  repo sepa qué completar.
+- `build.gradle.kts` (raíz): `apply(from = "signing.gradle.kts")` para wirear el archivo nuevo.
+
+**Por qué en un PR separado y sin tocar `wear/build.gradle.kts` todavía:** `tasks.md` divide
+deliberadamente la firma compartida (Batch 1) de su consumo real por módulo (Batch 2 para `:phone`,
+Batch 7 para retargetear `:wear`) para mantener cada PR chico y de bajo riesgo — el presupuesto de
+revisión (`review_budget_lines`) es 400 líneas y el cambio completo se estimó en ~1.910, de ahí la
+cadena de 10 PRs `stacked-to-main`.
+
+**Contexto del override de GATE-0 (importante, no repetir en PRs futuros sin releer esto):**
+`tasks.md` exige un PASS registrado del experimento de hardware real
+(`docs/EXPERIMENTO_WEARSD_OSD_BETA.md`, WearSD + OSD beta en el Galaxy Watch 8 físico) antes de
+arrancar cualquier tarea de código. El usuario no tuvo acceso al reloj (~1 semana) y decidió
+explícitamente asumir GATE-0 como PASS para no bloquear el arranque de `sdd-apply` — una aceptación
+de riesgo informada del dueño del proyecto, no un descuido. Registro completo en engram
+`sdd/watch-osd-message-delivery/gate-0-override`.
+
+Lo no verificado en hardware real sigue siendo específicamente si dos apps SeizureGuard firmadas
+igual pueden intercambiar mensajes Wear Data Layer **en este Galaxy Watch 8** (Graham solo lo probó
+en un Watch 7) — ese riesgo se concentra en Batch 7 / PR9 (retargeting de `:wear`), no en Batch 1.
+El contrato HTTP con OSD (`SdWebServer`/`SdDataSource`) se verificó leyendo el código fuente real de
+la rama beta, no se adivinó, así que tiene más confianza aun sin test en dispositivo. Las tareas
+DV-1..DV-6 de verificación en hardware siguen siendo obligatorias para considerar el feature
+"terminado" — este override no las salta ni las debilita.
+
+**Estado:** Batch 1 mergeado a la cadena vía PR #12. Progreso espejado en engram
+(`sdd/watch-osd-message-delivery/apply-progress`). Sigue Batch 2 (`:phone` module scaffold).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |
@@ -1362,4 +1617,4 @@ notificación), `WearDataLayerManager.kt` (envío con Boolean), `AlarmStateManag
 | DEC-018 | Umbral de decisión: ¿0.5 o valor calibrado contra OSDB? | 2.4 | **Obsoleta para este repo** — el umbral vive en OSD, no en el reloj |
 | DEC-019 | Frecuencia de inferencia: ¿cada ventana nueva o cada 5s? | 2.3 | **Obsoleta para este repo** — la inferencia es de OSD |
 | DEC-020 | Protocolo de mensajes Wear Data Layer: formato del payload | 3.1 | **Resuelta por DEC-046** — JSON UTF-8 |
-| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | Pendiente (Fase 1.4 opcional) |
+| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | **Resuelta por DEC-049 — no.** El Sensor SDK (lado reloj) expone señales crudas (accel, ECG, PPG), no fases de sueño ni score de estrés. El Data SDK (lado teléfono) sí los tiene pero exige aprobación de socio de Samsung. Ninguno de los dos hace falta: la descarga personal de Samsung Health ya entrega esos datos en CSV sin gate alguno |

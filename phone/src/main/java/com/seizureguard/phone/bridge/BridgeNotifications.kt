@@ -64,6 +64,7 @@ internal class BridgeNotifications(
             BridgeFault.OSD_UNREACHABLE -> R.string.fault_osd_unreachable
             BridgeFault.OSD_WRONG_DATASOURCE -> R.string.fault_osd_wrong_datasource
             BridgeFault.OSD_REJECTS_DATA -> R.string.fault_osd_rejects_data
+            BridgeFault.OSD_DATA_STALE -> R.string.fault_osd_data_stale
             BridgeFault.NONE -> R.string.bridge_status_text
         }
 

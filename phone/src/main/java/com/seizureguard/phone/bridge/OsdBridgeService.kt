@@ -80,8 +80,8 @@ class OsdBridgeService : Service() {
     override fun onCreate() {
         super.onCreate()
         // Health clocks start "now", not 0, so the first tick cannot raise a false fault.
-        state = BridgeState(SystemClock.elapsedRealtime())
         freshness = OsdDataFreshness({ SystemClock.elapsedRealtime() })
+        state = BridgeState(SystemClock.elapsedRealtime(), freshness)
         lastPollAtMs = SystemClock.elapsedRealtime()
         observer = defaultObserver()
     }

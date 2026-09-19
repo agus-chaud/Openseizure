@@ -49,7 +49,7 @@ class LatestSlot<T : Any> {
  * `OK` outcomes arrive, so a single stray OK cannot silently clear it. UNREACHABLE resets the streak;
  * SEND_SETTINGS is neutral (it leaves the streak unchanged).
  */
-class BridgeState(startMs: Long) {
+class BridgeState(startMs: Long, private val freshness: OsdDataFreshness? = null) {
     private var lastWatchMsgAtMs = startMs
     private var lastPostOkAtMs = startMs
     private var consecutiveFailures = 0
@@ -83,6 +83,9 @@ class BridgeState(startMs: Long) {
         }
     }
 
-    @Synchronized fun fault(nowMs: Long): BridgeFault =
-        evaluate(nowMs, lastWatchMsgAtMs, lastPostOkAtMs, consecutiveFailures, latched ?: lastOutcome)
+    // OSD_DATA_STALE is derived (not latched): it clears itself as soon as OSD's timestamp advances again.
+    @Synchronized fun fault(nowMs: Long): BridgeFault = evaluate(
+        nowMs, lastWatchMsgAtMs, lastPostOkAtMs, consecutiveFailures, latched ?: lastOutcome,
+        osdDataStale = freshness?.isFresh() == false,
+    )
 }

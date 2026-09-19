@@ -11,6 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -66,6 +67,11 @@ class OsdBridgeServiceTest {
         val texts = BridgeFault.values().filter { it != BridgeFault.NONE }
             .map { app.getString(BridgeNotifications.faultTextRes(it)) }
         assertEquals(texts.size, texts.toSet().size)
+    }
+
+    @Test fun notifications_dataStaleTextIsPlainAndActionable() {
+        val text = app.getString(BridgeNotifications.faultTextRes(BridgeFault.OSD_DATA_STALE))
+        assertTrue(text.contains("not analysing") && text.contains("Garmin"))
     }
 
     @Test fun notifications_faultChannelIsHighAndErrorCategory() {

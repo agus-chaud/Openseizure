@@ -184,10 +184,10 @@ Parallelizable: T5.3 and T5.4 can be developed in parallel (both depend only on 
       `dataTimeStr` (last distinct value, injectable clock, `OSD_DATA_FRESH_MS` 15s) and relay asymmetry:
       `alarmState >= 1` always relayed; `0` (change + keep-alive) only if `BridgeFault == NONE` and data fresh,
       else silence. Cites safety-review-pre-batch7 F1. Modified/New.
-- [ ] **T5c.2** `BridgeFault.OSD_DATA_STALE` (POST OK but OSD data timestamp stale) in `BridgeHealth`/`BridgeState`
+- [x] **T5c.2** `BridgeFault.OSD_DATA_STALE` (POST OK but OSD data timestamp stale) in `BridgeHealth`/`BridgeState`
       + caregiver notification text in `BridgeNotifications`/`strings.xml`. Cites safety-review-pre-batch7 F1.
       Dependencies: T5c.1.
-- [ ] **T5c.3** Frozen-state tests: alarm 1/2/3 relayed under fault + stale data; 0 withheld under fault / frozen
+- [x] **T5c.3** Frozen-state tests: alarm 1/2/3 relayed under fault + stale data; 0 withheld under fault / frozen
       timestamp; 0 resumes on advance; tracker boundaries; `OSD_DATA_STALE` health/state/notification. Cites
       safety-review-pre-batch7 F1. Dependencies: T5c.1, T5c.2.
 

@@ -51,6 +51,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- Daily silent summary, fired by an inexact AlarmManager alarm set by this app only. -->
+        <receiver
+            android:name=".summary.MorningSummaryReceiver"
+            android:exported="false" />
+
         <!-- Not exported: started only by this app (SetupActivity / BootReceiver). -->
         <service
             android:name=".bridge.OsdBridgeService"

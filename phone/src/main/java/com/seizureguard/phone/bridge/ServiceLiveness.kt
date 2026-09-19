@@ -42,6 +42,8 @@ class ServiceLiveness(
         store.put(KEY_CLEAN, "1")
     }
 
+    fun isCleanStop(): Boolean = store.get(KEY_CLEAN) == "1"
+
     fun lastAliveMs(): Long = store.get(KEY_ALIVE)?.toLongOrNull() ?: 0L
 
     private companion object {

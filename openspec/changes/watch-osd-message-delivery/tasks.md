@@ -224,7 +224,7 @@ interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone`
       `postStartFailure`/`postRestartNeeded` silent too. Plus T5d.4 setup text (delivered together in PR 5d-1).
 - [x] **T5d.2** `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
       detection (last-alive timestamp, gap > threshold with `was_bridging` and no clean stop => `SERVICE_DOWN`).
-- [ ] **T5d.3** Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
+- [x] **T5d.3** Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
       LOW channel `osd_bridge_summary`; pure `buildSummary`; armed by `SetupActivity` Start and `BootReceiver`.
 - [x] **T5d.4** Setup instructions: turn OFF OSD "Enable Audible System FaultWarnings"; keep phone charging
       overnight; keep Garmin data source / web server instructions.

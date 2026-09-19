@@ -72,4 +72,16 @@ class BootReceiverTest {
         assertEquals(BridgeNotifications.FAULT_CHANNEL_ID, failureNotification().channelId)
         assertNotNull(failureNotification().contentIntent)
     }
+
+    @Test fun boot_armsMorningSummary_evenIfResumeFails() {
+        BridgePrefs.setWasBridging(app, true)
+        receiver { throw SecurityException("boot FGS not allowed") }.onReceive(app, boot)
+        assertNotNull(shadowOf(app.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).nextScheduledAlarm)
+    }
+
+    @Test fun boot_doesNotArmSummary_whenNotBridging() {
+        BridgePrefs.setWasBridging(app, false)
+        receiver { }.onReceive(app, boot)
+        assertNull(shadowOf(app.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).nextScheduledAlarm)
+    }
 }

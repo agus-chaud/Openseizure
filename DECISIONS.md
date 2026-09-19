@@ -1913,6 +1913,62 @@ resumen matutino).
 
 ---
 
+## DEC-060: Batch 5e (endurecimiento del puente) y reescritura de las guías para el flujo de dos apps
+
+**Fase:** SDD `watch-osd-message-delivery` (Batch 5e, PRs #27 y #28 abiertos, sin mergear; documentación de cuidadores) | **Fecha:** 2026-09-19
+
+**Batch 5e (solo `:phone`, sin tocar el reloj):**
+- **`sample_freq` exactamente 25** (`SAMPLE_FREQ_HZ`): cualquier otro valor se descarta y no se reenvía a
+  OSD. Aplica la constante firmada en DEC-059. El handshake usa 25 Hz por defecto, y un mensaje de
+  ajustes descartado nunca pisa los ajustes válidos ya guardados, así que OSD no queda sin ajustes ni
+  recibe una frecuencia equivocada. Efecto colateral: la batería informada puede quedar en el valor
+  por defecto (100) o vieja hasta que el reloj mande ajustes válidos.
+- **Chunk congelado:** un chunk de 125 muestras donde todas son idénticas se rechaza (comparación
+  exacta, sin tolerancia). No se reenvía y no cuenta como mensaje válido del reloj, así que el fault
+  silencioso `NO_WATCH_DATA` lo hace visible a los 30 s. **Es una regla nueva que no está en la tabla
+  de constantes firmadas.** Riesgo sin verificar: un sensor muy cuantizado podría producir 125 valores
+  iguales en 5 s y ser rechazado por error; no hay datos de la cuantización real del Watch 8.
+- **Listener de mensajes (F5):** si `addListener` falla se reintenta con backoff de 5 s a 60 s; si pasan
+  más de 60 s sin mensajes válidos del reloj se quita y se vuelve a registrar el listener, como
+  máximo una vez por minuto. No se agregó ninguna alerta ni fault nuevo. Constantes de recuperación
+  (no requieren firma): `LISTENER_RETRY_INITIAL_MS` 5 s, `LISTENER_RETRY_MAX_MS` 60 s,
+  `LISTENER_REREGISTER_AFTER_MS` 60 s, `LISTENER_REREGISTER_MIN_INTERVAL_MS` 60 s. Si el reloj está
+  legítimamente ausente (fuera de la muñeca) el listener se re-registra una vez por minuto: inofensivo
+  pero ruidoso en el log.
+- **Sin verificar:** si Play Services descarta listeners tras una actualización, si quitar y volver a
+  agregar el listener con mensajes en vuelo puede perder alguno, y los modos de falla reales de
+  `addListener`.
+- Tests de `:phone`: 124 en el PR #27 y 128 en el #28 (había 120). El #27 pasó el CI; el #28 está apilado
+  y el CI no corre sobre él hasta retargetearlo a `main`.
+
+**Guías reescritas (2026-09-19):**
+- **`CAREGIVER_GUIDE.md`** (completa): banner de "no probado en el equipo real", las tres piezas, la
+  política de fallas silenciosas dicha sin vueltas, cuándo el sistema no protege, checklist nocturno
+  por dispositivo, cómo configurar el teléfono del cuidador (contacto prioritario y prueba), y cómo leer
+  el resumen matutino. Se conservó el aviso, los primeros auxilios y la sección de falsa alarma.
+- **`HARDWARE_RUNBOOK.md` §4**: flujo de dos apps (firma compartida, configurar OSD, iniciar el puente,
+  verificar datos y retorno de alarma), tabla DV-1..DV-7, chequeos extra y qué hace hoy cada build y qué
+  falta (Batch 7 y 5e). La sección 5 recibió solo una nota: su tag `SdDataSourceAw` y el modo
+  secuencial ya no aplican con la fuente Garmin.
+- Los textos citados de la app (resumen, botones, avisos) se verificaron contra `strings.xml`. El aviso
+  de batería baja de OSD viene activado por defecto (`PhoneBatteryAlarmActive` = true), así que esa
+  advertencia de la guía es correcta; el umbral no se verificó.
+- **La app del reloj no tiene botón de MUTE:** el mute es de OSD, así que la guía habla solo de eso.
+- No se encontró un ajuste para apagar el servidor web de OSD, y la etiqueta exacta "Garmin" de la
+  fuente de datos quedó sin verificar.
+
+**Pendiente de revisión humana:** el texto médico de la guía se conservó sin cambios, pero dice
+"llamá a emergencias si dura más de 3 minutos" y "la mayoría pasan solas en 1–2 minutos"; la referencia
+habitual es 5 minutos. Confirmarlo con el médico tratante antes de imprimirla.
+
+**Documentos que siguen mandando por el camino roto:** `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` (le toca el
+Batch 9, T9.1) y `docs/RUNBOOK_EXPORTACION_DATOS.md` todavía indican activar "Android Wear data source".
+
+**Estado:** Batch 7 sigue bloqueado. Falta: mergear el 5e, firmar `techo_latencia_clinica`, revisar el
+texto médico de la guía y pasar un segundo `safety-reviewer` de re-chequeo.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

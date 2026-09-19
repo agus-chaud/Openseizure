@@ -552,8 +552,9 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - [x] **Batch 4** `OsdHttpForwarder` — [PR #16](https://github.com/agus-chaud/Openseizure/pull/16) — Agent-Done
 - [x] **Batch 5a** `OsdBridgeService` (core), en dos PRs apilados — [#17](https://github.com/agus-chaud/Openseizure/pull/17) (validación + estado de salud) y [#18](https://github.com/agus-chaud/Openseizure/pull/18) (servicio) — Agent-Done
 - [x] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` + test del servicio, en dos PRs apilados — [#19](https://github.com/agus-chaud/Openseizure/pull/19) (relay) y [#20](https://github.com/agus-chaud/Openseizure/pull/20) (notificaciones + test) — Agent-Done
-- [ ] **Batch 6** `SetupActivity` + `BootReceiver` — Agent-Done
-- [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma, requiere PASS de `safety-reviewer` y checkpoint explícito con el usuario) — Agent-Done
+- [x] **Batch 6** `SetupActivity` + `BootReceiver` — [PR #21](https://github.com/agus-chaud/Openseizure/pull/21) — Agent-Done
+- [ ] **Batch 5c** (correctivo, solo `:phone`) el relay de alarma deja de reenviar `0` si OSD está congelado o el puente falla (hallazgo F1) — en curso
+- [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma). **BLOQUEADO por `safety-reviewer` (BLOCK, 2026-09-19)**: ver [`docs/SAFETY_FINDINGS_WATCH_OSD.md`](docs/SAFETY_FINDINGS_WATCH_OSD.md) para hallazgos, condiciones de desbloqueo y revisiones pendientes — Agent-Done
 - [ ] **Batch 8** Handshake de versión/compatibilidad — Agent-Done
 - [ ] **Batch 9** Ajustes de documentación — Agent-Done
 - [ ] **DV-1..DV-6** Verificación en hardware real (Galaxy Watch 8 + OSD beta) — Field-Done

@@ -1752,6 +1752,42 @@ asumido como PASS (DEC-052); DV-1..DV-6 pendientes.
 
 ---
 
+## DEC-056: `safety-reviewer` pre-Batch 7 dio BLOCK; se abre el Batch 5c y se crea el registro de hallazgos
+
+**Fase:** SDD `watch-osd-message-delivery` (checkpoint entre Batch 6 y Batch 7) | **Fecha:** 2026-09-19
+
+**Decisión:** no arrancar el Batch 7 (`:wear`) hasta cumplir las condiciones de desbloqueo del
+`safety-reviewer`. Registro completo, con estado por hallazgo, forma de verificarlo y revisiones
+hechas/pendientes, en **`docs/SAFETY_FINDINGS_WATCH_OSD.md`** (fuente de verdad para revisar si
+quedó arreglado). Detalle del veredicto en engram `sdd/watch-osd-message-delivery/safety-review-pre-batch7`.
+
+**Hallazgos principales (F1–F8):**
+- **F1 (crítico):** el relay del teléfono reenviaba `alarmState` sin mirar la salud del puente ni si
+  OSD seguía analizando; con OSD congelado o en otra fuente de datos el reloj recibe `0` para siempre
+  y nunca marca DEGRADED.
+- **F2 (crítico, verificado):** OSD emite estados 3–7; el reloj hace `else -> vibrateAlarm()` para
+  todo ≥2, así que un FAULT de OSD (p. ej. batería baja del teléfono) vibra como convulsión.
+- **F3–F8:** DEGRADED de un solo pulso; falla invisible si las notificaciones están bloqueadas;
+  listener muerto sin reintento; rangos de datos laxos; flavor `osdDirect`; boot/Doze.
+
+**Decisión de proceso — Batch 5c:** corrección de F1 solo en `:phone`, antes de tocar el reloj.
+Regla "fail-loud": los estados ≥1 se reenvían siempre; el `0` y el refresco solo si el puente está
+sano (`BridgeFault == NONE`) y el timestamp de datos de OSD avanzó dentro de una ventana
+(`OSD_DATA_FRESH_MS`, propuesta 15 s); si no, silencio para que el watchdog del reloj lo detecte.
+Nuevo fault `OSD_DATA_STALE`. Nunca se fabrica un código de falla.
+
+**Pendiente de tu decisión (clínica, no técnica):** política para los estados 3–7 de OSD en el reloj
+(propuesta: 2, 3 y 5 → alarma; 4 y 7 → falla del sistema; 6 → sin vibración) y firma de las
+constantes de detección en `CLINICAL_SIGNOFF.md` (la aprobación previa #1196 no reemplaza la firma).
+
+**Corrección de proceso:** la nota "ya aprobado, no re-levantar" de `tasks.md` T7.3 contradecía la
+regla del skill y se elimina. Los Batches 1–6 se mergearon sin `safety-reviewer` ni RDD por batch; la
+ruta de alarma del teléfono se revisó de forma adversarial por primera vez recién ahora.
+
+**Estado:** Batch 7 BLOQUEADO. Batch 5c en curso. GATE-0 sigue asumido como PASS (DEC-052).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

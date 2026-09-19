@@ -124,13 +124,13 @@ Parallelizable: T3.5/T3.6 sequential; T3.7 can run in parallel with T3.5/T3.6 (o
 
 ## Batch 4 — `OsdHttpForwarder`
 
-- [ ] **T4.1** `phone/.../bridge/OsdHttpForwarder.kt` — `HttpURLConnection` POST/GET to
+- [x] **T4.1** `phone/.../bridge/OsdHttpForwarder.kt` — `HttpURLConnection` POST/GET to
       `127.0.0.1:8080` only (never `0.0.0.0`/LAN), 4s connect / 4s read timeout, `Connection: close`,
       no retry/no queue/no batching (one POST per received chunk). New.
       Satisfies: PCB-4, PCB-5, design Architecture Decisions #2–#3, Threat Matrix row 1 (loopback
       binding).
       Dependencies: T3.1, T3.3 (uses codec output + classifies response).
-- [ ] **T4.2** `phone/src/test/.../OsdHttpForwarderTest.kt` — timeout behavior, exact loopback
+- [x] **T4.2** `phone/src/test/.../OsdHttpForwarderTest.kt` — timeout behavior, exact loopback
       target, response classification wiring (can reuse the Batch 3b stub server). Modified/New.
       Dependencies: T4.1, T3.7.
 

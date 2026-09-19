@@ -1,7 +1,7 @@
 # Guía para el cuidador — SeizureGuard
 
 > Esta guía está escrita para que la entiendas rápido, incluso medio dormido a las 3 de la mañana.
-> **Leela completa una vez, con calma, antes de la primera noche.**
+> **Leela completa una vez, con calma, antes de la primera noche.** Imprimila si podés.
 
 ---
 
@@ -10,44 +10,59 @@
 **SeizureGuard es una ayuda, NO una garantía.** Es un proyecto libre y gratuito, **no es un aparato
 médico aprobado**. Puede avisar de una convulsión, pero **puede fallar**: a veces no detecta una
 convulsión real, y a veces suena sin que pase nada. **No reemplaza el cuidado médico ni tu propia
-atención.
+atención.**
 
 Hablá siempre con el médico de la persona sobre qué hacer ante una convulsión. Si las indicaciones
 de esta guía difieren de las de tu médico, **hacé caso al médico**.
 
----
+### ⚠️ Este sistema todavía NO fue probado completo con el equipo real
 
-## ¿Qué hace este sistema, en una frase?
+El sistema completo (reloj + aplicación del teléfono + OpenSeizureDetector) **todavía no se probó
+de punta a punta con el reloj y los teléfonos reales**. Las pruebas en el equipo real están
+pendientes, y algunas partes del reloj se están terminando. Por eso:
 
-La persona duerme con un **reloj inteligente** en la muñeca. El reloj siente los movimientos y, si
-detecta el movimiento fuerte y rítmico típico de una convulsión, **te avisa en el teléfono** con
-una alarma fuerte y un mensaje de texto, para que puedas ir a ayudar.
-
-```
-Persona durmiendo con el reloj  →  el reloj siente el movimiento
-        →  si parece una convulsión  →  suena la alarma en TU teléfono + te llega un SMS
-```
+- **No confíes solo en este sistema.** Mantené cualquier otro método de control o de aviso que ya
+  uses (escucharla, dormir cerca, otro aparato, lo que te indique el médico).
+- Esta guía describe cómo **debe** funcionar. Hasta que se pruebe en la vida real, tomalo con cautela.
 
 ---
 
-## Qué vas a sentir/ver, y qué significa
+## ¿Qué es este sistema? (en un párrafo)
 
-### En el reloj (lo lleva la persona que duerme)
-- **Una vibración corta y suave** = *aviso* (puede no ser nada, el sistema está "prestando atención").
+Son **tres piezas** del lado de la persona que duerme. **1)** Un **reloj inteligente** en su
+muñeca, que siente los movimientos. **2)** Una **aplicación en su teléfono** (se llama
+"SeizureGuard Companion") que le pasa esos movimientos a la tercera pieza. **3)** Otra aplicación
+en ese mismo teléfono, **OpenSeizureDetector**, que es la que decide si parece una convulsión,
+hace sonar la alarma y **manda un mensaje de texto (SMS)** a **tu** teléfono. Vos usás un teléfono
+**distinto**: el que recibe el mensaje.
+
+```
+Persona durmiendo con el reloj  →  su teléfono (2 aplicaciones)
+        →  si parece una convulsión  →  alarma en SU teléfono + SMS a TU teléfono
+```
+
+---
+
+## Qué vas a notar, y qué significa
+
+Solo hay dos cosas que deben interrumpirte, y las dos son por una **emergencia**:
+
+- **En TU teléfono:** llega un **SMS** avisando de una posible convulsión.
+- **En el teléfono de la persona:** suena una **alarma fuerte** (si está cerca tuyo, la vas a oír).
+
+Además, **en el reloj de la persona**:
+- **Una vibración corta y suave** = *aviso* (puede no ser nada; el sistema está "prestando atención").
 - **Una vibración fuerte y repetida** = *alarma* (el sistema cree que hay una convulsión).
 
-### En tu teléfono 
-Cuando hay alarma:
-- La pantalla **se prende sola** y muestra una **alarma a pantalla completa**.
-- **Suena una sirena fuerte.**
-- Te llega un **mensaje de texto (SMS)** que dice que se detectó una posible convulsión y a qué hora.
+**Nada más te va a avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
+(ver más abajo). Si algo se rompe, **no suena nada**.
 
-> 👉 Para que esto funcione, tu teléfono tiene que estar **cerca, encendido, con sonido alto** y con
-> la app abierta. Ver el checklist de abajo.
+> 👉 El SMS solo hace ruido en tu teléfono **si vos lo dejaste configurado para eso**. Mirá la
+> sección "Tu teléfono" más abajo. Es lo más fácil de olvidar.
 
 ---
 
-## Qué hacer cuando suena la alarma
+## Qué hacer cuando suena la alarma o llega el SMS
 
 Mantené la calma e **andá a ver a la persona.** Pautas generales de primeros auxilios para una
 convulsión (confirmá estas con tu médico):
@@ -64,9 +79,7 @@ convulsión (confirmá estas con tu médico):
 > Estos son lineamientos generales y ampliamente aceptados, pero **cada persona es distinta**:
 > seguí el plan que te haya dado el neurólogo o médico tratante.
 
----
-
-## Si fue una falsa alarma
+### Si fue una falsa alarma
 
 Va a pasar a veces (un movimiento brusco al dormir puede dispararla). No te enojes con el sistema:
 **es preferible una falsa alarma de más que una convulsión sin avisar.** Si hay demasiadas falsas
@@ -74,35 +87,146 @@ alarmas y te agotan, avisale a quien configuró el sistema: se puede ajustar la 
 
 ---
 
-## Qué NO puede hacer el sistema (límites honestos)
+## Las fallas son silenciosas: por qué y qué significa para vos
 
-- **No detecta todas las convulsiones.** Detecta sobre todo las de **movimiento fuerte** (tónico-
-  clónicas). Las convulsiones **sin mucho movimiento** (ausencias, algunas focales) **puede no
-  detectarlas**.
-- **Deja de proteger si**: el reloj se queda **sin batería**, se **sale de la muñeca**, pierde la
-  **conexión Bluetooth** con el teléfono, o el teléfono está lejos/apagado/en silencio.
-- **No llama solo a una ambulancia.** Te avisa a vos; vos decidís y actuás.
-- **No es un diagnóstico médico.** Solo detecta un patrón de movimiento.
+**Decisión tomada a propósito:** si el sistema falla (se cae una aplicación, se corta la conexión
+del reloj, etc.), **no suena ni vibra nada**, ni en el teléfono ni en el reloj. Lo único que debe
+interrumpirte es una emergencia real. Así se evita despertarte por problemas técnicos.
 
----
+**La consecuencia, dicha sin vueltas: un sistema roto se ve igual que una noche tranquila.**
+Si algo se cae, nadie se entera en el momento. Por eso hacen falta **dos hábitos**:
 
-## Checklist antes de dormir (30 segundos)
-
-Repasá esto cada noche:
-
-- [ ] El reloj está **cargado** (idealmente +80%) y **bien puesto** en la muñeca.
-- [ ] La app del reloj está **activada** (monitoreo encendido).
-- [ ] **Tu** teléfono está **cargando, cerca tuyo, con el volumen alto** (no en silencio).
-- [ ] La app del teléfono está **abierta** y dice que está recibiendo datos del reloj.
-- [ ] Probaste alguna vez que la alarma te suena (hacé una prueba de día, no la primera noche).
+1. **Antes de dormir:** el checklist de abajo (2 minutos).
+2. **A la mañana:** leer el resumen de la noche (ver más abajo).
 
 ---
 
-## Una última cosa
+## Cuándo el sistema NO te protege
 
-Hacé una **prueba de día** antes de confiar de noche: que alguien agite el reloj con movimiento
-fuerte unos segundos y verificá que la alarma te llega al teléfono. Mejor descubrir un problema un
-martes a la tarde que un sábado a las 3 de la mañana.
+Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
+
+- **OpenSeizureDetector** (la aplicación del teléfono de la persona) está **cerrada** o configurada
+  en una fuente de datos equivocada.
+- La aplicación **"SeizureGuard Companion"** está **detenida** o se cerró a la fuerza.
+- El **teléfono de la persona** está **apagado**, sin batería, o con el **volumen de alarma en
+  cero** o en modo **No molestar** que tapa la alarma.
+- **Batería baja en el teléfono de la persona:** OpenSeizureDetector pasa a "falla" y, con una
+  falla activa, **una convulsión puede NO generar alarma**. Por eso el teléfono duerme **cargando**.
+- El **reloj** está **fuera de la muñeca**, sin batería, o **sin conexión** con el teléfono.
+- El modo **MUTE** (silencio) de OpenSeizureDetector está activo: **tapa las alarmas y cancela el
+  SMS** mientras dure.
+- Al iniciar la aplicación del teléfono se **negó un permiso** (Bluetooth): no arranca, y **tampoco
+  avisa fuerte**.
+- **Tu teléfono** está en silencio o en No molestar sin la excepción para este contacto.
+- Convulsiones **sin mucho movimiento** (ausencias, algunas focales): **puede no detectarlas**.
+  Detecta sobre todo las de **movimiento fuerte** (tónico-clónicas).
+
+Además: **no llama solo a una ambulancia** (te avisa a vos y vos decidís) y **no es un
+diagnóstico médico** (solo detecta un patrón de movimiento).
+
+---
+
+## Checklist antes de dormir (2 minutos)
+
+### En el teléfono de la persona
+
+- [ ] **OpenSeizureDetector** está **abierta**, con la fuente de datos en **"Garmin"**.
+- [ ] En los ajustes de OpenSeizureDetector, la opción **"Enable Audible System FaultWarnings"**
+      está **DESACTIVADA** (si no, la aplicación pita sola por sus fallas y rompe el silencio
+      acordado).
+- [ ] **"SeizureGuard Companion"** está iniciada: se abre la aplicación y se toca **"Start bridge"**
+      (la primera vez pide permisos: aceptalos, y también **"Allow running in the background"**).
+- [ ] El teléfono está **cargando** durante toda la noche.
+- [ ] El **volumen de alarma** está alto y **No molestar** no está tapando la alarma.
+- [ ] **MUTE** no está activo en OpenSeizureDetector.
+
+### En el reloj
+
+- [ ] Está **cargado** (idealmente +80%) y **bien puesto** en la muñeca.
+- [ ] La aplicación **SeizureGuard** está **andando** (dice "Monitoreo activo"; si dice
+      "Monitoreo inactivo", tocá "Iniciar monitoreo").
+- [ ] **No** dice "MONITOREO DEGRADADO" (si lo dice, algo falló: revisá el reloj y el teléfono).
+
+### En TU teléfono (el del cuidador)
+
+- [ ] Está **cargado** y **cerca tuyo**.
+- [ ] Los mensajes del número del teléfono de la persona **suenan aunque el teléfono esté en
+      silencio o en No molestar** (ver "Tu teléfono").
+- [ ] Hiciste **la prueba** al menos una vez (ver más abajo).
+
+---
+
+## Tu teléfono: que el SMS te despierte
+
+El sistema **no puede** cambiar cómo suena tu teléfono. Eso lo tenés que dejar armado vos:
+
+1. Guardá el número del teléfono de la persona como **contacto**.
+2. Configurá ese contacto como **prioritario / favorito** y permití que **suene aunque el teléfono
+   esté en silencio o en "No molestar"** (en Android suele estar en Ajustes → Notificaciones →
+   No molestar → Excepciones / Personas). Los nombres cambian según la marca del teléfono.
+3. **Probalo:** poné tu teléfono en silencio (o No molestar) y pedí que te manden un SMS desde el
+   teléfono de la persona. **Si no sonó fuerte, no está bien configurado.**
+4. Dejá el teléfono **cargando y con la pantalla apagada** al lado de la cama.
+
+---
+
+## A la mañana: el resumen de la noche
+
+Cada día, **a las 8:00 (aprox.)**, el **teléfono de la persona** muestra una notificación
+**silenciosa** (sin sonido ni vibración) que se llama **"SeizureGuard: last night"**. Está en inglés.
+Se lee así:
+
+| Dice... | Significa... |
+|---|---|
+| **"No interruptions last night."** | La noche no tuvo cortes. Buena señal (no es garantía). |
+| **"Monitoring was interrupted N times (total M min): ..."** | Hubo **N cortes** y en total **M minutos sin protección**. Lo que sigue explica la causa. |
+
+Causas que puede mencionar:
+
+| Dice | Qué pasó, en criollo |
+|---|---|
+| "watch not sending data" | El reloj dejó de mandar datos (sacado de la muñeca, apagado, lejos o sin batería). |
+| "OSD not reachable" | OpenSeizureDetector no estaba recibiendo (cerrada o trabada). |
+| "OSD wrong data source" | OpenSeizureDetector estaba en la fuente de datos equivocada. |
+| "OSD rejected data" | OpenSeizureDetector rechazó los datos del reloj. |
+| "OSD not analysing" | OpenSeizureDetector estaba abierta pero sin analizar. |
+| "phone stopped" | La aplicación del teléfono se detuvo un rato. |
+
+**⚠️ El resumen NO está garantizado.** No llega si la aplicación "SeizureGuard Companion" se cerró
+a la fuerza, si el teléfono estaba apagado, si alguien tocó **"Stop bridge"**, o si las
+notificaciones están bloqueadas. Además puede ser que solo avise de una parte de los cortes.
+
+### Qué hacer a la mañana
+
+- [ ] **Leé el resumen** en el teléfono de la persona.
+- [ ] **Si dice "No interruptions last night."** → seguí normal.
+- [ ] **Si muestra cortes** → hubo minutos sin protección. No hace falta asustarse, pero:
+  revisá la causa (tabla de arriba), arreglala, y **avisá a quien configuró el sistema**. Esa
+  noche, extremá los otros cuidados.
+- [ ] **Si NO hay resumen** → **no sabés cómo fue la noche.** Tratalo como una noche **sin
+  confirmar**: abrí "SeizureGuard Companion" y tocá **"Start bridge"**, revisá OpenSeizureDetector
+  y el reloj, y avisá a quien configuró el sistema.
+- [ ] **Si viste "MONITOREO DEGRADADO" en el reloj** → algo falló: mismo procedimiento.
+
+---
+
+## Si tenés dudas
+
+**Si no estás seguro de que el sistema esté funcionando, asumí que NO lo está** y usá tus otros
+métodos de cuidado esa noche.
+
+Quien configuró el sistema (a quien avisar ante cualquier corte o duda):
+
+**Nombre / teléfono:** ______________________________________
+
+---
+
+## Hacé una prueba de día antes de confiar de noche
+
+Con quien configuró el sistema, **de día**: que alguien agite el reloj con movimiento fuerte y
+rítmico unos 30 segundos y verificá que **suena la alarma en el teléfono de la persona** y que
+**el SMS te llega a vos, con tu teléfono en silencio**. Avisá a todos antes de la prueba: el SMS
+sale de verdad. Mejor descubrir un problema un martes a la tarde que un sábado a las 3 de la mañana.
 
 Gracias por cuidar. Este sistema existe para darte una mano, pero **la persona más importante de
 todo el sistema sos vos.**

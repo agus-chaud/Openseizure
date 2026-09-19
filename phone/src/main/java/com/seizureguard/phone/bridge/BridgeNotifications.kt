@@ -6,38 +6,29 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.seizureguard.phone.R
 import com.seizureguard.phone.setup.SetupActivity
 
-const val FAULT_REPOST_MS = 60_000L
-
 enum class FaultAction { NONE, POST, CLEAR }
 
-/** POST on a new/changed fault and every [FAULT_REPOST_MS] while it stands; CLEAR once it is gone. */
-fun faultAction(fault: BridgeFault, shown: BridgeFault, lastPostAtMs: Long, nowMs: Long): FaultAction = when {
+/** POST only when the fault appears or changes (never on a timer); CLEAR once it is gone (DEC-057). */
+fun faultAction(fault: BridgeFault, shown: BridgeFault): FaultAction = when {
     fault == BridgeFault.NONE -> if (shown != BridgeFault.NONE) FaultAction.CLEAR else FaultAction.NONE
-    fault != shown || nowMs - lastPostAtMs >= FAULT_REPOST_MS -> FaultAction.POST
+    fault != shown -> FaultAction.POST
     else -> FaultAction.NONE
 }
 
-/** Status (LOW, required by the FGS) and fault (HIGH, re-posted) notifications. Health ticks come from one coroutine. */
-internal class BridgeNotifications(
-    private val context: Context,
-    private val nowMs: () -> Long = { SystemClock.elapsedRealtime() },
-) {
+/** Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine. */
+internal class BridgeNotifications(private val context: Context) {
     private var shown = BridgeFault.NONE
-    private var lastPostAtMs = 0L
 
     fun onHealthTick(fault: BridgeFault) {
-        val now = nowMs()
-        when (faultAction(fault, shown, lastPostAtMs, now)) {
+        when (faultAction(fault, shown)) {
             FaultAction.POST -> {
                 notifySafely(context, FAULT_NOTIFICATION_ID, faultNotification(context, faultTextRes(fault)))
                 shown = fault
-                lastPostAtMs = now
             }
             FaultAction.CLEAR -> {
                 try {
@@ -53,7 +44,8 @@ internal class BridgeNotifications(
 
     companion object {
         const val STATUS_CHANNEL_ID = "osd_bridge_status"
-        const val FAULT_CHANNEL_ID = "osd_bridge_fault"
+        const val FAULT_CHANNEL_ID = "osd_bridge_fault_silent"
+        const val LEGACY_FAULT_CHANNEL_ID = "osd_bridge_fault" // HIGH; importance cannot be lowered, so it is deleted
         const val STATUS_NOTIFICATION_ID = 4101
         const val START_FAILURE_NOTIFICATION_ID = 4102
         const val FAULT_NOTIFICATION_ID = 4103
@@ -84,7 +76,7 @@ internal class BridgeNotifications(
                 .build()
         }
 
-        /** Loud, best-effort "the bridge could not start" alert (dropped by the OS if notifications are denied). */
+        /** Silent, best-effort "the bridge could not start" notice (dropped by the OS if notifications are denied). */
         fun postStartFailure(context: Context) = notifySafely(
             context, START_FAILURE_NOTIFICATION_ID, faultNotification(context, R.string.bridge_start_failed_text),
         )
@@ -98,11 +90,18 @@ internal class BridgeNotifications(
         }
 
         private fun faultNotification(context: Context, textRes: Int, contentIntent: PendingIntent? = null): Notification {
-            nm(context).createNotificationChannel(
+            val manager = nm(context)
+            manager.deleteNotificationChannel(LEGACY_FAULT_CHANNEL_ID)
+            manager.createNotificationChannel(
                 NotificationChannel(
                     FAULT_CHANNEL_ID, context.getString(R.string.bridge_fault_channel),
-                    NotificationManager.IMPORTANCE_HIGH,
-                )
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    setSound(null, null)
+                    enableVibration(false)
+                    enableLights(false)
+                    setShowBadge(false)
+                }
             )
             val text = context.getString(textRes)
             return NotificationCompat.Builder(context, FAULT_CHANNEL_ID)
@@ -110,9 +109,9 @@ internal class BridgeNotifications(
                 .setContentTitle(context.getString(R.string.bridge_start_failed_title))
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setCategory(NotificationCompat.CATEGORY_ERROR)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setOnlyAlertOnce(false) // each 60 s re-post must sound + vibrate again
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setSilent(true)
                 .setOngoing(true)
                 .setContentIntent(contentIntent)
                 .build()

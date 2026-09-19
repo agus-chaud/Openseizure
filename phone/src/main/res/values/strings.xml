@@ -9,6 +9,7 @@
     <string name="fault_osd_unreachable">OSD is not receiving data. Check that OpenSeizureDetector is open and running.</string>
     <string name="fault_osd_wrong_datasource">OSD is not accepting watch data. In OpenSeizureDetector, set the data source to Garmin.</string>
     <string name="fault_osd_rejects_data">OSD rejected the watch data. Restart OpenSeizureDetector and check its data source is Garmin.</string>
+    <string name="fault_osd_data_stale">OpenSeizureDetector is open but not analysing the watch data. Open the app and check that its data source is Garmin.</string>
     <string name="bridge_start_failed_title">SeizureGuard: monitoring is NOT working</string>
     <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
     <string name="bridge_restart_needed_text">The phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge.</string>

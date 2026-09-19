@@ -66,6 +66,26 @@ class BridgeStateTest {
         assertEquals(BridgeFault.NONE, s.fault(t0 + 5))
     }
 
+    @Test fun osdDataStale_raisedWhenTimestampFrozen_clearsWhenItAdvances() {
+        var clock = t0
+        val f = OsdDataFreshness({ clock })
+        val s = BridgeState(t0, f)
+        f.onSample("A")
+        clock = t0 + OSD_DATA_FRESH_MS
+        s.onValidAccel(clock); s.onPostOutcome(PostOutcome.OK, clock)
+        assertEquals(BridgeFault.NONE, s.fault(clock))
+        clock += 1
+        s.onValidAccel(clock); s.onPostOutcome(PostOutcome.OK, clock)
+        assertEquals(BridgeFault.OSD_DATA_STALE, s.fault(clock))
+        f.onSample("B")
+        assertEquals(BridgeFault.NONE, s.fault(clock))
+    }
+
+    @Test fun osdDataStale_noFalseFaultAtStartup() {
+        val f = OsdDataFreshness({ t0 })
+        assertEquals(BridgeFault.NONE, BridgeState(t0, f).fault(t0 + HEALTH_TICK_MS))
+    }
+
     @Test fun counters_andSettingsCache() {
         val s = BridgeState(t0)
         s.onMalformed(); s.onMalformed(); s.onDropped()

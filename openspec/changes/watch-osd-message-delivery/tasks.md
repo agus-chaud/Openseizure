@@ -164,13 +164,13 @@ Parallelizable: none (T5.2 is the integration point for all Batch 3/4 units).
       fabricates an `alarmState` on companion-side failure (silence, not a fake FAULT code). New.
       Satisfies: PCB-6, WCT-3, WCT-4, design Architecture Decisions #4, #6.
       Dependencies: T5.2 (consumes the poll loop's `GET /data` result).
-- [ ] **T5.4** `phone/.../bridge/BridgeNotifications.kt` — two channels: `osd_bridge_status`
+- [x] **T5.4** `phone/.../bridge/BridgeNotifications.kt` — two channels: `osd_bridge_status`
       (LOW, ongoing, required by the FGS) and `osd_bridge_fault` (HIGH, ongoing,
       `CATEGORY_ERROR`, sound+vibration, re-posted every 60s while the fault stands). Explicit,
       actionable, non-technical text per fault type. New.
       Satisfies: PCB-7, PROP-SC (visible fault within 60s), design "Notification channels".
       Dependencies: T3.5 (consumes `BridgeFault`), T5.2.
-- [ ] **T5.5** `phone/src/test/.../OsdBridgeServiceTest.kt` (Robolectric) — listener wiring, health
+- [x] **T5.5** `phone/src/test/.../OsdBridgeServiceTest.kt` (Robolectric) — listener wiring, health
       tick drives fault/recovery transitions, notification re-post cadence. New.
       Dependencies: T5.2, T5.3, T5.4.
 

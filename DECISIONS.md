@@ -1879,6 +1879,40 @@ constantes, reescribir `CAREGIVER_GUIDE.md` y la sección 4 de `HARDWARE_RUNBOOK
 
 ---
 
+## DEC-059: Firma de las constantes de detección del puente reloj ↔ OSD y enmienda de los specs
+
+**Fase:** SDD `watch-osd-message-delivery` (desbloqueo del Batch 7) | **Fecha:** 2026-09-19
+
+**Decisión (del usuario):** firmar **15 de 16** constantes tal cual se propusieron; quedan escritas en
+`CLINICAL_SIGNOFF.md` (sección "Firmadas"). Firmadas: `WATCHDOG_INTERVAL_MS` 10 s, `DELIVERY_STALE_MS`
+40 s, `ALARM_STATE_STALE_MS` 40 s, histéresis 2, warm-up 60 s, `SAMPLE_STALE_MS` 10 s, techo de "falla
+visible" (60 s enlace, ≈75 s OSD congelado), `ALARM_KEEP_ALIVE_MS` 10 s, `OSD_DATA_FRESH_MS` 15 s,
+`NO_WATCH_DATA_MS` 30 s, `POST_OK_STALE_MS` 20 s y `MAX_POST_FAILURES` 3, `LATCH_CLEAR_OK_STREAK` 2,
+techo del relay 8 s, `sample_freq` exactamente 25 y `DEFAULT_HANDSHAKE_BATTERY` 100.
+
+**Sin firmar:** `techo_latencia_clinica` (no tenía valor propuesto; es una decisión clínica del usuario).
+
+**Nombre de la firma:** el usuario no indicó cómo quería figurar; se registró `agus-chaud` (el usuario
+de Git del proyecto). Puede corregirse en `CLINICAL_SIGNOFF.md`.
+
+**Cuentas de peor caso firmadas** (calculadas, no medidas en hardware): enlace reloj→celular 60 s
+(hoy 120 s); estado de alarma que deja de llegar 60 s; OSD congelado con el celular consultando
+≈75 s; sensor muerto 30 s; primer DEGRADED tras arrancar ≈80 s.
+
+**Pendiente de código (por la firma):** el parser sigue aceptando `sample_freq` de 1 a 200; hay que
+endurecerlo a exactamente 25 (hallazgo F6). Se hará con los demás pendientes de `:phone` (reintento
+del listener F5, acelerómetro plano F6).
+
+**Specs enmendados** (`openspec/changes/watch-osd-message-delivery/specs/`, sin trackear en `mia`):
+`watch-companion-transport.md` (tabla de estados 0–7, DEGRADED solo visual, constantes firmadas,
+cambios permitidos en `:wear`) y `phone-companion-bridge.md` (fallas silenciosas, fail-loud del relay,
+resumen matutino).
+
+**Estado del Batch 7:** sigue bloqueado hasta reescribir `CAREGIVER_GUIDE.md` y la sección 4 de
+`HARDWARE_RUNBOOK.md`, resolver el pendiente de código de `:phone` y pasar un segundo `safety-reviewer`.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

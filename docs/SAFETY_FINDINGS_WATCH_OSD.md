@@ -27,7 +27,7 @@ un hallazgo o se hace una revisión nueva. Contexto de la arquitectura: DEC-050,
 | R7 | RDD (`gentle-ai review`) sobre el **diff real** del Batch 7 | — | Diff congelado de `:wear` (watchdog, alarma, flavors) | — | **PENDIENTE** (antes de abrir el PR del Batch 7) |
 | R8 | RDD / revisión sobre el Batch 5c | — | Corrección de F1 en `:phone` | — | **PENDIENTE** (opcional, recomendado: es ruta de alarma) |
 | R9 | `sdd-verify` (validar implementación contra spec/tareas) | — | Todo el cambio | — | **PENDIENTE** (al terminar Batch 9) |
-| R10 | Firma humana de constantes de detección | — | Sección 3 de este documento | — | **PENDIENTE** (la sección "Firmadas" de `CLINICAL_SIGNOFF.md` está vacía) |
+| R10 | Firma humana de constantes de detección | 2026-09-19 | Sección 3 de este documento | **15 de 16 firmadas** tal cual se propusieron; queda `techo_latencia_clinica` | **PARCIAL** |
 | R11 | Revisión de documentación de cuidadores | — | `CAREGIVER_GUIDE.md`, `HARDWARE_RUNBOOK.md`, `CLINICAL_SIGNOFF.md`, `DISCLAIMER.md` | — | **PENDIENTE** (ver sección 5) |
 | R12 | Pruebas en hardware real (DV-1..DV-7) | — | Reloj + teléfono + OSD | — | **PENDIENTE** (sin acceso al reloj; GATE-0 asumido como PASS, DEC-052) |
 
@@ -72,16 +72,16 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 | Constante | Valor propuesto | Dónde vive | Recomendación del revisor | Estado |
 |---|---|---|---|---|
 | `techo_latencia_clinica` | PENDIENTE | ya en cola de firma | Firmar primero: de él dependen el stride y el techo de 8 s del relay | Sin firmar |
-| Techo "falla visible" (ventana ciega máxima) | 60 s | spec / `design.md` | Escalar: es un techo de latencia. Aceptar ~65–70 s firmado, o bajar `STALE` a 30 s | Sin firmar |
-| `WATCHDOG_INTERVAL_MS` | 30 s → 10 s | `SeizureMonitorService.kt` (Batch 7) | Razonable | Sin firmar |
-| `DELIVERY_STALE_MS` | 60 s → 40 s | ídem | Firmar | Sin firmar |
-| `ALARM_STATE_STALE_MS` | 40 s (nuevo) | ídem | Firmar solo junto con el arreglo de F1 | Sin firmar |
-| Histéresis | 2 ticks | ídem | Firmar (multiplica el techo) | Sin firmar |
-| Warm-up | 60 s | ídem | Firmar (retrasa hasta ~80 s el primer DEGRADED) | Sin firmar |
-| Keep-alive del relay | 10 s (efectivo 10–15 s) | `AlarmStateRelay.kt` | Firmar (40 s tolera 3 pérdidas) | Sin firmar |
-| `NO_WATCH_DATA_MS` / `POST_OK_STALE_MS` | 30 s / 20 s | `BridgeHealth.kt` (ya mergeado) | Firmar | Sin firmar |
-| `OSD_DATA_FRESH_MS` | 15 s (propuesto en 5c) | `:phone` (Batch 5c) | Firmar | Sin firmar |
-| Rango de `sample_freq` aceptado | 1..200 | `WatchMessageParser.kt` | Endurecer a `== 25` (F6) | Sin arreglar |
+| Techo "falla visible" (ventana ciega máxima) | 60 s | spec / `design.md` | Escalar: es un techo de latencia. Aceptar ~65–70 s firmado, o bajar `STALE` a 30 s | **Firmada 2026-09-19** |
+| `WATCHDOG_INTERVAL_MS` | 30 s → 10 s | `SeizureMonitorService.kt` (Batch 7) | Razonable | **Firmada 2026-09-19** |
+| `DELIVERY_STALE_MS` | 60 s → 40 s | ídem | Firmar | **Firmada 2026-09-19** |
+| `ALARM_STATE_STALE_MS` | 40 s (nuevo) | ídem | Firmar solo junto con el arreglo de F1 | **Firmada 2026-09-19** |
+| Histéresis | 2 ticks | ídem | Firmar (multiplica el techo) | **Firmada 2026-09-19** |
+| Warm-up | 60 s | ídem | Firmar (retrasa hasta ~80 s el primer DEGRADED) | **Firmada 2026-09-19** |
+| Keep-alive del relay | 10 s (efectivo 10–15 s) | `AlarmStateRelay.kt` | Firmar (40 s tolera 3 pérdidas) | **Firmada 2026-09-19** |
+| `NO_WATCH_DATA_MS` / `POST_OK_STALE_MS` | 30 s / 20 s | `BridgeHealth.kt` (ya mergeado) | Firmar | **Firmada 2026-09-19** |
+| `OSD_DATA_FRESH_MS` | 15 s (propuesto en 5c) | `:phone` (Batch 5c) | Firmar | **Firmada 2026-09-19** |
+| Rango de `sample_freq` aceptado | 1..200 | `WatchMessageParser.kt` | Endurecer a `== 25` (F6) | **Firmada (25) 2026-09-19; falta endurecer el código** |
 
 ---
 
@@ -90,7 +90,7 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 - [x] **1.** F1 arreglado y con tests de estado congelado (Batch 5c, PRs #22/#23 mergeados). Falta DV-4 en hardware.
 - [~] **2.** Política para los estados 3–7: **definida** (DEC-057) y **spec enmendado** (2026-09-19, `watch-companion-transport.md` y `phone-companion-bridge.md`). Falta implementarla (T7.5).
 - [~] **3.** ~~DEGRADED persistente~~ reemplazado por DEGRADED solo visual (DEC-057). Falta reescribir T7.6.
-- [ ] **4.** Constantes firmadas y aritmética corregida (P2, T7.7). **Tabla armada** en `CLINICAL_SIGNOFF.md` (con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado); falta tu firma.
+- [~] **4.** Constantes firmadas (15 de 16, 2026-09-19) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). Falta `techo_latencia_clinica` y reescribir T7.7.
 - [ ] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` reescritos (pueden ir en Batch 9, pero antes del merge del Batch 7).
 - [ ] **6.** `osdDirect` fuera de `release` (F7).
 - [ ] **7.** Segundo `safety-reviewer` (R6) sobre el resultado de 1–6 con veredicto PASS.

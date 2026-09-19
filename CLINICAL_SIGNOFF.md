@@ -51,21 +51,21 @@ Registro de hallazgos: `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
 
 | Constante | Hoy → propuesto | Dónde | Qué controla / tradeoff | Recomendación | Estado |
 |---|---|---|---|---|---|
-| `WATCHDOG_INTERVAL_MS` | 30 s → **10 s** | reloj (Batch 7) | Cada cuánto revisa la salud. Más corto detecta antes; el costo de batería es despreciable. | Firmar 10 s | ⏳ PENDIENTE |
-| `DELIVERY_STALE_MS` | 60 s → **40 s** | reloj (Batch 7) | Silencio tolerado del enlace al celular. Los datos van cada 5 s, así que 40 s tolera unos 7 envíos perdidos. | Firmar 40 s | ⏳ PENDIENTE |
-| `ALARM_STATE_STALE_MS` | (nueva) **40 s** | reloj (Batch 7) | Silencio tolerado del estado de alarma. El celular refresca cada 10 a 15 s, así que tolera unos 2 a 3 refrescos perdidos. | Firmar 40 s, **solo junto con** el arreglo F1 (ya mergeado) | ⏳ PENDIENTE |
-| `UNHEALTHY_CHECKS_FOR_DEGRADED` (histéresis) | 2 → **2** | reloj | Revisiones malas seguidas antes de marcar DEGRADED. Filtra cortes de un instante; suma un intervalo al techo. | Firmar 2 | ⏳ PENDIENTE |
-| `WATCHDOG_WARMUP_MS` | 60 s → **60 s** | reloj | Período de gracia al arrancar, antes de juzgar. | Firmar 60 s | ⏳ PENDIENTE |
-| `SAMPLE_STALE_MS` | 10 s → **10 s** | reloj | Sin muestras del acelerómetro por más de esto = sensor muerto. | Firmar 10 s | ⏳ PENDIENTE |
-| Techo de "falla visible" | 60 s → **60 s (enlace) / ≈ 75 s (OSD congelado)** | resultado de lo anterior | Tiempo máximo hasta que el sistema registra que dejó de proteger. | Aceptar 60/75 s. Alternativa: bajar los `STALE` a 30 s (techos 50/65 s) con más registros falsos | ⏳ PENDIENTE |
-| `ALARM_KEEP_ALIVE_MS` | (nueva) **10 s** (efectivo 10 a 15 s) | celular (mergeado) | Cada cuánto el celular repite el estado de alarma al reloj. | Firmar 10 s | ⏳ PENDIENTE |
-| `OSD_DATA_FRESH_MS` | (nueva) **15 s** | celular (mergeado) | Cuánto puede quedar sin avanzar el timestamp de OSD antes de dejar de mandar `0`. El reloj manda cada 5 s: tolera 2 ciclos perdidos. | Firmar 15 s | ⏳ PENDIENTE |
-| `NO_WATCH_DATA_MS` | (nueva) **30 s** | celular (mergeado) | Sin mensajes del reloj por más de esto = falla "sin datos del reloj". | Firmar 30 s | ⏳ PENDIENTE |
-| `POST_OK_STALE_MS` y `MAX_POST_FAILURES` | (nuevas) **20 s** y **3** | celular (mergeado) | Cuándo se considera que OSD no responde (3 fallos seguidos o 20 s sin un POST exitoso). | Firmar 20 s y 3 | ⏳ PENDIENTE |
-| `LATCH_CLEAR_OK_STREAK` | (nueva) **2** | celular (mergeado) | Respuestas OK seguidas para limpiar "fuente equivocada" o "OSD rechaza datos". Con 1 se limpia con un OK suelto. | Firmar 2 | ⏳ PENDIENTE |
-| Techo del relay de alarma | (diseño) **8 s** | celular (mergeado) | Máximo desde que OSD calcula un estado hasta que llega al reloj. Típico: menos de 1 s. | Firmar 8 s | ⏳ PENDIENTE |
-| Rango de `sample_freq` aceptado | 1 a 200 → **exactamente 25** | celular (requiere cambio de código) | Un valor distinto de 25 desescala el análisis de OSD sin avisar. | Firmar 25 y endurecer el parser (hallazgo F6) | ⏳ PENDIENTE |
-| `DEFAULT_HANDSHAKE_BATTERY` | (nueva) **100** | celular (mergeado) | Batería que se le informa a OSD si pide ajustes antes de que el reloj mande los suyos. Puede ocultar una batería baja unos segundos. | Dejar 100 | ⏳ PENDIENTE |
+| `WATCHDOG_INTERVAL_MS` | 30 s → **10 s** | reloj (Batch 7) | Cada cuánto revisa la salud. Más corto detecta antes; el costo de batería es despreciable. | Firmar 10 s | ✅ FIRMADA 2026-09-19 |
+| `DELIVERY_STALE_MS` | 60 s → **40 s** | reloj (Batch 7) | Silencio tolerado del enlace al celular. Los datos van cada 5 s, así que 40 s tolera unos 7 envíos perdidos. | Firmar 40 s | ✅ FIRMADA 2026-09-19 |
+| `ALARM_STATE_STALE_MS` | (nueva) **40 s** | reloj (Batch 7) | Silencio tolerado del estado de alarma. El celular refresca cada 10 a 15 s, así que tolera unos 2 a 3 refrescos perdidos. | Firmar 40 s, **solo junto con** el arreglo F1 (ya mergeado) | ✅ FIRMADA 2026-09-19 |
+| `UNHEALTHY_CHECKS_FOR_DEGRADED` (histéresis) | 2 → **2** | reloj | Revisiones malas seguidas antes de marcar DEGRADED. Filtra cortes de un instante; suma un intervalo al techo. | Firmar 2 | ✅ FIRMADA 2026-09-19 |
+| `WATCHDOG_WARMUP_MS` | 60 s → **60 s** | reloj | Período de gracia al arrancar, antes de juzgar. | Firmar 60 s | ✅ FIRMADA 2026-09-19 |
+| `SAMPLE_STALE_MS` | 10 s → **10 s** | reloj | Sin muestras del acelerómetro por más de esto = sensor muerto. | Firmar 10 s | ✅ FIRMADA 2026-09-19 |
+| Techo de "falla visible" | 60 s → **60 s (enlace) / ≈ 75 s (OSD congelado)** | resultado de lo anterior | Tiempo máximo hasta que el sistema registra que dejó de proteger. | Aceptar 60/75 s. Alternativa: bajar los `STALE` a 30 s (techos 50/65 s) con más registros falsos | ✅ FIRMADA 2026-09-19 |
+| `ALARM_KEEP_ALIVE_MS` | (nueva) **10 s** (efectivo 10 a 15 s) | celular (mergeado) | Cada cuánto el celular repite el estado de alarma al reloj. | Firmar 10 s | ✅ FIRMADA 2026-09-19 |
+| `OSD_DATA_FRESH_MS` | (nueva) **15 s** | celular (mergeado) | Cuánto puede quedar sin avanzar el timestamp de OSD antes de dejar de mandar `0`. El reloj manda cada 5 s: tolera 2 ciclos perdidos. | Firmar 15 s | ✅ FIRMADA 2026-09-19 |
+| `NO_WATCH_DATA_MS` | (nueva) **30 s** | celular (mergeado) | Sin mensajes del reloj por más de esto = falla "sin datos del reloj". | Firmar 30 s | ✅ FIRMADA 2026-09-19 |
+| `POST_OK_STALE_MS` y `MAX_POST_FAILURES` | (nuevas) **20 s** y **3** | celular (mergeado) | Cuándo se considera que OSD no responde (3 fallos seguidos o 20 s sin un POST exitoso). | Firmar 20 s y 3 | ✅ FIRMADA 2026-09-19 |
+| `LATCH_CLEAR_OK_STREAK` | (nueva) **2** | celular (mergeado) | Respuestas OK seguidas para limpiar "fuente equivocada" o "OSD rechaza datos". Con 1 se limpia con un OK suelto. | Firmar 2 | ✅ FIRMADA 2026-09-19 |
+| Techo del relay de alarma | (diseño) **8 s** | celular (mergeado) | Máximo desde que OSD calcula un estado hasta que llega al reloj. Típico: menos de 1 s. | Firmar 8 s | ✅ FIRMADA 2026-09-19 |
+| Rango de `sample_freq` aceptado | 1 a 200 → **exactamente 25** | celular (requiere cambio de código) | Un valor distinto de 25 desescala el análisis de OSD sin avisar. | Firmar 25 y endurecer el parser (hallazgo F6) | ✅ FIRMADA 2026-09-19 |
+| `DEFAULT_HANDSHAKE_BATTERY` | (nueva) **100** | celular (mergeado) | Batería que se le informa a OSD si pide ajustes antes de que el reloj mande los suyos. Puede ocultar una batería baja unos segundos. | Dejar 100 | ✅ FIRMADA 2026-09-19 |
 | `techo_latencia_clinica` (de la tabla de arriba) | (a definir) | — | Tiempo máximo aceptable entre el inicio de la convulsión y la alarma. Lo define OSD (ventana de 30 s con paso de 5 s) más el relay. | **Tu decisión clínica**, no la puedo recomendar | ⏳ PENDIENTE |
 
 **No requieren firma** (solo afectan el registro y el resumen, no la detección ni la alarma; se
@@ -79,4 +79,18 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 
 | Constante | Valor firmado | Firmado por | Fecha | Justificación |
 |---|---|---|---|---|
-| _(ninguna todavía)_ | | | | |
+| `WATCHDOG_INTERVAL_MS` | 10 s (antes 30 s) | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, Batch 7. Detalle en la tabla de arriba. |
+| `DELIVERY_STALE_MS` | 40 s (antes 60 s) | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, Batch 7. Detalle en la tabla de arriba. |
+| `ALARM_STATE_STALE_MS` | 40 s (nueva) | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, Batch 7. Condicionada al arreglo F1, ya mergeado (Batch 5c). Detalle en la tabla de arriba. |
+| `UNHEALTHY_CHECKS_FOR_DEGRADED` (histéresis) | 2 ticks | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, sin cambio. Detalle en la tabla de arriba. |
+| `WATCHDOG_WARMUP_MS` | 60 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, sin cambio. Detalle en la tabla de arriba. |
+| `SAMPLE_STALE_MS` | 10 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Reloj, sin cambio. Detalle en la tabla de arriba. |
+| Techo de "falla visible" | 60 s (enlace) y ≈ 75 s (OSD congelado) | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Resultado de los valores anteriores; cuentas calculadas, sin medir en hardware. Detalle en la tabla de arriba. |
+| `ALARM_KEEP_ALIVE_MS` | 10 s (efectivo 10 a 15 s) | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
+| `OSD_DATA_FRESH_MS` | 15 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado (Batch 5c). Detalle en la tabla de arriba. |
+| `NO_WATCH_DATA_MS` | 30 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
+| `POST_OK_STALE_MS` y `MAX_POST_FAILURES` | 20 s y 3 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
+| `LATCH_CLEAR_OK_STREAK` | 2 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
+| Techo del relay de alarma | 8 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Diseño; típico menos de 1 s. Detalle en la tabla de arriba. |
+| Rango de `sample_freq` aceptado | exactamente 25 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Firmado el valor; **el código todavía acepta 1 a 200** (pendiente de endurecer, hallazgo F6). Detalle en la tabla de arriba. |
+| `DEFAULT_HANDSHAKE_BATTERY` | 100 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |

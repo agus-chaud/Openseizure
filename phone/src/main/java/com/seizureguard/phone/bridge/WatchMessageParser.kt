@@ -14,7 +14,7 @@ object WatchMessageParser {
     const val ACCEL_CHUNK_SAMPLES = 125          // 5 s at 25 Hz: one OSD analysis window per chunk
     const val MAX_PAYLOAD_BYTES = 8 * 1024       // a valid chunk is ~2.5 KB; reject absurd sizes early
     const val MAX_ABS_MILLI_G = 100_000.0        // sanity bound, far above any real sensor reading
-    private const val MAX_SAMPLE_FREQ = 200
+    const val SAMPLE_FREQ_HZ = 25                // clinically signed (DEC-059): the only accepted sample_freq
 
     /** `{"samples":[125 finite numbers]}` -> milli-g samples, or null if malformed. */
     fun parseAccel(bytes: ByteArray?): DoubleArray? = parse(bytes) { o ->
@@ -26,14 +26,16 @@ object WatchMessageParser {
             if (d.isNaN() || d.isInfinite() || Math.abs(d) > MAX_ABS_MILLI_G) return@parse null
             out[i] = d
         }
+        // Frozen sensor: every sample identical (strict, no tolerance) -> reject so NO_WATCH_DATA surfaces it.
+        if (out.all { it == out[0] }) return@parse null
         out
     }
 
-    /** `{"battery":0..100,"sample_freq":1..200}` (both integers, both required), or null. */
+    /** `{"battery":0..100,"sample_freq":25}` (both integers, both required), or null. */
     fun parseSettings(bytes: ByteArray?): WatchSettings? = parse(bytes) { o ->
         val battery = wholeNumber(o.opt("battery")) ?: return@parse null
         val freq = wholeNumber(o.opt("sample_freq")) ?: return@parse null
-        if (battery !in 0..100 || freq !in 1..MAX_SAMPLE_FREQ) return@parse null
+        if (battery !in 0..100 || freq != SAMPLE_FREQ_HZ) return@parse null
         WatchSettings(battery, freq)
     }
 

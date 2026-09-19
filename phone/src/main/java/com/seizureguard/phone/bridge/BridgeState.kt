@@ -20,7 +20,7 @@ fun foregroundPrerequisiteMissing(sdkInt: Int, bluetoothConnectGranted: Boolean)
 
 /** Settings to hand OSD on a `sendSettings` handshake: cached watch values, else safe defaults. */
 fun handshakeSettings(cached: WatchSettings?): WatchSettings =
-    cached ?: WatchSettings(DEFAULT_HANDSHAKE_BATTERY, 25)
+    cached ?: WatchSettings(DEFAULT_HANDSHAKE_BATTERY, WatchMessageParser.SAMPLE_FREQ_HZ)
 
 /** Single-slot "latest wins" mailbox: no queue, an unconsumed item is replaced (and reported). */
 class LatestSlot<T : Any> {

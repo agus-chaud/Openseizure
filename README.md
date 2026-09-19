@@ -550,8 +550,8 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - [x] **Batch 3a** Codec/parser puros + tests — [PR #14](https://github.com/agus-chaud/Openseizure/pull/14) — Agent-Done
 - [x] **Batch 3b** BridgeHealth + test de integración loopback — [PR #15](https://github.com/agus-chaud/Openseizure/pull/15) — Agent-Done
 - [x] **Batch 4** `OsdHttpForwarder` — [PR #16](https://github.com/agus-chaud/Openseizure/pull/16) — Agent-Done
-- [ ] **Batch 5a** `OsdBridgeService` (core), en dos PRs apilados — [#17](https://github.com/agus-chaud/Openseizure/pull/17) (validación + estado de salud) y [#18](https://github.com/agus-chaud/Openseizure/pull/18) (servicio) — abiertos, sin mergear
-- [ ] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` — Agent-Done
+- [x] **Batch 5a** `OsdBridgeService` (core), en dos PRs apilados — [#17](https://github.com/agus-chaud/Openseizure/pull/17) (validación + estado de salud) y [#18](https://github.com/agus-chaud/Openseizure/pull/18) (servicio) — Agent-Done
+- [x] **Batch 5b** `AlarmStateRelay` + `BridgeNotifications` + test del servicio, en dos PRs apilados — [#19](https://github.com/agus-chaud/Openseizure/pull/19) (relay) y [#20](https://github.com/agus-chaud/Openseizure/pull/20) (notificaciones + test) — Agent-Done
 - [ ] **Batch 6** `SetupActivity` + `BootReceiver` — Agent-Done
 - [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma, requiere PASS de `safety-reviewer` y checkpoint explícito con el usuario) — Agent-Done
 - [ ] **Batch 8** Handshake de versión/compatibilidad — Agent-Done

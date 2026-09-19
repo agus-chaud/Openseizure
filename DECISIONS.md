@@ -1700,9 +1700,55 @@ runtime, lo que esquivaría DV-1. No se agregó; conviene confirmarlo en la docu
 **Deuda:** el CI solo corre los tests de `:wear`, y no se dispara en PRs apilados sobre una rama
 distinta de `main`. Conviene sumar `:phone:testDebugUnitTest` al workflow.
 
-**Estado:** Batches 1–4 mergeados. 5a-1 (#17) y 5a-2 (#18) abiertos, sin mergear. Sigue 5b
-(`AlarmStateRelay` + `BridgeNotifications` + test del servicio). GATE-0 sigue asumido como PASS
-(DEC-052); DV-1..DV-6 pendientes.
+**Estado:** Batches 1–5a mergeados (5a-1 #17 y 5a-2 #18, con CI verde). Sigue 5b (ver DEC-055).
+GATE-0 sigue asumido como PASS (DEC-052); DV-1..DV-6 pendientes.
+
+---
+
+## DEC-055: Batch 5b de `watch-osd-message-delivery` — relay del estado de alarma y notificaciones de falla
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 5b) | **Fecha:** Septiembre 2026
+
+**Qué se hizo (PRs #19 y #20, mergeados; el lote pesaba ~480 líneas, se entregó apilado):**
+- `AlarmStateRelay`: reenvía al reloj el estado de alarma que OSD devuelve en `GET /data`, por
+  `/osd/alarm_state` con `{"alarm_state","alarm_phrase"}`. Manda cuando el estado cambia y como
+  refresco cada 10 s.
+- `BridgeNotifications`: reemplaza a la notificación mínima de 5a (`BridgeStatusNotification`,
+  borrada; se conservan los ids de canal y la alerta de "no se puede iniciar"). Dos canales:
+  `osd_bridge_status` (LOW, ongoing) y `osd_bridge_fault` (HIGH, `CATEGORY_ERROR`, suena y vibra).
+- `OsdBridgeServiceTest` (Robolectric, 7 tests) y `AlarmStateRelayTest` (8). Suite de `:phone`: 65.
+
+**Silencio ante fallo (punto de seguridad de vida):** si el cuerpo de `/data` es nulo, está vacío,
+malformado, o `alarmState` falta, no es número o es negativo, el celular **no manda nada** y nunca
+inventa un código de falla. El detector de ese caso es el watchdog de staleness del reloj, no el
+celular. Un poll fallido después de uno bueno tampoco genera refresco.
+
+**Notificación de falla:** se publica al aparecer o cambiar la falla, se vuelve a publicar cada 60 s
+mientras dure (`setOnlyAlertOnce(false)`, para que suene cada vez) y se cancela sola cuando el puente
+vuelve a `NONE`. Se evalúa en el tick de salud de 10 s, así que el re-post cae entre 60 y 70 s.
+
+**Desviaciones del diseño:**
+1. El refresco de 10 s se evalúa en la cadencia del poll (≤5 s), así que el refresco efectivo es de
+   10–15 s. Sigue muy dentro de la ventana de 40 s del reloj.
+2. El observer se cablea por defecto en `onCreate` con un compuesto anónimo; los tests pueden
+   reemplazar `service.observer`.
+3. `WearAlarmSender.send` bloquea en la corrutina del poll con timeout de 3 s y mantiene `pollMutex`
+   mientras envía.
+4. Robolectric no puede probar el listener real de `MessageClient` (no hay Play Services). El
+   registro del listener queda como ítem de verificación en dispositivo.
+
+**Riesgo abierto (DV-4, no debilitado):** si OSD dejara de analizar pero `GET /data` siguiera
+devolviendo el último `alarmState`, el celular seguiría reenviándolo como refresco. El watchdog del
+reloj vería mensajes recientes y no marcaría la falla. Es la mayor exposición de seguridad de vida de
+esta arquitectura y hay que llevársela al `safety-reviewer` antes de Batch 7 (ver si `/data` trae un
+timestamp o contador que permita detectar un estado congelado).
+
+**Proceso:** al mergear #20 apareció un conflicto en `OsdBridgeService.kt` (ambos PRs tocaron el
+cableado de `onCreate` tras el squash de #19). Se resolvió quedando con la versión de 5b-2, que además
+cablea las notificaciones; los 65 tests pasan sobre el resultado.
+
+**Estado:** Batches 1–5b mergeados. Sigue Batch 6 (`SetupActivity` + `BootReceiver`). GATE-0 sigue
+asumido como PASS (DEC-052); DV-1..DV-6 pendientes.
 
 ---
 

@@ -104,15 +104,15 @@ Parallelizable: {T3.1+T3.2} and {T3.3+T3.4} can run in parallel (independent fil
 
 ## Batch 3b — BridgeHealth + loopback integration test
 
-- [ ] **T3.5** `phone/.../bridge/BridgeHealth.kt` — `BridgeFault` enum + `evaluate(...)` boundary
+- [x] **T3.5** `phone/.../bridge/BridgeHealth.kt` — `BridgeFault` enum + `evaluate(...)` boundary
       logic (`NO_WATCH_DATA` >30s, `OSD_UNREACHABLE` ≥3 consecutive failures or >20s since last
       POST OK, latched `OSD_WRONG_DATASOURCE`/`OSD_REJECTS_DATA`). New, pure.
       Satisfies: PCB-7 (failure surfacing thresholds), design Interfaces/Contracts.
       Dependencies: T3.3 (`PostOutcome` type reused).
-- [ ] **T3.6** `phone/src/test/.../BridgeHealthTest.kt` — boundary cases for each fault, incl.
+- [x] **T3.6** `phone/src/test/.../BridgeHealthTest.kt` — boundary cases for each fault, incl.
       recovery transition back to `NONE`. New.
       Dependencies: T3.5.
-- [ ] **T3.7** Loopback integration test: local `ServerSocket`-based stub server in a JVM test
+- [x] **T3.7** Loopback integration test: local `ServerSocket`-based stub server in a JVM test
       asserting the exact wire bytes OSD's `NanoHTTPD.parseBody()`/`decodeParms` would accept
       (content-type, `dataObj=` prefix, percent-encoding round-trip). New test file.
       Satisfies: design "Testing Strategy" table row "Integration (no OSD)".

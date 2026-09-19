@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SeizureGuard Companion</string>
+    <string name="bridge_status_channel">Bridge status</string>
+    <string name="bridge_status_title">SeizureGuard bridge running</string>
+    <string name="bridge_status_text">Forwarding watch data to OpenSeizureDetector</string>
+    <string name="bridge_fault_channel">Bridge faults</string>
+    <string name="bridge_start_failed_title">SeizureGuard: monitoring is NOT working</string>
+    <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
 </resources>

@@ -140,11 +140,11 @@ Parallelizable: none (sequential within batch).
 
 ## Batch 5a — `OsdBridgeService` core
 
-- [ ] **T5.1** Extend `phone/src/main/AndroidManifest.xml` — FGS type `connectedDevice`,
+- [x] **T5.1** Extend `phone/src/main/AndroidManifest.xml` — FGS type `connectedDevice`,
       `BLUETOOTH_CONNECT`, `WAKE_LOCK`, `POST_NOTIFICATIONS`. Modified.
       Satisfies: PCB-8, design Architecture Decision #8.
       Dependencies: T2.3.
-- [ ] **T5.2** `phone/.../bridge/OsdBridgeService.kt` — foreground service: `MessageClient` listener
+- [x] **T5.2** `phone/.../bridge/OsdBridgeService.kt` — foreground service: `MessageClient` listener
       for `/osd/accel_data` and `/osd/settings`, `PARTIAL_WAKE_LOCK` (10h timeout, renewed each 10s
       tick), POST loop (pass-through, no batching), event-driven `GET /data` poll (250ms
       post-POST + 5s idle safety poll), health tick, `START_STICKY`. New.

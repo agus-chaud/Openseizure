@@ -9,13 +9,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-        Batch 2 (this batch) intentionally stops here. FGS-specific permissions
-        (connectedDevice type declarations, WAKE_LOCK, POST_NOTIFICATIONS, BLUETOOTH_CONNECT,
-        RECEIVE_BOOT_COMPLETED, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) are added incrementally in
-        Batches 5-6 alongside the components that declare/need them (OsdBridgeService,
-        SetupActivity, BootReceiver), so each PR's permission surface is auditable against the
-        component that requires it. See tasks.md T5.1/T6.1.
+        Batch 5a: permissions required by OsdBridgeService (design Architecture Decision #8).
+        FOREGROUND_SERVICE + FOREGROUND_SERVICE_CONNECTED_DEVICE are mandatory at targetSdk 34
+        for a connectedDevice foreground service (startForeground throws SecurityException without).
+        BLUETOOTH_CONNECT is the runtime prerequisite for the connectedDevice type on API 34
+        (granted by SetupActivity in Batch 6; the service faults loudly if it is denied).
+        RECEIVE_BOOT_COMPLETED / REQUEST_IGNORE_BATTERY_OPTIMIZATIONS arrive in Batch 6 (T6.1).
     -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".PhoneApplication"
@@ -25,11 +30,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SeizureGuardPhone">
 
-        <!--
-            No activities/services declared yet — this batch is a pure scaffold so the module
-            builds and installs as an empty app. SetupActivity (Batch 6), OsdBridgeService
-            (Batch 5a), and BootReceiver (Batch 6) are added in their own batches.
-        -->
+        <!-- Not exported: started only by this app (SetupActivity / BootReceiver in Batch 6). -->
+        <service
+            android:name=".bridge.OsdBridgeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
     </application>
 

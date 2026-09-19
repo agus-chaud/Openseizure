@@ -88,9 +88,9 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 ## 4. Condiciones para pasar de BLOCK a PASS (checklist)
 
 - [x] **1.** F1 arreglado y con tests de estado congelado (Batch 5c, PRs #22/#23 mergeados). Falta DV-4 en hardware.
-- [~] **2.** Política para los estados 3–7: **definida** (DEC-057). Falta enmendar el spec WCT-8 e implementarla (T7.5).
+- [~] **2.** Política para los estados 3–7: **definida** (DEC-057) y **spec enmendado** (2026-09-19, `watch-companion-transport.md` y `phone-companion-bridge.md`). Falta implementarla (T7.5).
 - [~] **3.** ~~DEGRADED persistente~~ reemplazado por DEGRADED solo visual (DEC-057). Falta reescribir T7.6.
-- [ ] **4.** Constantes de la sección 3 firmadas; aritmética corregida con holgura (P2, T7.7).
+- [ ] **4.** Constantes firmadas y aritmética corregida (P2, T7.7). **Tabla armada** en `CLINICAL_SIGNOFF.md` (con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado); falta tu firma.
 - [ ] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` reescritos (pueden ir en Batch 9, pero antes del merge del Batch 7).
 - [ ] **6.** `osdDirect` fuera de `release` (F7).
 - [ ] **7.** Segundo `safety-reviewer` (R6) sobre el resultado de 1–6 con veredicto PASS.

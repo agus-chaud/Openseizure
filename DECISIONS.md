@@ -1788,6 +1788,60 @@ ruta de alarma del teléfono se revisó de forma adversarial por primera vez rec
 
 ---
 
+## DEC-057: Las fallas del sistema son totalmente silenciosas; solo una emergencia interrumpe
+
+**Fase:** SDD `watch-osd-message-delivery` (política de F2 del `safety-reviewer`) | **Fecha:** 2026-09-19
+
+**Decisión (del usuario):** ninguna falla del sistema produce sonido ni vibración, ni en el celular
+ni en el reloj. La única interacción con el cuidador es una **emergencia** (correr a la cama). El
+cuidador usa **otro celular** distinto del que corre OSD. Se eligió la opción A ("fallas totalmente
+silenciosas") sobre la B ("avisar solo si la falla dura más de N minutos"), que era la recomendada.
+
+**Reemplaza:** la decisión #2 de DEC-051 (falla del `:phone` = notificación al cuidador), el criterio
+de éxito "falla visible en ≤60 s" entendido como alerta, y los hallazgos F3 (vibración persistente
+de DEGRADED) y F4 (que la notificación llegue a una persona) del registro de seguridad.
+
+**Política de estados de OSD en el reloj:**
+
+| Estado | Comportamiento |
+|---|---|
+| 0 OK | Sin acción |
+| 1 WARNING | Sin cambios |
+| 2 ALARM, 3 FALL, 5 MANUAL | Alarma de convulsión |
+| 4 FAULT, 7 NETFAULT, valor desconocido | Falla del sistema: **silenciosa** (indicador visual pasivo + registro) |
+| 6 MUTE | Sin vibración |
+
+**Riesgos aceptados de forma consciente:**
+1. Un sistema caído se ve igual que una noche tranquila. Mitigación prevista, sin interrumpir a
+   nadie: indicador pasivo, registro de cada período de falla y un resumen silencioso a la mañana.
+2. OSD fuerza FAULT por encima de ALARM (`SdServer.java:1274-1281`): con una falla activa (por
+   ejemplo batería baja del teléfono) una convulsión **no genera alarma**. Mitigación de proceso:
+   dejar el teléfono de OSD cargando durante la noche.
+3. MUTE también tapa las alarmas y cancela el SMS mientras esté activo.
+
+**Configuración necesaria fuera de este repo:** en OSD hay que apagar `AudibleFaultWarning` (por
+defecto está activada y suena por el canal de alarma). Debe figurar en las instrucciones de
+`SetupActivity` y en `CAREGIVER_GUIDE.md`.
+
+**Mute con el cuidador en otro celular.** La alarma de OSD suena por `USAGE_ALARM`
+(`SdServer.java:951-1000`), así que atraviesa el modo silencio del timbre (depende del volumen de
+alarma y de la excepción de alarmas de No Molestar). Pero el SMS a un celular distinto no se puede
+controlar desde nuestro código. Vía candidata: correr OSD también en el celular del cuidador con la
+fuente de datos "Network", que consulta `http://<IP>:8080/data` cada 2 s
+(`SdDataSourceNetwork.java:32,309`) y suena por el canal de alarma. **Sin verificar de punta a
+punta:** que ambos estén en la misma red, qué pasa cuando se corta el enlace (avisa NETFAULT), y que
+el servidor web de OSD queda expuesto sin autenticación en la red local. Alternativa sin código:
+configurar en el celular del cuidador No Molestar con el contacto del paciente como prioritario.
+
+**Trabajo derivado (aún sin hacer):** Batch 5d en `:phone` (notificaciones de falla silenciosas,
+registro de fallas, resumen matutino, texto de setup) y ajustes del Batch 7 en `:wear` (DEGRADED solo
+visual, mapeo de estados). Las tareas T7.5/T7.6 de `tasks.md` hay que reescribirlas.
+
+**Estado:** política definida; implementación pendiente. Registro en
+`docs/SAFETY_FINDINGS_WATCH_OSD.md`.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

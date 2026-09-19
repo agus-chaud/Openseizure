@@ -68,6 +68,7 @@ class OsdBridgeService : Service() {
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val pollMutex = Mutex()
     private lateinit var state: BridgeState
+    private lateinit var freshness: OsdDataFreshness
     private var wakeLock: PowerManager.WakeLock? = null
     private var messageListener: MessageClient.OnMessageReceivedListener? = null
     private var started = false
@@ -80,12 +81,16 @@ class OsdBridgeService : Service() {
         super.onCreate()
         // Health clocks start "now", not 0, so the first tick cannot raise a false fault.
         state = BridgeState(SystemClock.elapsedRealtime())
+        freshness = OsdDataFreshness({ SystemClock.elapsedRealtime() })
         lastPollAtMs = SystemClock.elapsedRealtime()
         observer = defaultObserver()
     }
 
     private fun defaultObserver(): BridgeObserver {
-        val relay = AlarmStateRelay(WearAlarmSender(this)::send) { SystemClock.elapsedRealtime() }
+        val relay = AlarmStateRelay(
+            WearAlarmSender(this)::send, { SystemClock.elapsedRealtime() },
+            { state.fault(SystemClock.elapsedRealtime()) }, freshness, // live fault, not the 10 s-old tick value
+        )
         val notifications = BridgeNotifications(this)
         return object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)

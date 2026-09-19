@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.seizureguard.phone.R
+import com.seizureguard.phone.bridge.BridgeHistory
 import com.seizureguard.phone.bridge.BridgePrefs
 import com.seizureguard.phone.bridge.OsdBridgeService
 
@@ -75,6 +76,7 @@ class SetupActivity : Activity() {
 
     private fun stopBridge() {
         BridgePrefs.setWasBridging(this, false)
+        BridgeHistory.onCleanStop(this)
         stopService(Intent(this, OsdBridgeService::class.java))
         toast(R.string.setup_stopped)
     }

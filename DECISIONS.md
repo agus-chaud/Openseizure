@@ -1842,6 +1842,43 @@ visual, mapeo de estados). Las tareas T7.5/T7.6 de `tasks.md` hay que reescribir
 
 ---
 
+## DEC-058: Batch 5d de `watch-osd-message-delivery` — implementación de la política de fallas silenciosas
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 5d, PRs #24, #25 y #26 mergeados) | **Fecha:** 2026-09-19
+
+**Qué se hizo (solo `:phone`, sin tocar el reloj):**
+- **Notificaciones silenciosas (#24):** canal nuevo `osd_bridge_fault_silent` (importancia baja, sin
+  sonido, vibración ni luces, sin pantalla completa). La falla se publica al aparecer o cambiar, se
+  actualiza si cambia el tipo y se cancela al resolverse; ya no se repite cada 60 s. El canal viejo
+  `osd_bridge_fault` (HIGH) se borra. Los avisos de "no se puede iniciar" (DV-1) y de "reiniciá el
+  puente" (DV-2) usan el mismo canal silencioso.
+- **Registro de fallas y caídas del servicio (#25):** `FaultLog` guarda períodos de falla (tipo,
+  inicio, fin) durante 14 días y hasta 300 entradas. `ServiceLiveness` guarda cada ~60 s una marca de
+  "seguía vivo"; si al arrancar hay un hueco de más de 120 s, con `was_bridging` y sin Stop limpio,
+  registra un período `SERVICE_DOWN`.
+- **Resumen matutino (#26):** notificación silenciosa a las 8:00 (canal `osd_bridge_summary`) con las
+  interrupciones de las últimas 12 h. Usa `AlarmManager.setAndAllowWhileIdle` (inexacto, sin permiso
+  de alarmas exactas) y un receptor que no depende del servicio; se arma desde `SetupActivity` y
+  `BootReceiver`. Si el usuario detuvo el puente, no publica nada.
+- **Setup:** indica apagar "Enable Audible System FaultWarnings" en OSD y dejar el teléfono cargando.
+
+**No cambió:** la detección de fallas, el latch, el relay de alarma (fail-loud de 5c) ni el reloj.
+
+**Límites conocidos (aceptados, ver riesgo A1):** el resumen no llega tras un cierre forzado de la
+app ni con el teléfono apagado; un Stop del usuario no se distingue de olvidarse de iniciar; un
+servicio que reinicia en <120 s no se registra. Sin probar en dispositivo: Doze y el comportamiento de
+la importancia baja en One UI.
+
+**Proceso:** los PRs apilados dieron conflictos al mergear (checkbox de `tasks.md`, y en 5d-3 cuatro
+archivos). Se verificó que `main` fuera idéntico al tip de la rama base en `phone/` y se tomó la
+versión de la rama superior. Suite de `:phone`: 120 tests.
+
+**Estado:** Batches 1–6, 5c y 5d mergeados. Pendiente antes de Batch 7: enmendar spec WCT-8, firmar
+constantes, reescribir `CAREGIVER_GUIDE.md` y la sección 4 de `HARDWARE_RUNBOOK.md`, y un segundo
+`safety-reviewer`. Batch 7 sigue bloqueado.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

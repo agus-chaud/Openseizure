@@ -142,10 +142,23 @@ pierdan y para revisarlos en el segundo `safety-reviewer` (R6).
 
 | ID | Riesgo aceptado | Mitigación prevista | Quién lo aceptó |
 |---|---|---|---|
-| A1 | Un sistema caído se ve igual que una noche tranquila: ninguna falla avisa a nadie. | Indicador pasivo, registro de períodos de falla y resumen silencioso a la mañana (Batch 5d) | Usuario. Se le advirtió y se recomendó la opción B (avisar solo si la falla dura > N min) |
+| A1 | Un sistema caído se ve igual que una noche tranquila: ninguna falla avisa a nadie. | Indicador pasivo, registro de períodos de falla y resumen silencioso a la mañana. **Implementado en Batch 5d (#24–#26), sin probar en dispositivo.** No es una red confiable: tras un cierre forzado de la app no llega ningún resumen | Usuario. Se le advirtió y se recomendó la opción B (avisar solo si la falla dura > N min) |
 | A2 | OSD fuerza FAULT por encima de ALARM (`SdServer.java:1274-1281`): con una falla activa una convulsión no genera alarma. | Proceso: dejar el teléfono de OSD cargando de noche; documentarlo | Usuario |
 | A3 | MUTE (botón del reloj o de la app) tapa las alarmas y cancela el SMS mientras esté activo. No se verificó si OSD limita su duración. | Documentar; evaluar un recordatorio | Usuario |
-| A4 | OSD suena por sus propias fallas (`AudibleFaultWarning`, activa por defecto): si no se apaga, la política silenciosa no se cumple. | Apagarla en OSD; que figure en `SetupActivity` y `CAREGIVER_GUIDE.md` | Pendiente de hacer |
+| A4 | OSD suena por sus propias fallas (`AudibleFaultWarning`, activa por defecto): si no se apaga, la política silenciosa no se cumple. | Apagarla en OSD; que figure en `SetupActivity` y `CAREGIVER_GUIDE.md` | `SetupActivity` ya lo indica (etiqueta "Enable Audible System FaultWarnings", `strings.xml:220` de OSD; falta confirmarla en tu versión instalada). **Falta `CAREGIVER_GUIDE.md` y que vos la apagues en OSD** |
+
+### Consecuencias del Batch 5d que conviene tener presentes
+
+- Los avisos de **DV-1** (Bluetooth denegado) y **DV-2** (falla al reanudar tras reiniciar) ahora
+  son **silenciosos**: nadie se entera por notificación de que el puente no arrancó.
+- Sin probar en dispositivo: Doze con `setAndAllowWhileIdle`, si One UI deja asomar o sonar una
+  notificación de importancia baja (si pasa, subir el silencio a nivel mínimo) y la entrega del
+  receptor tras un cierre forzado (no llega; el arranque solo re-arma tras reiniciar).
+- Un Stop del usuario no genera resumen y no se distingue de olvidarse de iniciar el puente.
+- Un servicio que muere y reinicia en menos de 120 s no se registra como caída (falso negativo).
+- Si el usuario ya había personalizado el canal viejo, esa configuración no se conserva.
+- Valores nuevos a incluir en la firma de constantes: `SERVICE_DOWN_THRESHOLD_MS` 120 s,
+  `ALIVE_WRITE_INTERVAL_MS` 60 s, resumen a las 8:00 sobre una ventana de 12 h, retención de 14 días.
 
 ### Alarma en el celular del cuidador (celular distinto del de OSD)
 

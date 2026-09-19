@@ -33,17 +33,24 @@ fun alarmStateJson(s: AlarmState): ByteArray =
  * Relays OSD's alarm state to the watch on change and as a keep-alive.
  * Life-safety: when OSD cannot be read (null/garbled body, no `alarmState`) NOTHING is sent. The watch's
  * staleness watchdog is the detector; a fabricated FAULT code would vibrate as a false ALARM (design #6).
+ * Fail-loud asymmetry (safety-review-pre-batch7 F1): a non-OK state is ALWAYS relayed; `0` (OK, and its keep-alive)
+ * is relayed only while the bridge is healthy AND OSD's data is fresh. Otherwise silence lets the watch's staleness
+ * watchdog degrade instead of a stale "all OK" masking a dead pipeline.
  * [send] returns true when at least one node accepted the message; a failed send is retried next poll.
  */
 class AlarmStateRelay(
     private val send: (ByteArray) -> Boolean,
     private val nowMs: () -> Long,
+    private val faultProvider: () -> BridgeFault,
+    private val freshness: OsdDataFreshness = OsdDataFreshness(nowMs),
 ) {
     private var lastSent: AlarmState? = null
     private var lastSentAtMs = 0L
 
     fun onAlarmDataPolled(body: String?) {
         val s = parseAlarmState(body) ?: return
+        freshness.onSample(parseDataTime(body))
+        if (s.state == 0 && (faultProvider() != BridgeFault.NONE || !freshness.isFresh())) return
         val now = nowMs()
         val due = s != lastSent || now - lastSentAtMs >= ALARM_KEEP_ALIVE_MS
         if (due && send(alarmStateJson(s))) {

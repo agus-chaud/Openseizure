@@ -178,6 +178,21 @@ Parallelizable: T5.3 and T5.4 can be developed in parallel (both depend only on 
 
 ---
 
+## Batch 5c — Relay freshness / fail-loud (safety finding F1)
+
+- [x] **T5c.1** `phone/.../bridge/OsdDataFreshness.kt` + `AlarmStateRelay.kt` — freshness tracker over OSD's
+      `dataTimeStr` (last distinct value, injectable clock, `OSD_DATA_FRESH_MS` 15s) and relay asymmetry:
+      `alarmState >= 1` always relayed; `0` (change + keep-alive) only if `BridgeFault == NONE` and data fresh,
+      else silence. Cites safety-review-pre-batch7 F1. Modified/New.
+- [ ] **T5c.2** `BridgeFault.OSD_DATA_STALE` (POST OK but OSD data timestamp stale) in `BridgeHealth`/`BridgeState`
+      + caregiver notification text in `BridgeNotifications`/`strings.xml`. Cites safety-review-pre-batch7 F1.
+      Dependencies: T5c.1.
+- [ ] **T5c.3** Frozen-state tests: alarm 1/2/3 relayed under fault + stale data; 0 withheld under fault / frozen
+      timestamp; 0 resumes on advance; tracker boundaries; `OSD_DATA_STALE` health/state/notification. Cites
+      safety-review-pre-batch7 F1. Dependencies: T5c.1, T5c.2.
+
+---
+
 ## Batch 6 — `SetupActivity` + `BootReceiver`
 
 - [x] **T6.1** Extend `phone/src/main/AndroidManifest.xml` — `RECEIVE_BOOT_COMPLETED`,
@@ -217,9 +232,8 @@ provably correct in isolation)
 - [ ] **T7.3** `wear/.../service/SeizureMonitorService.kt` — add `lastAlarmStateAtMs` field/param,
       extend `evaluateHealth(...)` signature, update constants: `WATCHDOG_INTERVAL_MS` 30s→**10s**,
       `DELIVERY_STALE_MS` 60s→**40s**, new `ALARM_STATE_STALE_MS` **40s**; warm-up 60s and
-      hysteresis (2 ticks) unchanged. **This constant change is already user-approved** (checkpoint
-      2026-09-12, engram `architecture/seizureguard-aw-fix-direction` #1196 / design decision #5) —
-      do not re-raise for sign-off, implement as specified. `sendToAllNodes` success continues to
+      hysteresis (2 ticks) unchanged. **These constants require a human signature in
+      `CLINICAL_SIGNOFF.md` before merge** (safety-reviewer BLOCK condition 4). `sendToAllNodes` success continues to
       mean "GMS transport ack", not "OSD answered"; inbound alarm-state staleness is the true
       end-to-end liveness signal. Modified.
       Satisfies: WCT-3, WCT-4, WCT-5, design Architecture Decision #5.
@@ -230,6 +244,13 @@ provably correct in isolation)
       `evaluateHealth` cases, and `WakeLock` contract tests still pass unchanged. Modified.
       Satisfies: WCT-5, WCT-8 (existing Robolectric tests must still pass unchanged).
       Dependencies: T7.3.
+
+- [ ] **T7.5** Policy for OSD alarm states 3-7 (FALL/FAULT/MANUAL/MUTE/NETFAULT) — watch currently does
+      `else -> vibrateAlarm()` for >=2 in `AlarmStateManager`; needs user-approved mapping and amended spec
+      WCT-8 (safety finding F2).
+- [ ] **T7.6** Persistent DEGRADED vibration (repeat while degraded) + test criterion in T7.4 (finding F3).
+- [ ] **T7.7** Correct the 60s worst-case arithmetic (inbound path uses 40s stale, not 30s) or accept a
+      signed ~65-70s ceiling.
 
 Parallelizable: none (strict sequential chain; this is the highest-risk batch and should be
 reviewed as its own PR).

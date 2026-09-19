@@ -61,12 +61,15 @@ class BootReceiverTest {
         assertEquals(0, started)
     }
 
-    @Test fun startFailure_degradesToHighImportanceNotification() {
+    @Test fun startFailure_degradesToSilentNotification() {
         BridgePrefs.setWasBridging(app, true)
         receiver { throw SecurityException("boot FGS not allowed") }.onReceive(app, boot)
         assertNotNull(failureNotification())
         val channel = nm.getNotificationChannel(BridgeNotifications.FAULT_CHANNEL_ID)
-        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
+        assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
+        assertNull(channel.sound)
+        assertEquals(false, channel.shouldVibrate())
+        assertEquals(BridgeNotifications.FAULT_CHANNEL_ID, failureNotification().channelId)
         assertNotNull(failureNotification().contentIntent)
     }
 }

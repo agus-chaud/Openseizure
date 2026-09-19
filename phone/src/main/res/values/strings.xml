@@ -4,18 +4,21 @@
     <string name="bridge_status_channel">Bridge status</string>
     <string name="bridge_status_title">SeizureGuard bridge running</string>
     <string name="bridge_status_text">Forwarding watch data to OpenSeizureDetector</string>
-    <string name="bridge_fault_channel">Bridge faults</string>
+    <string name="bridge_fault_channel">Bridge problems (silent)</string>
     <string name="fault_no_watch_data">The watch is not sending data. Check that the watch is on, nearby, and that SeizureGuard is running on it.</string>
     <string name="fault_osd_unreachable">OSD is not receiving data. Check that OpenSeizureDetector is open and running.</string>
     <string name="fault_osd_wrong_datasource">OSD is not accepting watch data. In OpenSeizureDetector, set the data source to Garmin.</string>
     <string name="fault_osd_rejects_data">OSD rejected the watch data. Restart OpenSeizureDetector and check its data source is Garmin.</string>
     <string name="fault_osd_data_stale">OpenSeizureDetector is open but not analysing the watch data. Open the app and check that its data source is Garmin.</string>
-    <string name="bridge_start_failed_title">SeizureGuard: monitoring is NOT working</string>
+    <string name="bridge_start_failed_title">SeizureGuard: monitoring is not working</string>
     <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
     <string name="bridge_restart_needed_text">The phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge.</string>
-    <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD).
+    <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, never with sound or vibration.
 
-Before starting: open OSD, set its data source to Garmin, and make sure OSD is running with its web server on.
+Before starting:
+1. In OSD, set the data source to Garmin and make sure OSD is running with its web server on.
+2. In OSD settings, turn OFF "Enable Audible System FaultWarnings". Otherwise OSD itself will beep on faults.
+3. Keep this phone charging overnight. If its battery runs low, OSD goes into a fault and an alarm cannot fire.
 
 Then tap Start bridge. You only need this screen to start or stop it.</string>
     <string name="setup_battery_button">Allow running in the background</string>

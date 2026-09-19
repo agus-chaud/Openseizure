@@ -214,6 +214,23 @@ Parallelizable: T6.2 and T6.3 in parallel after T6.1; both need T5.2/T5.4.
 
 ---
 
+## Batch 5d — Silent faults, fault log, morning summary (DEC-057)
+
+Policy: system faults never produce sound/vibration/heads-up/repeats; only a real alarm (OSD's job)
+interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone` only.
+
+- [x] **T5d.1** Silent fault presentation: new LOW channel `osd_bridge_fault_silent` (no sound/vibration/lights),
+      legacy `osd_bridge_fault` deleted, no timer re-post (`faultAction` posts only on new/changed fault),
+      `postStartFailure`/`postRestartNeeded` silent too. Plus T5d.4 setup text (delivered together in PR 5d-1).
+- [ ] **T5d.2** `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
+      detection (last-alive timestamp, gap > threshold with `was_bridging` and no clean stop => `SERVICE_DOWN`).
+- [ ] **T5d.3** Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
+      LOW channel `osd_bridge_summary`; pure `buildSummary`; armed by `SetupActivity` Start and `BootReceiver`.
+- [x] **T5d.4** Setup instructions: turn OFF OSD "Enable Audible System FaultWarnings"; keep phone charging
+      overnight; keep Garmin data source / web server instructions.
+
+---
+
 ## Batch 7 — `:wear` retargeting (highest risk — life-safety-adjacent, land after companion is
 provably correct in isolation)
 
@@ -245,10 +262,10 @@ provably correct in isolation)
       Satisfies: WCT-5, WCT-8 (existing Robolectric tests must still pass unchanged).
       Dependencies: T7.3.
 
-- [ ] **T7.5** Policy for OSD alarm states 3-7 (FALL/FAULT/MANUAL/MUTE/NETFAULT) — watch currently does
-      `else -> vibrateAlarm()` for >=2 in `AlarmStateManager`; needs user-approved mapping and amended spec
-      WCT-8 (safety finding F2).
-- [ ] **T7.6** Persistent DEGRADED vibration (repeat while degraded) + test criterion in T7.4 (finding F3).
+- [ ] **T7.5** OSD alarm-state policy per DEC-057: 2/3/5 => alarm; 4/7/unknown => silent system fault
+      (visual only, logged); 6 => no vibration; amend spec WCT-8 (safety finding F2).
+- [ ] **T7.6** DEGRADED becomes visual-only (NO vibration) per DEC-057; remove/adjust `vibrateDegraded`
+      behaviour and update T7.4 criteria (supersedes persistent-vibration finding F3).
 - [ ] **T7.7** Correct the 60s worst-case arithmetic (inbound path uses 40s stale, not 30s) or accept a
       signed ~65-70s ceiling.
 

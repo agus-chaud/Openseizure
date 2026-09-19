@@ -24,7 +24,6 @@ import org.robolectric.annotation.Config
 class OsdBridgeServiceTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private var now = 0L
 
     private fun ids() = shadowOf(nm).allNotifications.size
     private fun fault(id: Int) = shadowOf(nm).getNotification(id)
@@ -32,32 +31,30 @@ class OsdBridgeServiceTest {
 
     // ── Fault notification policy (pure) ──────────────────────────────────────
 
-    @Test fun policy_postsOnNewFault_repostsEvery60s_clearsOnNone() {
+    @Test fun policy_postsOnNewOrChangedFault_neverOnTimer_clearsOnNone() {
         val f = BridgeFault.OSD_UNREACHABLE
-        assertEquals(FaultAction.NONE, faultAction(BridgeFault.NONE, BridgeFault.NONE, 0, 1_000))
-        assertEquals(FaultAction.POST, faultAction(f, BridgeFault.NONE, 0, 1_000))
-        assertEquals(FaultAction.NONE, faultAction(f, f, 1_000, 60_999))
-        assertEquals(FaultAction.POST, faultAction(f, f, 1_000, 61_000))
-        assertEquals(FaultAction.POST, faultAction(BridgeFault.NO_WATCH_DATA, f, 1_000, 2_000))
-        assertEquals(FaultAction.CLEAR, faultAction(BridgeFault.NONE, f, 1_000, 2_000))
+        assertEquals(FaultAction.NONE, faultAction(BridgeFault.NONE, BridgeFault.NONE))
+        assertEquals(FaultAction.POST, faultAction(f, BridgeFault.NONE))
+        assertEquals(FaultAction.NONE, faultAction(f, f))
+        assertEquals(FaultAction.POST, faultAction(BridgeFault.NO_WATCH_DATA, f))
+        assertEquals(FaultAction.CLEAR, faultAction(BridgeFault.NONE, f))
     }
 
     // ── BridgeNotifications against the real NotificationManager ──────────────
 
-    @Test fun notifications_faultShowsText_reposts_thenClears() {
-        val n = BridgeNotifications(app) { now }
+    @Test fun notifications_faultShowsText_neverReposts_updatesOnChange_thenClears() {
+        val n = BridgeNotifications(app)
         n.onHealthTick(BridgeFault.OSD_WRONG_DATASOURCE)
         assertEquals(app.getString(com.seizureguard.phone.R.string.fault_osd_wrong_datasource),
             text(BridgeNotifications.FAULT_NOTIFICATION_ID))
 
         val first = fault(BridgeNotifications.FAULT_NOTIFICATION_ID)
-        now += HEALTH_TICK_MS
-        n.onHealthTick(BridgeFault.OSD_WRONG_DATASOURCE)
-        assertSame(first, fault(BridgeNotifications.FAULT_NOTIFICATION_ID)) // not re-posted at 10 s
+        repeat(30) { n.onHealthTick(BridgeFault.OSD_WRONG_DATASOURCE) } // 5 min of ticks
+        assertSame(first, fault(BridgeNotifications.FAULT_NOTIFICATION_ID)) // no timer re-post
 
-        now += FAULT_REPOST_MS
-        n.onHealthTick(BridgeFault.OSD_WRONG_DATASOURCE)
-        assertNotSame(first, fault(BridgeNotifications.FAULT_NOTIFICATION_ID)) // re-posted after 60 s
+        n.onHealthTick(BridgeFault.NO_WATCH_DATA)
+        assertEquals(app.getString(com.seizureguard.phone.R.string.fault_no_watch_data),
+            text(BridgeNotifications.FAULT_NOTIFICATION_ID))
 
         n.onHealthTick(BridgeFault.NONE)
         assertNull(fault(BridgeNotifications.FAULT_NOTIFICATION_ID))
@@ -74,13 +71,26 @@ class OsdBridgeServiceTest {
         assertTrue(text.contains("not analysing") && text.contains("Garmin"))
     }
 
-    @Test fun notifications_faultChannelIsHighAndErrorCategory() {
-        BridgeNotifications(app) { now }.onHealthTick(BridgeFault.NO_WATCH_DATA)
+    @Test fun notifications_faultChannelIsSilent() {
+        BridgeNotifications(app).onHealthTick(BridgeFault.NO_WATCH_DATA)
         val ch = nm.getNotificationChannel(BridgeNotifications.FAULT_CHANNEL_ID)
-        assertEquals(NotificationManager.IMPORTANCE_HIGH, ch.importance)
+        assertEquals("osd_bridge_fault_silent", ch.id)
+        assertTrue(ch.importance <= NotificationManager.IMPORTANCE_LOW)
+        assertNull(ch.sound)
+        assertEquals(false, ch.shouldVibrate())
+        assertEquals(false, ch.shouldShowLights())
         val n = fault(BridgeNotifications.FAULT_NOTIFICATION_ID)
-        assertEquals("err", n.category)
+        assertNull(n.fullScreenIntent)
+        assertTrue(n.priority <= android.app.Notification.PRIORITY_LOW)
         assertEquals(true, (n.flags and android.app.Notification.FLAG_ONGOING_EVENT) != 0)
+    }
+
+    @Test fun notifications_legacyLoudChannelIsDeleted() {
+        nm.createNotificationChannel(
+            android.app.NotificationChannel(BridgeNotifications.LEGACY_FAULT_CHANNEL_ID, "old", NotificationManager.IMPORTANCE_HIGH),
+        )
+        BridgeNotifications(app).onHealthTick(BridgeFault.NO_WATCH_DATA)
+        assertNull(nm.getNotificationChannel(BridgeNotifications.LEGACY_FAULT_CHANNEL_ID))
     }
 
     // ── Service wiring ────────────────────────────────────────────────────────
@@ -107,11 +117,12 @@ class OsdBridgeServiceTest {
         controller.destroy()
     }
 
-    @Test fun service_startWithoutBluetoothPermission_alertsLoudly() {
+    @Test fun service_startWithoutBluetoothPermission_noticeIsSilent() {
         shadowOf(app).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
         val controller = Robolectric.buildService(OsdBridgeService::class.java, Intent(app, OsdBridgeService::class.java))
         controller.create().startCommand(0, 1)
         assertNotNull(fault(BridgeNotifications.START_FAILURE_NOTIFICATION_ID))
+        assertEquals(BridgeNotifications.FAULT_CHANNEL_ID, fault(BridgeNotifications.START_FAILURE_NOTIFICATION_ID).channelId)
         assertEquals(1, ids())
     }
 }

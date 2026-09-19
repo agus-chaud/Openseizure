@@ -5,6 +5,10 @@
     <string name="bridge_status_title">SeizureGuard bridge running</string>
     <string name="bridge_status_text">Forwarding watch data to OpenSeizureDetector</string>
     <string name="bridge_fault_channel">Bridge faults</string>
+    <string name="fault_no_watch_data">The watch is not sending data. Check that the watch is on, nearby, and that SeizureGuard is running on it.</string>
+    <string name="fault_osd_unreachable">OSD is not receiving data. Check that OpenSeizureDetector is open and running.</string>
+    <string name="fault_osd_wrong_datasource">OSD is not accepting watch data. In OpenSeizureDetector, set the data source to Garmin.</string>
+    <string name="fault_osd_rejects_data">OSD rejected the watch data. Restart OpenSeizureDetector and check its data source is Garmin.</string>
     <string name="bridge_start_failed_title">SeizureGuard: monitoring is NOT working</string>
     <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
 </resources>

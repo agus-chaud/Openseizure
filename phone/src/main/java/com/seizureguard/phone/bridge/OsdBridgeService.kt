@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
-/** Seam wired to AlarmStateRelay (and BridgeNotifications) in onCreate. Called from background threads. */
+/** Seam wired to AlarmStateRelay + BridgeNotifications in onCreate. Called from background threads. */
 internal interface BridgeObserver {
     /** Raw `GET /data` body after a poll, or null if the poll failed. */
     fun onAlarmDataPolled(body: String?)
@@ -86,9 +86,10 @@ class OsdBridgeService : Service() {
 
     private fun defaultObserver(): BridgeObserver {
         val relay = AlarmStateRelay(WearAlarmSender(this)::send) { SystemClock.elapsedRealtime() }
+        val notifications = BridgeNotifications(this)
         return object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)
-            override fun onHealthTick(fault: BridgeFault) = Unit
+            override fun onHealthTick(fault: BridgeFault) = notifications.onHealthTick(fault)
         }
     }
 
@@ -127,19 +128,19 @@ class OsdBridgeService : Service() {
             PackageManager.PERMISSION_GRANTED
         if (foregroundPrerequisiteMissing(Build.VERSION.SDK_INT, btGranted)) {
             Log.e(TAG, "BLUETOOTH_CONNECT not granted: connectedDevice FGS cannot start")
-            BridgeStatusNotification.postStartFailure(this)
+            BridgeNotifications.postStartFailure(this)
             return false
         }
         return try {
             ServiceCompat.startForeground(
-                this, BridgeStatusNotification.STATUS_NOTIFICATION_ID,
-                BridgeStatusNotification.buildStatus(this),
+                this, BridgeNotifications.STATUS_NOTIFICATION_ID,
+                BridgeNotifications.buildStatus(this),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
             )
             true
         } catch (e: Exception) { // SecurityException / ForegroundServiceStartNotAllowedException
             Log.e(TAG, "startForeground refused", e)
-            BridgeStatusNotification.postStartFailure(this)
+            BridgeNotifications.postStartFailure(this)
             false
         }
     }

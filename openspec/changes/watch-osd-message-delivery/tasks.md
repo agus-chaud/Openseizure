@@ -81,20 +81,20 @@ Parallelizable: none within this batch (strict gradle/manifest dependency chain)
 
 ## Batch 3a — Pure codec/parser units + tests
 
-- [ ] **T3.1** `phone/.../bridge/OsdPayloadCodec.kt` — `rawDataJson`, `settingsJson`, `formBody`
+- [x] **T3.1** `phone/.../bridge/OsdPayloadCodec.kt` — `rawDataJson`, `settingsJson`, `formBody`
       per the pinned OSD HTTP contract (`dataType`/`data` shape, 3 mandatory settings ints,
       `URLEncoder.encode(json, "UTF-8")` form body). New, pure/JVM-testable.
       Satisfies: PCB-4, design "Pinned OSD HTTP contract" table, gotcha #1 (no null guard on
       `/settings` — form-urlencoded body is mandatory).
       Dependencies: T2.2 (module must exist).
-- [ ] **T3.2** `phone/src/test/.../OsdPayloadCodecTest.kt` — schema assertions, mandatory-field
+- [x] **T3.2** `phone/src/test/.../OsdPayloadCodecTest.kt` — schema assertions, mandatory-field
       presence, percent-encoding contains no raw CR/LF (gotcha #2). New.
       Dependencies: T3.1.
-- [ ] **T3.3** `phone/.../bridge/OsdResponseParser.kt` — `PostOutcome` enum + `classify(httpCode,
+- [x] **T3.3** `phone/.../bridge/OsdResponseParser.kt` — `PostOutcome` enum + `classify(httpCode,
       body)`, incl. `WRONG_DATASOURCE` detection via OSD's untouched placeholder string. New, pure.
       Satisfies: PCB-4, PCB-5, design Interfaces/Contracts.
       Dependencies: T2.2.
-- [ ] **T3.4** `phone/src/test/.../OsdResponseParserTest.kt` — OK / SEND_SETTINGS / OSD_PARSE_ERROR
+- [x] **T3.4** `phone/src/test/.../OsdResponseParserTest.kt` — OK / SEND_SETTINGS / OSD_PARSE_ERROR
       / WRONG_DATASOURCE / UNREACHABLE cases. New.
       Dependencies: T3.3.
 

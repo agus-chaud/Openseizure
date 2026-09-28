@@ -301,10 +301,10 @@ entonces, el flujo sigue **sin verificar**.
 
 ## 5. Validación del transporte (el método de Graham) — EN ORDEN, no saltees
 
-> ⚠️ **Nota (flujo de dos apps, sección 4):** con el companion, OSD usa la fuente **"Garmin"**, así que en
-> las secciones 5 y 6 el tag de logcat de OSD es `SdDataSourceGarmin` (no `SdDataSourceAw`) y el
-> "modo de prueba" secuencial 1..750 del reloj **no está verificado** en este flujo. Los comandos de abajo
-> pueden necesitar ese ajuste.
+> ⚠️ **Nota (flujo de dos apps, sección 4):** con el companion, OSD usa la fuente **"Garmin"**, así que
+> los comandos de esta sección ya usan el tag de logcat `SdDataSourceGarmin` (no `SdDataSourceAw`, que
+> era del camino directo roto). El "modo de prueba" secuencial 1..750 del reloj **no está verificado**
+> en este flujo de dos apps — puede necesitar un chequeo aparte con el companion andando.
 
 Antes de confiar en la detección, hay que comprobar que los datos del reloj **llegan bien** al
 teléfono. Dos chequeos.
@@ -315,8 +315,8 @@ Vos mirás en el teléfono que lleguen **en ese orden**. Para "espiar" lo que re
 usás el **logcat** (el registro de mensajes en vivo):
 
 ```powershell
-# "-s SdDataSourceAw:D" = mostrá solo los mensajes de esa parte de la app OSD:
-C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceAw:D
+# "-s SdDataSourceGarmin:D" = mostrá solo los mensajes de esa parte de la app OSD:
+C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceGarmin:D
 
 # Qué deberías ver:
 #   "1.0, 2.0, 3.0, ..."   → CORRECTO, llegan en orden ✅
@@ -330,7 +330,7 @@ Dejá el reloj quieto sobre la mesa y cambiá a datos reales. Como está inmóvi
 es la **gravedad de la Tierra**, que vale ~1000 milli-g en un eje:
 
 ```powershell
-C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceAw:D
+C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceGarmin:D
 
 # Qué deberías ver con el reloj quieto:
 #   un eje ≈ 1000 milli-g   → CORRECTO ✅ (está midiendo la gravedad bien)
@@ -343,7 +343,7 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceAw:D
 
 ```powershell
 # Mirar los mensajes del reloj Y del teléfono a la vez:
-C:\Android\platform-tools\adb.exe logcat -s SeizureGuard:D SdDataSourceAw:D
+C:\Android\platform-tools\adb.exe logcat -s SeizureGuard:D SdDataSourceGarmin:D
 ```
 1. App del reloj andando, app OSD del teléfono andando y recibiendo.
 2. Agitá el reloj con la mano, con un movimiento **rítmico y fuerte** (1 a 3 sacudidas por segundo)

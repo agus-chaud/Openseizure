@@ -1,10 +1,22 @@
 # SeizureGuard
 
-App de detección de convulsiones nocturnas para **Samsung Galaxy Watch 8** (Wear OS 4).
+App de detección de convulsiones nocturnas para **Samsung Galaxy Watch 8** (Wear OS — el sistema
+operativo de los relojes inteligentes de Samsung/Google).
 
-Este repo aporta el **lado reloj** (un *data source* Android Wear) que alimenta la app oficial
-**[OpenSeizureDetector](https://openseizuredetector.org.uk) V5.0**, la cual corre el modelo
-**DeepEpiCnn Run24** (PyTorch ExecuTorch) en el teléfono. **El reloj no infiere.**
+Este repo tiene **dos partes**: la app del reloj (`:wear`, captura el movimiento) y una app puente
+en el teléfono (`:phone`, solo reenvía esos datos). Ninguna de las dos detecta la convulsión — eso lo
+hace la app oficial **[OpenSeizureDetector](https://openseizuredetector.org.uk) V5.0** (otro
+proyecto, rama beta), que corre el modelo **DeepEpiCnn Run24** con **PyTorch ExecuTorch** (el motor
+que ejecuta el modelo ya entrenado). **El reloj no infiere: solo captura, transmite y reacciona a lo
+que le contestan.**
+
+> **Por qué hace falta una app puente:** Android exige que dos apps compartan la misma "identidad"
+> (nombre de paquete + certificado de firma) para poder mandarse mensajes por Bluetooth entre reloj y
+> teléfono. El reloj y OSD son de autores distintos y no la comparten, así que sin un intermediario
+> los mensajes del reloj se pierden en silencio antes de llegar a OSD — esto se descubrió como
+> bloqueante real en pruebas de campo. El puente sí comparte identidad con el reloj, y le habla a OSD
+> por otra vía (HTTP local) que no tiene ese problema. Detalle técnico completo: `DECISIONS.md` →
+> **DEC-050** (causa raíz) y **DEC-051** (solución elegida).
 
 ---
 
@@ -25,18 +37,28 @@ Este repo aporta el **lado reloj** (un *data source* Android Wear) que alimenta 
 
 ---
 
-> ## 🛟 Invariante de seguridad #2 — si el monitoreo se rompe, el reloj AVISA
+> ## 🛟 Invariante de seguridad #2 — si el monitoreo se rompe, el reloj AVISA (parcialmente — ver aviso abajo)
 >
 > El peor estado de una app así no es la alarma falsa: es la **falsa sensación de seguridad** (el
-> sistema dice "todo bien" mientras la red está rota). Un **watchdog** corre cada 30s y vigila que:
+> sistema dice "todo bien" mientras algo está roto). Un **watchdog** — un chequeo automático que
+> corre cada 30 segundos, dentro del propio reloj — vigila que:
 >
-> - el acelerómetro siga emitiendo (sin muestras >10s = sensor muerto), y
-> - las entregas al teléfono sigan llegando (sin entrega exitosa >60s = teléfono desconectado).
+> - el acelerómetro siga emitiendo datos (si no hay una muestra nueva hace más de 10s, el sensor está
+>   muerto), y
+> - los datos sigan llegando a la app puente del teléfono (si no hay una entrega exitosa hace más de
+>   60s, algo cortó la cadena).
 >
 > Si algo falla, el monitoreo pasa a **DEGRADADO**: la notificación cambia a *"⚠ MONITOREO
-> DEGRADADO"*, el reloj vibra con un patrón distinto, y queda registrado. **Una no-detección con
+> DEGRADADO"*, el reloj vibra con un patrón de 2 pulsos, y queda registrado. **Una no-detección con
 > el reloj en DEGRADADO NO significa "sin convulsión" — significa "no estoy mirando".**
-> Detalle técnico en `DECISIONS.md` → **DEC-048**.
+>
+> ⚠️ **Aviso importante (septiembre 2026):** del lado del teléfono ya rige una política más estricta
+> — "ninguna falla del sistema suena ni vibra, solo una emergencia real lo hace" (ver más abajo, y
+> `DECISIONS.md` → **DEC-057**). **Esa política todavía NO llegó al reloj** (es el trabajo pendiente
+> llamado "Batch 7" en el checklist de abajo). Hoy el reloj sigue con el comportamiento viejo:
+> cualquier estado que le llegue de OSD que no sea "todo OK" o "warning" — **incluida una falla del
+> sistema en OSD** — lo hace vibrar fuerte, como si fuera una convulsión real. Detalle técnico en
+> `DECISIONS.md` → **DEC-048**, **DEC-057** y **DEC-061**.
 
 ---
 
@@ -58,31 +80,62 @@ Las convulsiones tónico-clónicas nocturnas son las más peligrosas: la persona
 
 ## Cómo funciona: el pipeline completo
 
-Este repo es el **lado reloj**. La detección la hace la app **OpenSeizureDetector V5.0**. El flujo:
+Hoy el sistema son **tres apps en dos dispositivos**: el reloj (este repo, módulo `:wear`), una app
+puente en el teléfono (este repo, módulo `:phone`) y la app oficial **OpenSeizureDetector V5.0**
+(otro proyecto — no vive en este repo). El flujo real:
 
 ```
-RELOJ (este repo)                          TELÉFONO (app OSD V5.0)
-─────────────────                          ───────────────────────
+RELOJ (:wear, este repo)          PUENTE (:phone, este repo)           OSD V5.0 (otro proyecto)
+─────────────────────────         ────────────────────────────         ────────────────────────
 Acelerómetro 25Hz (TYPE_ACCELEROMETER)
   → magnitud √(x²+y²+z²) en milli-g
   → ring buffer
   → chunks de ~125 muestras (~5s)
         │  Wear Data Layer
-        │  /osd/accel_data  {"samples":[...]}
+        │  /osd/accel_data
         ▼
-                                           SdDataSourceAw recibe y acumula 750
-                                           → ExecuTorch + deepEpiCnn_Run24.pte
-                                           → prob de convulsión → umbral
-                                           → alarma + sirena + SMS al cuidador
-        ┌──────────────────────────────────────┘
-        │  /osd/alarm_state  {"alarm_state":N}
+                                   Recibe el chunk (comparte
+                                   identidad de firma con :wear,
+                                   por eso Android SÍ le entrega
+                                   el mensaje — antes, con OSD
+                                   directo, lo descartaba)
+                                   → lo reenvía por HTTP local
+                                   ─────────────────────────────►
+                                                                        Data source "Garmin" recibe
+                                                                        → ExecuTorch + deepEpiCnn Run24
+                                                                        → prob. de convulsión → umbral
+                                                                        → alarma + sirena + SMS al
+                                                                          cuidador
+                                   ◄─────────────────────────────
+                                   Consulta el estado de alarma
+                                   y lo reenvía al reloj
+        ┌───────────────────────────────────┘
+        │  /osd/alarm_state
         ▼
 Vibración háptica + UI (OK / WARNING / ALARM)
 ```
 
-**El reloj NO infiere.** Solo captura, transmite y reacciona. El modelo, el umbral y las alertas
-son responsabilidad de la app OSD. El reloj es un *data source Android Wear* compatible con
-`SdDataSourceAw`. Ver engram `architecture/seizureguard-executorch-api`.
+**Por qué hay un puente en el medio, en vez del reloj hablándole directo a OSD:** Android exige que
+dos apps compartan la misma "identidad" (nombre de paquete + certificado de firma) para poder
+mandarse mensajes por Bluetooth entre reloj y teléfono. El reloj y OSD son de autores distintos y no
+la comparten, así que el sistema **descarta el mensaje en silencio** antes de que OSD lo vea — un
+bloqueante real que se encontró en pruebas de campo (`DECISIONS.md` → **DEC-050**). El puente
+(`:phone`) sí comparte identidad con el reloj, así que la entrega reloj→puente funciona sin tocar el
+código del reloj; el puente después le habla a OSD por HTTP local, una vía que no tiene ese problema
+de identidad. Detalle completo en `DECISIONS.md` → **DEC-051** y
+`openspec/changes/watch-osd-message-delivery/design.md`.
+
+**Estado real (septiembre 2026):** el puente (`:phone`) ya está mergeado (Batches 1 a 6, 5c, 5d y 5e
+— ver el checklist de Fase E más abajo), y como comparte identidad con el reloj, el envío de datos
+reloj→puente→OSD ya funciona **sin haber cambiado una línea del código del reloj**. El reloj
+(`:wear`) en sí **todavía no se actualizó** para esta arquitectura — eso es el trabajo pendiente
+"Batch 7". Lo que falta ahí no es la entrega de datos (ya anda), sino el comportamiento del reloj
+ante una falla del sistema: hoy sigue vibrando fuerte ante cualquier falla, como si fuera una alarma
+real, en vez de quedarse en silencio como ya hace el puente (ver Invariante de seguridad #2 arriba).
+
+**El reloj NO infiere.** Solo captura, transmite y reacciona a lo que le contestan. El modelo, el
+umbral y las alertas son responsabilidad de la app OSD. Ver engram
+`architecture/seizureguard-executorch-api`.
 
 ---
 
@@ -363,6 +416,11 @@ print(f"\nMagnitud media: {df['magnitude'].mean():.3f} milli-g")
 
 ## Protocolo de validación del transporte (Graham Jones) — Fase 2.1
 
+> ⚠️ Este protocolo se escribió para cuando el reloj le hablaba directo a OSD (tag `SdDataSourceAw`).
+> Con el flujo actual (reloj → puente `:phone` → OSD por data source "Garmin", ver DEC-060) ese tag y
+> el modo secuencial tal como está descripto acá ya no aplican tal cual. Sigue sin confirmarse si vale
+> la pena adaptar este protocolo a la nueva ruta (ver T3 del plan).
+
 Antes de conectar el modelo CNN al Data Layer, verificar que el transporte Bluetooth es confiable con dos pasos:
 
 ### Paso 1: modo secuencial (`isSequentialMode = true` — activo por defecto en DEBUG)
@@ -556,7 +614,7 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - [x] **Batch 5c** (correctivo, solo `:phone`) el relay de alarma deja de reenviar `0` si OSD está congelado o el puente falla (hallazgo F1) — [#23](https://github.com/agus-chaud/Openseizure/pull/23) y [#22](https://github.com/agus-chaud/Openseizure/pull/22) — Agent-Done (falta DV-4 en hardware)
 - [x] **Batch 5d** (política de fallas silenciosas, DEC-057, solo `:phone`) notificaciones de falla sin sonido ni vibración, registro de períodos de falla, resumen silencioso de la mañana y texto de setup — [#24](https://github.com/agus-chaud/Openseizure/pull/24), [#25](https://github.com/agus-chaud/Openseizure/pull/25), [#26](https://github.com/agus-chaud/Openseizure/pull/26) — Agent-Done (sin probar en dispositivo)
 - [x] **Batch 5e** (endurecimiento, solo `:phone`, hallazgos F5/F6 y constante firmada `sample_freq == 25`) `sample_freq` exactamente 25, rechazo de chunks con las 125 muestras idénticas y reintento/re-registro del listener de mensajes — [#27](https://github.com/agus-chaud/Openseizure/pull/27) (CI verde) y [#28](https://github.com/agus-chaud/Openseizure/pull/28) (apilado sobre el #27) — mergeados, CI verde (128 tests de `:phone`) — Agent-Done
-- [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma). **BLOQUEADO por `safety-reviewer` (BLOCK, 2026-09-19)**: ver [`docs/SAFETY_FINDINGS_WATCH_OSD.md`](docs/SAFETY_FINDINGS_WATCH_OSD.md). Desbloqueado hasta ahora: relay fail-loud (5c), fallas silenciosas (5d, DEC-057), specs enmendados, 15 de 16 constantes firmadas (DEC-059), `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 reescritos. **Falta:** firmar `techo_latencia_clinica`, revisión humana del texto médico de la guía, y un segundo `safety-reviewer` — Agent-Done
+- [ ] **Batch 7** Retargeting de `:wear` (mayor riesgo — toca la ruta de alarma). Ver [`docs/SAFETY_FINDINGS_WATCH_OSD.md`](docs/SAFETY_FINDINGS_WATCH_OSD.md). Desbloqueado hasta ahora: relay fail-loud (5c), fallas silenciosas (5d, DEC-057), endurecimiento del puente (5e, DEC-060), specs enmendados, 15 de 16 constantes firmadas (DEC-059), `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 reescritos, y un segundo chequeo de seguridad (R6, DEC-061, 2026-09-28, PASS parcial) que verificó el código real mergeado contra este registro y no encontró nada mal documentado. **Falta:** firmar `techo_latencia_clinica` (constante clínica que todavía no tiene valor propuesto) y una revisión humana del texto médico de `CAREGIVER_GUIDE.md` — Agent-Done
 - [ ] **Batch 8** Handshake de versión/compatibilidad — Agent-Done
 - [ ] **Batch 9** Ajustes de documentación — Agent-Done
 - [ ] **DV-1..DV-6** Verificación en hardware real (Galaxy Watch 8 + OSD beta) — Field-Done

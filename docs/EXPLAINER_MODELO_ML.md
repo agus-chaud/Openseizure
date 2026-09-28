@@ -1,23 +1,16 @@
 # El modelo que detecta convulsiones
 
-> Este documento asume que sabés programar (Python, arrays, funciones) pero no sabés qué es un
-> tensor, un softmax, ni cómo funciona una red neuronal.
->
+> Este documento asume que sabés programar (Python, arrays, funciones) pero no sabés qué es un tensor, un softmax, ni cómo funciona una red neuronal.
 > Compañero de este doc: `EXPLAINER_WEAR_DATA_LAYER.md` (cómo llegan los datos hasta acá).
->
 > **Marcadores:** `🔍 Detalle opcional` = no bloquea entender el resto, podes saltearlo .
 > `❓ Antes de seguir` = pregunta corta para chequear que quedó adentro
-
 ---
 
 ## El protagonista de este documento: el mismo número de siempre
 
-Si venís de `EXPLAINER_WEAR_DATA_LAYER.md`, ya conocés a **`1150`** (milli-g de magnitud del
-acelerómetro). Ahí lo dejamos llegando al teléfono. Acá seguimos su viaje: qué le hace el modelo a
-`1150` y a sus 749 compañeros de ventana hasta convertirse en un **sí/no de alarma**.
+Si venís de `EXPLAINER_WEAR_DATA_LAYER.md`, ya conocés a **`1150`** (milli-g de magnitud del acelerómetro). Ahí lo dejamos llegando al teléfono. Acá seguimos su viaje: qué le hace el modelo a `1150` y a sus 749 compañeros de ventana hasta convertirse en un **sí/no de alarma**.
 
-Si arrancás directo por este doc: `1150` es simplemente un número de aceleración que salió de tu
-reloj hace un instante. Alcanza con eso.
+Si arrancás directo por este doc: `1150` es simplemente un número de aceleración que salió de tu reloj hace un instante. Alcanza con eso.
 
 ---
 
@@ -35,16 +28,13 @@ reloj hace un instante. Alcanza con eso.
 
 ## Parte 1 — Qué es un tensor
 
-### 1.1 — ❓ El problema: `1150` y sus 749 compañeros necesitan una forma de viajar juntos
+### 1.1 — El problema: los 750 números necesitan una forma de viajar juntos
 
-Un modelo no recibe "un número por vez" — recibe **todos los 750 juntos, organizados en una forma
-exacta**. Esa forma tiene nombre: **tensor**.
+Un modelo no recibe "un número por vez" — recibe **todos los 750 juntos, organizados en una forma exacta**. Esa forma tiene nombre: **tensor**.
 
 ### 1.2 — Tensor = array de NumPy
 
-Es exactamente lo que ya conocés como array de NumPy o `DataFrame.values`. La única diferencia real
-es que las librerías de deep learning necesitan que ese array sepa además: en qué dispositivo vive
-(CPU/GPU) y si hay que calcular gradientes (para entrenar). Para vos, hoy: `tensor ≈ np.array`.
+Es exactamente lo que ya conocés como array de NumPy o `DataFrame.values`. La única diferencia real es que las librerías de deep learning necesitan que ese array sepa además: en qué dispositivo vive (CPU/GPU) y si hay que calcular gradientes (para entrenar). Para vos, hoy: `tensor ≈ np.array`.
 
 ```python
 import numpy as np
@@ -54,14 +44,13 @@ datos.shape   # (5,)
 
 ### 1.3 — El shape es lo único que te tenés que grabar
 
-El 90% de los errores de deep learning son "shape mismatch". El shape del modelo de este proyecto
-es `(1, 1, 750)`:
+El 90% de los errores de deep learning son "shape mismatch". El shape del modelo de este proyecto es `(1, 1, 750)`:
 
 | Posición | Valor | Qué significa |
 |---|---|---|
 | dim 0 | `1` | **batch**: cuántas ventanas proceso a la vez (acá: 1 reloj) |
 | dim 1 | `1` | **canales**: cuántas señales por instante (acá: 1, ya redujimos x/y/z a una magnitud) |
-| dim 2 | `750` | **tiempo**: 750 muestras = 30 segundos a 25Hz — acá viajan `1150` y sus compañeros |
+| dim 2 | `750` | **tiempo**: 750 muestras = 30 segundos a 25Hz  |
 
 ```python
 ventana = np.zeros((1, 1, 750))
@@ -70,30 +59,24 @@ ventana[0, 0, 384] = 1150.0   # nuestro número, en algún lugar de la ventana d
 
 ### 1.4 — 🔍 Detalle opcional: por qué NO es `(1, 750, 1)`
 
-TensorFlow/Keras suele usar `(batch, tiempo, canales)` = `(1, 750, 1)`. **PyTorch usa `(batch,
-canales, tiempo)`** = `(1, 1, 750)`. Este proyecto usa PyTorch/ExecuTorch. Confundir esto rompe todo
-en silencio (el modelo corre, pero interpreta mal los datos), exactamente el tipo de bug que hay
-que verificar contra código real, no memorizar de un README.
+TensorFlow/Keras suele usar `(batch, tiempo, canales)` = `(1, 750, 1)`. **PyTorch usa `(batch, canales, tiempo)`** = `(1, 1, 750)`. Este proyecto usa PyTorch/ExecuTorch. Confundir esto rompe todo en silencio (el modelo corre, pero interpreta mal los datos), exactamente el tipo de bug que hay que verificar contra código real, no memorizar de un README.
 
 ### 1.5 — 🔍 Detalle opcional: PyTorch vs TensorFlow — la diferencia real, sin tener que elegir
 
-Ojo con una confusión común (y totalmente entendible): `(1, 3, 750)` **no sería "una matriz de 3
-dimensiones" en el sentido de tener MÁS dimensiones** — seguiría teniendo exactamente 3 dimensiones,
-igual que `(1, 1, 750)`. Lo único que cambiaría es el TAMAÑO de la dimensión del medio (3 en vez de
-1). Es como la diferencia entre un Excel de 1 columna y uno de 3 columnas — ambos son "una tabla
-2D", ninguno tiene "más dimensiones" que el otro por tener más columnas. **Rango** (cuántas
-dimensiones tiene) y **tamaño de cada dimensión** (cuánto mide cada una) son dos cosas distintas —
-mezclarlas es el error más común al empezar con tensores.
+Ojo con una confusión común : `(1, 3, 750)` **no sería "una matriz de 3
+dimensiones" en el sentido de tener MÁS dimensiones** — seguiría teniendo exactamente 3 dimensiones, igual que `(1, 1, 750)`. Lo único que cambiaría es el TAMAÑO de la dimensión del medio (3 en vez de 1). Es como la diferencia entre un Excel de 1 columna y uno de 3 columnas — ambos son "una tabla
+2D", ninguno tiene "más dimensiones" que el otro por tener más columnas. **Rango** (cuántas dimensiones tiene) y **tamaño de cada dimensión** (cuánto mide cada una) son dos cosas distintas y mezclarlas es el error más común al empezar con tensores.
 
-Ahora sí, la pregunta de fondo: **PyTorch y TensorFlow son dos librerías distintas que hacen
-básicamente lo mismo** — ambas te dejan definir y entrenar redes neuronales. La diferencia no es
-"una puede hacer cosas que la otra no", es de **filosofía y ergonomía**:
+Ahora sí, la pregunta de fondo: **PyTorch y TensorFlow son dos librerías distintas que hacen básicamente lo mismo** —> ambas te dejan definir y entrenar redes neuronales. La diferencia no es "una puede hacer cosas que la otra no", es de **filosofía y ergonomía**:
 
 | | PyTorch | TensorFlow (con Keras) |
 |---|---|---|
-| Cómo se define el cálculo | "Define por ejecución": escribís código Python normal (`if`, loops) y el cálculo se arma a medida que corre | Históricamente armaba un "grafo" completo de antemano, antes de correr nada (TF2 ya se comporta más parecido a PyTorch por defecto) |
-| Dónde se usa más | Investigación/papers — la mayoría de los papers nuevos de IA publican código en PyTorch (como el paper de este proyecto, Parte 5) | Producción/mobile — TFLite (el "hermano" de ExecuTorch para TensorFlow) tiene años más de uso en apps |
-| Se siente como | Python puro, con clases (`nn.Module`) que vos escribís a mano | Una API más "de alto nivel" (Keras), con menos código pero menos control línea por línea |
+| Cómo se define el cálculo  
+"Define por ejecución": escribís código Python normal (`if`, loops) y el cálculo se arma a medida que corre | Históricamente armaba un "grafo" completo de antemano, antes de correr nada (TF2 ya se comporta más parecido a PyTorch por defecto) |
+| Dónde se usa más  
+Investigación/papers — la mayoría de los papers nuevos de IA publican código en PyTorch (como el paper de este proyecto, Parte 5) | Producción/mobile — TFLite (el "hermano" de ExecuTorch para TensorFlow) tiene años más de uso en apps |
+| Se siente como 
+Python puro, con clases (`nn.Module`) que vos escribís a mano | Una API más "de alto nivel" (Keras), con menos código pero menos control línea por línea |
 
 **Por qué este proyecto usa PyTorch (vía ExecuTorch) y no TensorFlow (vía TFLite):** el paper que
 define la arquitectura (Spahr et al., Parte 5) publicó su código en PyTorch — el equipo de OSD lo
@@ -112,7 +95,7 @@ doc sobre invariancia a la rotación)*
 
 ## Parte 2 — Qué es una red neuronal, cuándo sirve, y cómo aprende
 
-### 2.1 — Qué es, en una frase
+### 2.1 — Qué es una red neuronal?
 
 Una red neuronal es **una cadena de transformaciones** que convierte tu input (750 números) en un
 output (2 números, uno por clase). Cada "capa" es una transformación.
@@ -129,9 +112,6 @@ Las dos transformaciones que vas a ver una y otra vez: **convolución** y **capa
 
 ### 2.2 — ¿Cuándo conviene usar una red neuronal (y cuándo NO)?
 
-Esto es importante porque "red neuronal" no es la respuesta correcta a todo — es una herramienta
-para un tipo de problema específico.
-
 **Conviene cuando:**
 - El patrón que buscás es **demasiado complejo o sutil para describirlo con reglas escritas a
   mano**. Nadie puede escribir "si la aceleración supera X Y tiene forma Y Z entonces es
@@ -142,13 +122,12 @@ para un tipo de problema específico.
   convulsión") para que la red tenga de dónde aprender. Sin datos, no hay nada que aprender.
 
 **NO conviene (o es overkill) cuando:**
-- La relación es simple y lineal — ahí una regresión lineal o logística (que ya conocés) hace lo
+- La relación es simple y lineal — ahí una regresión lineal o logística  hace lo
   mismo, más rápido, con menos datos, y mucho más fácil de explicar por qué decidió lo que decidió.
 - Tenés pocos datos — una red neuronal grande con pocos datos tiende a "memorizar" los ejemplos en
   vez de aprender el patrón general (esto se llama *overfitting*), y falla con casos nuevos.
 - Necesitás poder explicar EXACTAMENTE por qué el modelo decidió algo, caso por caso — una red
-  neuronal de 14 capas es difícil de auditar línea por línea (aunque en este proyecto sí podemos
-  entender la arquitectura completa, como estás haciendo ahora).
+  neuronal de 14 capas es difícil de auditar línea por línea).
 
 Este caso concreto (seizure detection desde acelerómetro) cae del lado de "conviene": el patrón es
 complejo, variable entre personas, y el proyecto tiene acceso a un dataset real (Open Seizure
@@ -186,7 +165,7 @@ que viste mencionado en el código de la Parte 5.
 
 **Dato de este proyecto:** el entrenamiento real corre en `nnTrainer.py` (repo
 `OpenSeizureDatabase`), sobre datos reales del Open Seizure Database — no en este repo, y tampoco en
-el teléfono. El teléfono SOLO usa los pesos ya entrenados (el archivo `.pte`) para predecir — nunca
+el teléfono. El teléfono SOLO usa los pesos ya entrenados (el archivo `.pte`) para predecir , nunca
 aprende ni ajusta nada en producción.
 
 ---
@@ -224,9 +203,6 @@ ALTO cuanto más "coincide" la forma del kernel con la forma de ese pedazo de se
 negativo) cuando no se parecen. Es literalmente una pregunta matemática: "¿este pedacito de señal
 se parece al patrón que busco?", repetida en cada posición de la ventana.
 
-Ejemplo concreto: si el kernel aprendido fuera algo como `[-1, 0, 2, 0, -1]` (una forma que "busca"
-un pico en el medio rodeado de valores más bajos), al deslizarlo sobre la señal, el producto punto
-da MUY ALTO justo donde hay un pico real en el medio de la ventana, y da bajo en las zonas planas.
 El kernel actúa como un "detector de forma" — y la red, durante el entrenamiento (Parte 2.3), ajusta
 los números del kernel hasta que ese detector se vuelve bueno para encontrar la forma que de verdad
 distingue una convulsión de un movimiento normal.
@@ -283,7 +259,6 @@ Se repite 14 veces — dos piezas, cada una resuelve un problema distinto:
 ```python
 def relu(x): return np.maximum(0, x)
 ```
-
 Sin esto, apilar capas seguiría siendo matemáticamente equivalente a UNA sola capa lineal — apilar
 14 no ganaría nada, porque combinar transformaciones puramente lineales sigue siendo lineal. `ReLU`
 rompe esa linealidad, y es justamente esa "no-linealidad" lo que le permite a la red aprender
@@ -443,9 +418,6 @@ p_seizure = probs[1]   # ej. 0.86
 alarma = p_seizure > 0.5   # umbral configurable, NO hardcodeado
 ```
 
-Esta pregunta se merece una respuesta con evidencia, no una suposición — así que fui a buscar en el
-código real de entrenamiento en vez de asumir.
-
 **Qué análisis debería hacerse (la teoría):** con un modelo de clasificación binaria como este, el
 umbral es un dial que mueve un trade-off — subirlo reduce falsas alarmas pero puede dejar pasar
 convulsiones reales; bajarlo atrapa más convulsiones reales pero genera más falsas alarmas. Las
@@ -466,7 +438,7 @@ de selección de checkpoints (`MODEL_SELECTION_GUIDE.md`) con métricas configur
 entrenada de los pesos conservar**, rechazando candidatos con FPR por encima de un límite
 configurable.
 
-**El hallazgo más interesante — actualicé esta sección al encontrarlo:** buscando cómo ese análisis
+**El hallazgo más interesante :** buscando cómo ese análisis
 de entrenamiento llega (o no) hasta el teléfono, encontré que **el modelo SÍ puede traer su propio
 umbral recomendado, y la app lo aplica automáticamente.** En `MlModelManager.java` (líneas 277-315),
 la función `applyRecommendedThresholdsFromModel()` lee un campo `seizure_probability_threshold_pct`
@@ -536,9 +508,7 @@ receta de pasos:
 6. **Softmax** (Parte 4.3) convierte esos 2 logits en 2 probabilidades que suman 100%.
 7. El **umbral** (Parte 4.4) convierte esa probabilidad en una decisión concreta: alarma o no.
 
-Nada de esto es magia nueva — es exactamente lo que ya aprendiste en las Partes 3 y 4, repetido y
-encadenado. "Una CNN de 14 capas" suena imponente dicho así, pero ahora sabés que es literalmente
-esta receta de 7 pasos.
+
 
 ### 5.3 — 🔍 Detalle opcional: de PyTorch a ExecuTorch — por qué hace falta este paso extra
 

@@ -282,12 +282,14 @@ Otros chequeos (todos pendientes):
 | Mapeo de estados en el reloj | `AlarmStateManager`: 0 sin vibración, 1 pulso corto, **todo ≥ 2 vibra como alarma** (un FAULT de OSD vibra como convulsión). | **Batch 7:** 2, 3 y 5 = alarma; 4, 7 y desconocidos = falla silenciosa; 6 = sin vibración. |
 | DEGRADED en el reloj | Notificación "⚠ MONITOREO DEGRADADO" **y** vibración de 2 pulsos (`vibrateDegraded`). | **Batch 7:** solo visual, **sin vibración**. |
 | Watchdog del reloj | Intervalo 30 s, `DELIVERY_STALE_MS` 60 s (techo 120 s). | **Batch 7:** 10 s / 40 s, `ALARM_STATE_STALE_MS` 40 s (techos 60 s / ≈ 75 s). |
-| `sample_freq` en el companion | Acepta 1 a 200. | **Batch 5e:** exactamente 25. |
-| Chunks de acelerómetro planos/congelados | Se aceptan. | **Batch 5e:** rechazo. |
-| Reintento del listener de `MessageClient` | Solo se loguea el fallo. | **Batch 5e:** reintento. |
+| `sample_freq` en el companion | **Ya arreglado (Batch 5e, PR #27):** exactamente 25, cualquier otro valor se descarta. | — |
+| Chunks de acelerómetro planos/congelados | **Ya arreglado (Batch 5e, PR #27):** se rechazan (125 muestras idénticas). | — |
+| Reintento del listener de `MessageClient` | **Ya arreglado (Batch 5e, PR #28):** reintento con espera creciente (5 a 60 s) y re-registro si pasan 60 s sin mensajes válidos. | — |
 
-Hasta que el Batch 7 y el 5e estén en tu build, los resultados de DV-4 y DV-7 **no son representativos**
-del comportamiento final: anotá la versión (commit) de cada APK en cada prueba.
+El companion (`:phone`) ya tiene el Batch 5e. Falta únicamente el **Batch 7** (reloj): mapeo de
+estados, DEGRADED visual y constantes del watchdog. Hasta que esté, los resultados de DV-4 y DV-7
+**no son representativos** del comportamiento final: anotá la versión (commit) de cada APK en cada
+prueba.
 
 ### 4.9 Listo cuando...
 

@@ -54,8 +54,14 @@ Además, **en el reloj de la persona**:
 - **Una vibración corta y suave** = *aviso* (puede no ser nada; el sistema está "prestando atención").
 - **Una vibración fuerte y repetida** = *alarma* (el sistema cree que hay una convulsión).
 
-**Nada más te va a avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
-(ver más abajo). Si algo se rompe, **no suena nada**.
+**Nada más debería avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
+(ver más abajo). En el **teléfono** (la app "SeizureGuard Companion"), eso ya está así: una falla
+no suena ni vibra.
+
+> ⚠️ **Excepción, mientras no se actualice el reloj:** hoy el reloj **todavía puede dar 2 pulsos
+> cortos** al entrar en "MONITOREO DEGRADADO" (una falla del sistema, no una convulsión). No es la
+> vibración de *aviso* ni la de *alarma* — es un tercer patrón, que se va a eliminar en una próxima
+> actualización. Si lo sentís, no es una emergencia: revisá el checklist de abajo.
 
 > 👉 El SMS solo hace ruido en tu teléfono **si vos lo dejaste configurado para eso**. Mirá la
 > sección "Tu teléfono" más abajo. Es lo más fácil de olvidar.

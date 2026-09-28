@@ -92,5 +92,5 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 | `POST_OK_STALE_MS` y `MAX_POST_FAILURES` | 20 s y 3 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
 | `LATCH_CLEAR_OK_STREAK` | 2 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
 | Techo del relay de alarma | 8 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Diseño; típico menos de 1 s. Detalle en la tabla de arriba. |
-| Rango de `sample_freq` aceptado | exactamente 25 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Firmado el valor; **el código todavía acepta 1 a 200** (pendiente de endurecer, hallazgo F6). Detalle en la tabla de arriba. |
+| Rango de `sample_freq` aceptado | exactamente 25 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. **Endurecido en código** (Batch 5e, PR #27, mergeado 2026-09-19): un valor distinto de 25 se descarta y no llega a OSD. Detalle en la tabla de arriba. |
 | `DEFAULT_HANDSHAKE_BATTERY` | 100 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |

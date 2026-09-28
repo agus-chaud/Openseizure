@@ -23,7 +23,7 @@ un hallazgo o se hace una revisión nueva. Contexto de la arquitectura: DEC-050,
 | R3 | Revisión manual del diff (asistente) | PRs #12 y #16 | Diff completo | Sin bloqueantes; 2 observaciones resueltas en 5a | Hecha (informal) |
 | R4 | Contraste del contrato HTTP contra el código real de OSD (`beta`) | Batches 3a, 5a, 5b | `SdWebServer`, `SdDataSource`, `SdData` | Coincide con el diseño | Hecha |
 | R5 | **`safety-reviewer` pre-Batch 7** | 2026-09-19 | Plan del Batch 7 + ruta de alarma ya mergeada (`:phone`) | **BLOCK** (8 hallazgos, ver sección 2) | Hecha |
-| R6 | `safety-reviewer` **de re-chequeo** | — | Verificar que F1–F4 y las condiciones de la sección 4 estén cumplidas | — | **PENDIENTE** (antes de escribir Batch 7) |
+| R6 | `safety-reviewer` **de re-chequeo** | 2026-09-28 | Verificó el código real mergeado (`origin/main`) contra lo que afirma este registro, para F1-F8 y las guías | **PARTIAL PASS.** F1/F4/F5/F6 confirmados arreglados en código, exacto a lo documentado. F2/F3/F7/F8 confirmados sin implementar (correcto, es lo esperado). Confirmó que Batch 7 no filtró ningún cambio a `:wear`. Encontró 3 hallazgos de desincronización documental (ver abajo), ninguno de código: H-1 (la copia local de `tasks.md` en `mia` estaba congelada desde antes del Batch 1 y no tenía T7.5-T7.7 — corregido, sincronizada con `origin/main`), H-2 (`CAREGIVER_GUIDE.md` afirmaba silencio total en el reloj, pero el reloj real todavía vibra 2 pulsos en DEGRADED hasta el Batch 7 — corregido), H-3 (`CLINICAL_SIGNOFF.md` y `HARDWARE_RUNBOOK.md` §4.8 decían "pendiente" sobre el Batch 5e ya mergeado — corregido) | **PARCIAL → RESUELTO el mismo día** (ver sección 9) |
 | R7 | RDD (`gentle-ai review`) sobre el **diff real** del Batch 7 | — | Diff congelado de `:wear` (watchdog, alarma, flavors) | — | **PENDIENTE** (antes de abrir el PR del Batch 7) |
 | R8 | RDD / revisión sobre el Batch 5c | — | Corrección de F1 en `:phone` | — | **PENDIENTE** (opcional, recomendado: es ruta de alarma) |
 | R9 | `sdd-verify` (validar implementación contra spec/tareas) | — | Todo el cambio | — | **PENDIENTE** (al terminar Batch 9) |
@@ -93,7 +93,9 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 - [~] **4.** Constantes firmadas (15 de 16, 2026-09-19) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). Falta `techo_latencia_clinica` y reescribir T7.7.
 - [~] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 **reescritos** (2026-09-19). Falta que un humano revise el texto médico y que se corrijan `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `docs/RUNBOOK_EXPORTACION_DATOS.md`, que aún mandan por el camino roto.
 - [ ] **6.** `osdDirect` fuera de `release` (F7).
-- [ ] **7.** Segundo `safety-reviewer` (R6) sobre el resultado de 1–6 con veredicto PASS.
+- [x] **7.** Segundo `safety-reviewer` (R6, 2026-09-28): **PARCIAL PASS**, con 3 hallazgos documentales
+  ya corregidos el mismo día (ver sección 9). Ningún hallazgo de código. No hace falta un tercer
+  re-chequeo salvo que cambie algo más antes de Batch 7.
 
 **Riesgo residual aun cumpliendo todo:** sensor congelado sin variación; si puente y reloj fallan a
 la vez solo queda la vibración del reloj; depende de que la persona duerma con el reloj puesto y
@@ -132,6 +134,43 @@ cargado.
 2. Cambiar el estado (`ARREGLADO` → `VERIFICADO` solo con test verde o prueba en el reloj).
 3. Marcar el checklist de la sección 4; cuando esté completo, correr R6.
 4. Registrar cualquier revisión nueva como fila en la sección 1, aunque no encuentre nada.
+
+---
+
+## 9. Segundo `safety-reviewer` (R6, 2026-09-28) — verificación contra código real
+
+A diferencia de R5 (que revisó un plan), R6 leyó el código ya mergeado en `origin/main` y lo comparó
+línea por línea contra lo que este registro afirma. Metodología y hallazgo completos en engram
+`sdd/watch-osd-message-delivery/safety-review-r6`.
+
+**Resultado principal: ningún hallazgo de F1-F8 estaba mal documentado.** F1 (`AlarmStateRelay.kt` +
+`OsdDataFreshness.kt`), F4 (`FaultLog.kt` + `ServiceLiveness.kt` + `MorningSummary*.kt`), F5
+(`BridgeHealth.kt`/`OsdBridgeService.kt`, reintento y re-registro del listener) y F6
+(`WatchMessageParser.kt`, `sample_freq==25` y chunk congelado) están exactamente como se documentaron.
+F2, F3, F7 y F8 siguen correctamente sin implementar, y se confirmó con `git diff --stat` que Batch 7
+no dejó ningún cambio filtrado en `wear/` (las constantes y el mapeo de estados viejos siguen intactos
+— es lo esperado, no una regresión).
+
+**Tres hallazgos de desincronización DOCUMENTAL, ya corregidos el mismo día:**
+- **H-1:** la copia local (sin trackear) de `openspec/changes/watch-osd-message-delivery/tasks.md` en
+  el árbol de trabajo de `mia` había quedado congelada desde antes del Batch 1 — le faltaban T7.5,
+  T7.6 y T7.7 (la enmienda de DEC-057). El archivo tracked en `origin/main` sí los tenía. Riesgo real:
+  cualquier agente que trabajara "por path absoluto en el árbol principal" (instrucción usada varias
+  veces en este SDD) vería el plan viejo. **Corregido:** se sobrescribió la copia local con el
+  contenido de `origin/main`.
+- **H-2:** `CAREGIVER_GUIDE.md` afirmaba sin matices que una falla "no suena ni vibra nada, ni en el
+  teléfono ni en el reloj". Es cierto para el teléfono, pero el código actual del reloj
+  (`SeizureMonitorService.kt`) todavía llama `vibrateDegraded()` (2 pulsos) al entrar en DEGRADED,
+  porque el Batch 7 no se hizo. Es un documento de seguridad de vida que se asume vigente ya, no "a
+  futuro". **Corregido:** se agregó una excepción explícita con la vibración real de hoy.
+- **H-3:** `CLINICAL_SIGNOFF.md` y `HARDWARE_RUNBOOK.md` §4.8 seguían diciendo "pendiente" sobre
+  `sample_freq`, el chunk congelado y el reintento del listener, que ya están mergeados desde el
+  Batch 5e. No es un riesgo de seguridad (subestima protecciones ya existentes), pero podía hacer que
+  se repitieran pruebas ya resueltas. **Corregido.**
+
+**Condiciones que quedan para el Batch 7, sin cambios respecto al checklist de la sección 4:** firmar
+`techo_latencia_clinica`, revisión humana del texto médico de `CAREGIVER_GUIDE.md`, y que `:phone`
+tenga tiempo de funcionar sin sobresaltos antes de tocar el reloj (opcional, a tu criterio).
 
 ---
 

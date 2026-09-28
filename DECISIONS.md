@@ -1969,6 +1969,33 @@ texto médico de la guía y pasar un segundo `safety-reviewer` de re-chequeo.
 
 ---
 
+## DEC-061: Segundo `safety-reviewer` (R6) — verificación contra código real, PARCIAL PASS
+
+**Fase:** SDD `watch-osd-message-delivery` (re-chequeo antes del Batch 7) | **Fecha:** 2026-09-28
+
+**Qué se hizo:** a diferencia de R5 (que revisó un plan), este re-chequeo leyó el código ya mergeado
+en `origin/main` y lo comparó línea por línea contra `docs/SAFETY_FINDINGS_WATCH_OSD.md`. Detalle
+completo en la sección 9 de ese registro; espejo en engram `sdd/watch-osd-message-delivery/safety-review-r6`.
+
+**Resultado:** ningún hallazgo de F1-F8 estaba mal documentado. F1, F4, F5 y F6 confirmados arreglados
+en código exactamente como se afirmaba; F2, F3, F7 y F8 confirmados sin implementar, como corresponde.
+Se confirmó con `git diff --stat` que el Batch 7 no dejó ningún cambio filtrado en `wear/`.
+
+**Tres hallazgos documentales, corregidos el mismo día:**
+1. La copia local (sin trackear) de `tasks.md` en el árbol de trabajo de `mia` estaba congelada desde
+   antes del Batch 1, sin las tareas T7.5-T7.7 de la enmienda DEC-057. Riesgo real: cualquier agente
+   que trabajara leyendo por path absoluto en el árbol principal (instrucción usada varias veces en
+   este SDD) vería el plan viejo. Corregida: sobrescrita con el contenido tracked de `origin/main`.
+2. `CAREGIVER_GUIDE.md` afirmaba silencio total en el reloj ante una falla, pero el reloj real
+   (sin el Batch 7) todavía vibra 2 pulsos en DEGRADED. Corregida con una excepción explícita.
+3. `CLINICAL_SIGNOFF.md` y `HARDWARE_RUNBOOK.md` §4.8 seguían marcando como "pendiente" el Batch 5e,
+   ya mergeado. Corregidos.
+
+**Estado:** Batch 7 sigue siendo el próximo paso. Condiciones sin cambios: firmar
+`techo_latencia_clinica` y revisión humana del texto médico de `CAREGIVER_GUIDE.md`.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

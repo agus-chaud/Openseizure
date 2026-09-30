@@ -125,11 +125,13 @@ en el reloj.
 
 ```powershell
 # Compilar la app del reloj (genera el APK):
-.\gradlew.bat :wear:assembleDebug
-# El archivo queda en: wear\build\outputs\apk\debug\wear-debug.apk
+.\gradlew.bat :wear:assembleCompanionDebug
+# El archivo queda en: wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
+# (Desde el Batch 7. Si existe la carpeta vieja wear\build\outputs\apk\debug\, borrala:
+#  ese APK es anterior y vibra ante fallas.)
 
 # Instalarlo en el reloj (el "-r" = reinstalar si ya estaba):
-C:\Android\platform-tools\adb.exe install -r wear\build\outputs\apk\debug\wear-debug.apk
+C:\Android\platform-tools\adb.exe install -r wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
 ```
 
 ---
@@ -187,12 +189,12 @@ companion, y en el logcat del teléfono aparece `Failed to deliver message to Ap
 C:\Android\platform-tools\adb.exe -s <id_telefono> install -r phone\build\outputs\apk\debug\phone-debug.apk
 
 # 2) Reloj (como en la sección 3):
-.\gradlew.bat :wear:assembleDebug
-C:\Android\platform-tools\adb.exe -s <ip_reloj>:5555 install -r wear\build\outputs\apk\debug\wear-debug.apk
+.\gradlew.bat :wear:assembleCompanionDebug
+C:\Android\platform-tools\adb.exe -s <ip_reloj>:5555 install -r wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
 
 # 3) Confirmar que los dos APK tienen la MISMA firma (los SHA-256 tienen que ser iguales):
 C:\Android\build-tools\<version>\apksigner.bat verify --print-certs phone\build\outputs\apk\debug\phone-debug.apk
-C:\Android\build-tools\<version>\apksigner.bat verify --print-certs wear\build\outputs\apk\debug\wear-debug.apk
+C:\Android\build-tools\<version>\apksigner.bat verify --print-certs wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
 ```
 
 Registrá: SHA-256 de cada APK. Si difieren, recompilá los dos en la misma máquina antes de seguir.

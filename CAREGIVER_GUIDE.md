@@ -55,13 +55,16 @@ Además, **en el reloj de la persona**:
 - **Una vibración fuerte y repetida** = *alarma* (el sistema cree que hay una convulsión).
 
 **Nada más debería avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
-(ver más abajo). En el **teléfono** (la app "SeizureGuard Companion"), eso ya está así: una falla
-no suena ni vibra.
+(ver más abajo). Vale para el **teléfono** (la app "SeizureGuard Companion") y para el **reloj**:
+una falla no suena ni vibra en ninguno de los dos.
 
-> ⚠️ **Excepción, mientras no se actualice el reloj:** hoy el reloj **todavía puede dar 2 pulsos
-> cortos** al entrar en "MONITOREO DEGRADADO" (una falla del sistema, no una convulsión). No es la
-> vibración de *aviso* ni la de *alarma* — es un tercer patrón, que se va a eliminar en una próxima
-> actualización. Si lo sentís, no es una emergencia: revisá el checklist de abajo.
+> **Dónde se ve una falla en el reloj:** solo en la pantalla, sin ruido ni vibración. Si abrís la
+> app SeizureGuard en el reloj y dice **"⚠ MONITOREO DEGRADADO"** (en ámbar), el sistema no está
+> protegiendo bien. La notificación del reloj dice lo mismo. Si el reloj muestra la carátula,
+> **no hay ningún aviso**: hay que abrir la app o mirar las notificaciones.
+>
+> Si la pantalla dice **"ALARMA"** con un texto chico "⚠ Monitoreo degradado" debajo, la alarma es
+> real: actuá igual y arreglá la falla después.
 
 > 👉 El SMS solo hace ruido en tu teléfono **si vos lo dejaste configurado para eso**. Mirá la
 > sección "Tu teléfono" más abajo. Es lo más fácil de olvidar.
@@ -150,8 +153,16 @@ diagnóstico médico** (solo detecta un patrón de movimiento).
 
 - [ ] Está **cargado** (idealmente +80%) y **bien puesto** en la muñeca.
 - [ ] La aplicación **SeizureGuard** está **andando** (dice "Monitoreo activo"; si dice
-      "Monitoreo inactivo", tocá "Iniciar monitoreo").
-- [ ] **No** dice "MONITOREO DEGRADADO" (si lo dice, algo falló: revisá el reloj y el teléfono).
+      "Monitoreo inactivo", tocá "Iniciar monitoreo"). "Monitoreo activo" solo vale si **no**
+      aparece "⚠ MONITOREO DEGRADADO".
+- [ ] La pantalla **no** dice **"⚠ MONITOREO DEGRADADO"** (ámbar). Si lo dice, algo falló (sensor,
+      conexión con el teléfono, u OpenSeizureDetector detenido o congelado): revisá el reloj y el
+      teléfono. Puede tardar hasta 1 minuto en aparecer.
+- [ ] Si dice **"Falla del sistema (OSD) — sin vibración"** (marrón), OpenSeizureDetector informa
+      una falla propia. No es una convulsión y el reloj no vibra. Revisá el teléfono: mientras dure
+      esa falla, una convulsión podría no generar alarma.
+- [ ] Si OpenSeizureDetector está en **MUTE**, el reloj igual dice "Monitoreo activo": verificá
+      MUTE en OSD (está en la lista del teléfono, arriba).
 
 ### En TU teléfono (el del cuidador)
 
@@ -212,7 +223,8 @@ notificaciones están bloqueadas. Además puede ser que solo avise de una parte 
 - [ ] **Si NO hay resumen** → **no sabés cómo fue la noche.** Tratalo como una noche **sin
   confirmar**: abrí "SeizureGuard Companion" y tocá **"Start bridge"**, revisá OpenSeizureDetector
   y el reloj, y avisá a quien configuró el sistema.
-- [ ] **Si viste "MONITOREO DEGRADADO" en el reloj** → algo falló: mismo procedimiento.
+- [ ] **Si viste "⚠ MONITOREO DEGRADADO" en la pantalla o en las notificaciones del reloj** → algo
+  falló: mismo procedimiento.
 
 ---
 

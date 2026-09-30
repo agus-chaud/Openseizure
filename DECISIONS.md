@@ -2016,6 +2016,38 @@ del techo. No cambia código del Batch 7. Nada más bloquea el inicio del Batch 
 
 ---
 
+## DEC-063: Batch 7 (`:wear`) implementado en 4 PRs apilados; `safety-reviewer` R7 PASS condicional
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 7 | **Fecha:** 2026-09-30
+
+**Qué se hizo:** `sdd-apply` implementó T7.1 a T7.7 en el worktree `OpenSeizure-wt-7` (desde
+`origin/main`), sin push ni PR. Cortes apilados, cada uno bajo 400 líneas:
+- `07a` (T7.1, T7.2 y script de instalación): flavors `companion`/`osdDirect`, `osdDirectRelease`
+  deshabilitada (F7), destino del reloj según el flavor. 198+/14−.
+- `07b-1` (T7.3, T7.4): vigilancia del estado entrante, constantes firmadas 10 s / 40 s / 40 s,
+  tests de peor caso. 216+/20−.
+- `07b-2` (T7.5 a T7.7): política de estados DEC-057 (F2), DEGRADED sin vibración (F3), techos
+  firmados 60 s / ≈75 s aceptados. 234+/50−.
+- `07c` (arreglo H7-1): la pantalla del reloj muestra "⚠ MONITOREO DEGRADADO" y nunca presenta un
+  estado vencido como vigente ni oculta una alarma vigente. 240+/20−.
+
+**Revisión:** `safety-reviewer` R7 (PARTIAL PASS, 2 hallazgos ALTOS) y re-chequeo R7b tras los
+arreglos: **PASS condicional**. Detalle en `docs/SAFETY_FINDINGS_WATCH_OSD.md` sección 10.
+Condición: mergear `07b-2` y `07c` seguidos, sin instalar un build intermedio.
+
+**Cambios no pedidos en las tareas, aceptados:** `MainActivity` usa la misma clasificación que la
+vibración (antes mostraba "ALARMA" para cualquier estado ≥ 2); alias de tareas Gradle
+`testDebugUnitTest`/`lintDebug` para que CI siga corriendo ambos flavors.
+
+**Documentación actualizada:** `CAREGIVER_GUIDE.md` (fallas silenciosas también en el reloj, dónde
+ver DEGRADED, falla de OSD, MUTE), `HARDWARE_RUNBOOK.md` (APK `companion`), `CLINICAL_SIGNOFF.md`
+(política de estados). Estos textos describen el comportamiento **después** de mergear el Batch 7.
+
+**Seguimientos:** H7-3 a H7-7 (sección 10 del registro). Tests: `:wear:testDebugUnitTest` verde en
+ambos flavors (105 tests cada uno), re-corrido por el orquestador en la punta de `07c`.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

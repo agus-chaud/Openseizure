@@ -24,7 +24,7 @@ un hallazgo o se hace una revisión nueva. Contexto de la arquitectura: DEC-050,
 | R4 | Contraste del contrato HTTP contra el código real de OSD (`beta`) | Batches 3a, 5a, 5b | `SdWebServer`, `SdDataSource`, `SdData` | Coincide con el diseño | Hecha |
 | R5 | **`safety-reviewer` pre-Batch 7** | 2026-09-19 | Plan del Batch 7 + ruta de alarma ya mergeada (`:phone`) | **BLOCK** (8 hallazgos, ver sección 2) | Hecha |
 | R6 | `safety-reviewer` **de re-chequeo** | 2026-09-28 | Verificó el código real mergeado (`origin/main`) contra lo que afirma este registro, para F1-F8 y las guías | **PARTIAL PASS.** F1/F4/F5/F6 confirmados arreglados en código, exacto a lo documentado. F2/F3/F7/F8 confirmados sin implementar (correcto, es lo esperado). Confirmó que Batch 7 no filtró ningún cambio a `:wear`. Encontró 3 hallazgos de desincronización documental (ver abajo), ninguno de código: H-1 (la copia local de `tasks.md` en `mia` estaba congelada desde antes del Batch 1 y no tenía T7.5-T7.7 — corregido, sincronizada con `origin/main`), H-2 (`CAREGIVER_GUIDE.md` afirmaba silencio total en el reloj, pero el reloj real todavía vibra 2 pulsos en DEGRADED hasta el Batch 7 — corregido), H-3 (`CLINICAL_SIGNOFF.md` y `HARDWARE_RUNBOOK.md` §4.8 decían "pendiente" sobre el Batch 5e ya mergeado — corregido) | **PARCIAL → RESUELTO el mismo día** (ver sección 9) |
-| R7 | RDD (`gentle-ai review`) sobre el **diff real** del Batch 7 | — | Diff congelado de `:wear` (watchdog, alarma, flavors) | — | **PENDIENTE** (antes de abrir el PR del Batch 7) |
+| R7 | `safety-reviewer` sobre el **diff real** del Batch 7 (+ re-chequeo R7b de los arreglos) | 2026-09-30 | Ramas `07a`, `07b-1`, `07b-2`, `07c` (worktree `OpenSeizure-wt-7`), código real | R7: **PARTIAL PASS** (F2, F3, F7 cerrados; 2 hallazgos ALTOS: H7-1 pantalla tranquilizadora con enlace caído, H7-2 script de instalación con ruta vieja de APK). R7b tras los arreglos: **PASS condicional** (ver sección 10) | **HECHA** — condiciones: mergear `07b-2` y `07c` seguidos, docs actualizados |
 | R8 | RDD / revisión sobre el Batch 5c | — | Corrección de F1 en `:phone` | — | **PENDIENTE** (opcional, recomendado: es ruta de alarma) |
 | R9 | `sdd-verify` (validar implementación contra spec/tareas) | — | Todo el cambio | — | **PENDIENTE** (al terminar Batch 9) |
 | R10 | Firma humana de constantes de detección | 2026-09-19 | Sección 3 de este documento | **16 de 16 firmadas**: 15 tal cual se propusieron (2026-09-19) y `techo_latencia_clinica` = 40 s (2026-09-30, DEC-062) | **HECHA** |
@@ -46,12 +46,12 @@ Veredicto: **BLOCK** para arrancar el Batch 7 tal como estaba planeado.
 | ID | Severidad | Hallazgo (en simple) | Evidencia | Arreglo previsto | Estado | Cómo verificar que quedó arreglado |
 |---|---|---|---|---|---|---|
 | **F1** | CRÍTICO | El celular reenvía el `alarmState` de OSD sin mirar si el puente está sano ni si OSD sigue analizando. Si OSD queda en otra fuente de datos o se congela, el reloj sigue recibiendo `0` cada 10 s y nunca avisa. | `AlarmStateRelay.kt` (relay depende solo del cuerpo de `GET /data`); `OsdBridgeService.kt` | **Batch 5c** (`:phone`): estados ≥1 se relayan siempre; el `0` y el refresco solo si `BridgeFault==NONE` y el timestamp de OSD avanza (`OSD_DATA_FRESH_MS`). Nuevo fault `OSD_DATA_STALE`. | **ARREGLADO en código (falta verificar en hardware):** PRs [#23](https://github.com/agus-chaud/Openseizure/pull/23) (relay + frescura) y [#22](https://github.com/agus-chaud/Openseizure/pull/22) (fault `OSD_DATA_STALE`) mergeados a `main` con CI verde. 93 tests `:phone` verdes. Frescura = `dataTimeStr` de OSD (`SdData.java:449-470`). **Sin verificar de punta a punta:** con fuente equivocada, `GET /data` devuelve otra fuente que puede avanzar su propio timestamp; ahí solo cubre el fault `OSD_WRONG_DATASOURCE` (latched). | Tests con "estado congelado" (mismo cuerpo repetido → se calla) + DV-4 en hardware: poner OSD en fuente "Phone" y confirmar DEGRADED en el reloj dentro del techo firmado |
-| **F2** | CRÍTICO (verificado) | OSD emite estados 3–7 (FALL, FAULT, MANUAL, MUTE, NETFAULT) y el reloj hace `else -> vibrateAlarm()` para todo ≥2. Batería baja del teléfono o "mute" en OSD vibran como convulsión cada 10 s. | `AlarmStateManager.kt` (`handleAlarmState`); `AlarmState.java` de OSD líneas 9–16 | **Batch 7, T7.5**: política de mapeo aprobada por vos (propuesta: 2, 3 y 5 → alarma; 4 y 7 → falla del sistema/DEGRADED; 6 → sin vibración) + enmienda de spec WCT-8 | POLÍTICA DEFINIDA (DEC-057); implementación pendiente en Batch 7 (T7.5): 2, 3, 5 alarma; 4, 7 y desconocidos falla silenciosa; 6 sin vibración | Test por cada estado 0..7 en `AlarmStateManager`; prueba en reloj con OSD en FAULT/MUTE |
-| **F3** | ALTO | El aviso DEGRADED del reloj es una sola vibración de 2 pulsos. Una persona dormida puede no despertar. | `SeizureMonitorService.kt` ~683–686 (`vibrateDegraded()` solo en la transición) | **Batch 7, T7.6**: repetir la vibración mientras siga DEGRADED, y criterio en T7.4 | **REEMPLAZADO por DEC-057:** DEGRADED pasa a ser solo visual, sin vibración. T7.6 hay que reescribirla. Riesgo aceptado (ver sección 8) | Ya no aplica la vibración; verificar que DEGRADED se vea en pantalla y no vibre |
+| **F2** | CRÍTICO (verificado) | OSD emite estados 3–7 (FALL, FAULT, MANUAL, MUTE, NETFAULT) y el reloj hace `else -> vibrateAlarm()` para todo ≥2. Batería baja del teléfono o "mute" en OSD vibran como convulsión cada 10 s. | `AlarmStateManager.kt` (`handleAlarmState`); `AlarmState.java` de OSD líneas 9–16 | **Batch 7, T7.5**: política de mapeo aprobada por vos (propuesta: 2, 3 y 5 → alarma; 4 y 7 → falla del sistema/DEGRADED; 6 → sin vibración) + enmienda de spec WCT-8 | **ARREGLADO en código (Batch 7, T7.5, commit `9c77b4b`, sin mergear):** 2, 3, 5 alarma; 4, 7 y cualquier otro valor falla silenciosa; 6 sin vibración. Tests 0..8, 99, 255, -1 y extremos de `Int`. Verificado por R7. Falta prueba en reloj | Test por cada estado 0..7 en `AlarmStateManager`; prueba en reloj con OSD en FAULT/MUTE |
+| **F3** | ALTO | El aviso DEGRADED del reloj es una sola vibración de 2 pulsos. Una persona dormida puede no despertar. | `SeizureMonitorService.kt` ~683–686 (`vibrateDegraded()` solo en la transición) | **Batch 7, T7.6**: repetir la vibración mientras siga DEGRADED, y criterio en T7.4 | **REEMPLAZADO por DEC-057 y ARREGLADO en código (T7.6, commit `6c5f80b`, sin mergear):** DEGRADED sin vibración; la pantalla del reloj muestra "⚠ MONITOREO DEGRADADO" (H7-1, commit `5fc1d8d`). Riesgo aceptado (ver sección 8) | Ya no aplica la vibración; verificar que DEGRADED se vea en pantalla y no vibre |
 | **F4** | ALTO | La falla del puente solo llega al cuidador si las notificaciones funcionan (`POST_NOTIFICATIONS` denegado, canal bloqueado o No Molestar → invisible). `BootReceiver`/`postStartFailure` publican una sola vez. | `BridgeNotifications.kt` (`notifySafely` traga todo); `BootReceiver.kt` | Implementación: chequear `areNotificationsEnabled()` en cada tick y que `SetupActivity` no dé "listo" si falla; garantizar que la falla se vea en el reloj (F1 + F3) | **REEMPLAZADO por DEC-057:** las fallas son silenciosas a propósito, así que ya no se busca que lleguen a una persona. Queda vigente el registro de fallas y el resumen matutino (Batch 5d) | Test de que el registro y el resumen existen aunque las notificaciones estén bloqueadas |
 | **F5** | MEDIO | Si el listener de `MessageClient` muere con el proceso vivo, solo se loguea; sin reintento ni fault. | `OsdBridgeService.kt:~160` (`addOnFailureListener` solo loguea) | Reintento de `addListener` con fault visible | **ARREGLADO en código, PR [#28](https://github.com/agus-chaud/Openseizure/pull/28) mergeado (CI verde).** Reintento con backoff 5 s a 60 s y re-registro si pasan 60 s sin mensajes válidos del reloj (máximo una vez por minuto). Sin fault nuevo: lo cubre el `NO_WATCH_DATA` silencioso. Sin verificar si Play Services descarta listeners tras una actualización ni si el reemplazo pierde mensajes en vuelo | DV-7: matar el listener y medir el tiempo a la falla visible y a la recuperación |
 | **F6** | MEDIO | `sample_freq` acepta 1..200 (un valor ≠25 desescala el análisis de OSD); acelerómetro plano/congelado se acepta; handshake con batería 100 oculta batería baja real del reloj. | `WatchMessageParser.kt` (~38); `DEFAULT_HANDSHAKE_BATTERY` | Fijar `sample_freq == 25`; descartar/marcar chunks planos; revisar el default de batería | **ARREGLADO en código, PR [#27](https://github.com/agus-chaud/Openseizure/pull/27) mergeado (CI verde).** `sample_freq` exactamente 25; chunk con las 125 muestras idénticas rechazado (regla nueva, sin epsilon, **no está en la tabla de constantes firmadas**; riesgo sin verificar: un sensor muy cuantizado podría dar 125 valores iguales). Batería por defecto 100 firmada | Tests del parser (124 en verde); DV con el reloj real para confirmar que un reloj quieto no genera chunks idénticos |
-| **F7** | MEDIO | El flavor `osdDirect` probablemente no funciona (el AppKey depende también del certificado); riesgo de instalar el flavor equivocado; cambia nombres de tareas de test. | Plan T7.1 | Sacar `osdDirect` de `release` (o solo debug con banner); documentar que release = `companion` | ABIERTO | Revisión del diff de T7.1 (RDD R7) |
+| **F7** | MEDIO | El flavor `osdDirect` probablemente no funciona (el AppKey depende también del certificado); riesgo de instalar el flavor equivocado; cambia nombres de tareas de test. | Plan T7.1 | Sacar `osdDirect` de `release` (o solo debug con banner); documentar que release = `companion` | **ARREGLADO en código (T7.1, commit `a729ae2`, sin mergear):** la variante `osdDirectRelease` está deshabilitada (`beforeVariants`). Sin banner en `osdDirectDebug` (seguimiento, BAJO) | Revisión del diff de T7.1 (RDD R7) |
 | **F8** | BAJO / hardware | `connectedDevice` desde `BOOT_COMPLETED`, Doze y sueño de 8 h; force-stop deja el puente muerto sin aviso; exención de batería denegada sin fault. | `BootReceiver.kt`, `OsdBridgeService.kt` | Recordatorio de exención de batería; resto es hardware | ABIERTO | DV-2, DV-6 |
 
 ### Hallazgos de proceso (no son bugs de código)
@@ -59,7 +59,7 @@ Veredicto: **BLOCK** para arrancar el Batch 7 tal como estaba planeado.
 | ID | Hallazgo | Estado |
 |---|---|---|
 | P1 | `tasks.md` T7.3 decía "no re-raise" sobre la aprobación de constantes; contradice la regla del skill (la firma humana no se reemplaza). | Se corrige en el Batch 5c (edición de `tasks.md`) |
-| P2 | La cuenta de "falla visible ≤ 60 s" no tiene margen y `design.md` usa 30 s de stale en el camino de entrada donde la constante es 40 s. | ABIERTO → **T7.7** (corregir aritmética o firmar un techo de ~65–70 s) |
+| P2 | La cuenta de "falla visible ≤ 60 s" no tiene margen y `design.md` usa 30 s de stale en el camino de entrada donde la constante es 40 s. | **CERRADO (T7.7, commit `aa350ea`):** se aceptan los techos firmados (60 s enlace, ≈75 s OSD congelado), medidos desde el último evento bueno. Tests sobre todas las fases del tick para 60 s y 30 s; el de 75 s es solo aritmético (seguimiento BAJO) |
 | P3 | El CI solo corre tests de `:wear` y no corre en PRs apilados. | ABIERTO (agregar `:phone:testDebugUnitTest` al workflow; decisión pendiente) |
 
 ---
@@ -88,11 +88,11 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 ## 4. Condiciones para pasar de BLOCK a PASS (checklist)
 
 - [x] **1.** F1 arreglado y con tests de estado congelado (Batch 5c, PRs #22/#23 mergeados). Falta DV-4 en hardware.
-- [~] **2.** Política para los estados 3–7: **definida** (DEC-057) y **spec enmendado** (2026-09-19, `watch-companion-transport.md` y `phone-companion-bridge.md`). Falta implementarla (T7.5).
-- [~] **3.** ~~DEGRADED persistente~~ reemplazado por DEGRADED solo visual (DEC-057). Falta reescribir T7.6.
-- [~] **4.** Constantes firmadas (16 de 16: 15 el 2026-09-19, `techo_latencia_clinica` = 40 s el 2026-09-30) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). Falta reescribir T7.7 (Batch 7).
+- [x] **2.** Política para los estados 3–7: definida (DEC-057), spec enmendado e **implementada** (T7.5, verificada por R7). Falta prueba en reloj.
+- [x] **3.** ~~DEGRADED persistente~~ reemplazado por DEGRADED solo visual (DEC-057), implementado (T7.6) y visible en pantalla (H7-1).
+- [x] **4.** Constantes firmadas (16 de 16: 15 el 2026-09-19, `techo_latencia_clinica` = 40 s el 2026-09-30) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). T7.7 cerrada aceptando los techos firmados.
 - [~] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 **reescritos** (2026-09-19). Texto médico revisado y aprobado por el usuario (2026-09-30: "llamar a emergencias si dura más de 3 minutos" es correcto). Falta que se corrijan `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `docs/RUNBOOK_EXPORTACION_DATOS.md`, que aún mandan por el camino roto.
-- [ ] **6.** `osdDirect` fuera de `release` (F7).
+- [x] **6.** `osdDirect` fuera de `release` (F7): variante deshabilitada en T7.1.
 - [x] **7.** Segundo `safety-reviewer` (R6, 2026-09-28): **PARCIAL PASS**, con 3 hallazgos documentales
   ya corregidos el mismo día (ver sección 9). Ningún hallazgo de código. No hace falta un tercer
   re-chequeo salvo que cambie algo más antes de Batch 7.
@@ -209,3 +209,34 @@ pierdan y para revisarlos en el segundo `safety-reviewer` (R6).
   servidor web de OSD queda expuesto sin autenticación en la LAN.
 - Alternativa sin código: No Molestar con el contacto del paciente como prioritario.
 - Estado: **PENDIENTE de decidir y probar** (DV nuevo).
+
+---
+
+## 10. `safety-reviewer` sobre el diff real del Batch 7 (R7 y R7b, 2026-09-30)
+
+**Qué se revisó:** el código real del Batch 7 en 4 ramas apiladas, sin mergear: `07a` (flavors +
+destino del reloj + script de instalación), `07b-1` (vigilancia del enlace y constantes firmadas),
+`07b-2` (política de estados de OSD, DEGRADED sin vibración, techos), `07c` (pantalla del reloj).
+
+**Confirmado:** los estados 2, 3 y 5 siempre vibran como alarma en todos los caminos (sin falsos
+negativos introducidos). Ninguna falla vibra: 4, 7, 6 y cualquier valor desconocido quedan en
+silencio. La ruta de vibración (`AlarmStateManager.kt`) no cambia en `07c`. Las 6 constantes del
+reloj coinciden con las firmadas (DEC-059). Si nunca llega un mensaje del teléfono, el reloj pasa
+a DEGRADED en ≈80 s como máximo.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| H7-1 | ALTO | Con el enlace caído la pantalla seguía diciendo "Monitoreo activo" (o una "ALARMA" vieja): el estado recibido no vence y la pantalla no leía DEGRADED. | **ARREGLADO** (commit `5fc1d8d`, rama `07c`): "⚠ MONITOREO DEGRADADO" en ámbar; un estado vencido nunca se muestra como vigente; una alarma vigente nunca se oculta. Tests de todas las combinaciones |
+| H7-2 | ALTO | El script de instalación apuntaba a la ruta vieja del APK: podía instalar un APK anterior que vibra ante fallas. | **ARREGLADO** (commit `4423358`, rama `07a`): compila el flavor `companion`, borra APKs viejos y falla si el APK falta o es anterior a la compilación. `HARDWARE_RUNBOOK.md` corregido |
+| H7-3 | BAJO-MEDIO | Al reiniciar o detener el monitoreo, la pantalla conserva el último estado de la sesión anterior (una "ALARMA" vieja puede quedar en pantalla con el monitoreo apagado). No causa alarmas perdidas. | Seguimiento: resetear el estado en inicio y parada |
+| H7-4 | BAJO | Carrera entre el tick y el listener: tras un corte, una ALARMA nueva puede verse como DEGRADED hasta 10 s. La vibración no se afecta. | Seguimiento |
+| H7-5 | MEDIO | La vigilancia usa el reloj de pared: un salto hacia atrás del reloj la ciega por esa duración. | Seguimiento: usar `elapsedRealtime` |
+| H7-6 | MEDIO | MUTE (6) se ve como "Monitoreo activo" en el reloj. | Seguimiento (riesgo A3); documentado en la guía |
+| H7-7 | BAJO | Etiqueta de falla de OSD con poco contraste; test de 75 s solo aritmético; `getInt` puede desbordar un valor grande; `osdDirectDebug` sin banner. | Seguimientos |
+
+**Condición de merge:** `07b-2` saca la vibración de DEGRADED y `07c` agrega la etiqueta en
+pantalla. Hay que mergearlos **seguidos, en la misma sesión**, sin instalar en el reloj un build de
+`main` entre medio. `07a` y `07b-1` son seguros solos.
+
+**Riesgo residual:** DEGRADED solo se ve con la app abierta en el reloj o en sus notificaciones; con
+la carátula no hay aviso (A1). Nada se probó en hardware (R12).

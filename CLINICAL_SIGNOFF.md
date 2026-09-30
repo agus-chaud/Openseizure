@@ -39,6 +39,12 @@ registros pero más tiempo sin protección sin registrar. La aprobación del 202
 **no reemplaza esta firma**. El Batch 7 (`:wear`) no puede mergearse con alguna sin firmar.
 Registro de hallazgos: `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
 
+**Política de estados de OSD en el reloj (DEC-057, decidida por el usuario 2026-09-19,
+implementada en Batch 7):** 2, 3 y 5 → vibración de alarma; 4, 7 y cualquier valor desconocido →
+falla del sistema silenciosa (solo pantalla y registro); 6 (MUTE) → sin vibración; 0 y 1 sin
+cambios. Ampliar el conjunto que vibra sube las falsas alarmas; achicarlo arriesga una convulsión
+sin alarma.
+
 **Cuentas de peor caso** (calculadas, no medidas en hardware; con jitter pueden pasar unos segundos):
 
 | Camino | Fórmula | Hoy | Con los valores propuestos |

@@ -1288,6 +1288,26 @@ class SeizureMonitorServiceTest {
     }
 
     @Test
+    fun hapticFailure_stillLeavesTheReceivedStateDisplayedAsFresh() {
+        val time = LongArray(1)
+        val (controller, context) = startWithFakeClock(1_000L, time)
+        try {
+            val service = controller.get()
+            service.onAlarmStateReceived(AlarmStateManager.ALARM_OK)
+            var vibrated = false
+            service.hapticHandler = { vibrated = true; throw IllegalStateException("vibrator failure") }
+            time[0] = 50_000L
+            runCatching { service.onAlarmStateReceived(AlarmStateManager.ALARM_ALARM) }
+            assertTrue("haptics were still attempted", vibrated)
+            assertEquals(AlarmStateManager.ALARM_ALARM, SeizureMonitorService.alarmState.value)
+            assertEquals(50_000L, SeizureMonitorService.alarmFreshness.value.lastAlarmStateAtMs)
+            assertFalse(SeizureMonitorService.alarmFreshness.value.stale)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
     fun freshnessSnapshot_isRaceFree_underAnyInterleaving() {
         // Exhaustive check of both orders of (tick at t, message at m) for every t, m on a grid:
         // the message is always fresh right after it is applied, whichever side lands last.

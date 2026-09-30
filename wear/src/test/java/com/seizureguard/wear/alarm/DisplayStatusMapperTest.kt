@@ -139,6 +139,33 @@ class DisplayStatusMapperTest {
     }
 
     @Test
+    fun everyStatusColor_hasAtLeast4_5ContrastOnBlack() {
+        for ((name, c) in mapOf("WARNING" to DisplayStatusColors.WARNING, "ALARM" to DisplayStatusColors.ALARM,
+            "DEGRADED" to DisplayStatusColors.DEGRADED, "MUTED" to DisplayStatusColors.MUTED,
+            "SYSTEM_FAULT" to DisplayStatusColors.SYSTEM_FAULT)) {
+            assertTrue("$name contrast ${contrastOnBlack(c)}", contrastOnBlack(c) >= 4.5)
+        }
+    }
+
+    @Test
+    fun alarmColor_isDistinctFromEveryOtherStatusColor() {
+        for (other in longArrayOf(DisplayStatusColors.SYSTEM_FAULT, DisplayStatusColors.MUTED,
+            DisplayStatusColors.DEGRADED, DisplayStatusColors.WARNING)) {
+            assertTrue("alarm too close to ${other.toString(16)}", colorDistance(DisplayStatusColors.ALARM, other) > 90)
+        }
+        // Still clearly red: red channel dominates.
+        val a = DisplayStatusColors.ALARM
+        assertTrue(((a shr 16) and 0xFF) > 2 * ((a shr 8) and 0xFF))
+    }
+
+    @Test
+    fun mutedLabel_isExactAndDoesNotReadAsNothingHappening() {
+        val xml = java.io.File("src/main/res/values/strings.xml").readText()
+        assertTrue(xml.contains(">SILENCIADO, no avisa convulsiones</string>"))
+        assertFalse(xml.contains("sin alarmas"))
+    }
+
+    @Test
     fun faultColor_hasAtLeast4_5ContrastOnBlack_andIsDistinctFromAlarmDegradedAndMuted() {
         val fault = DisplayStatusColors.SYSTEM_FAULT
         assertTrue("fault contrast ${contrastOnBlack(fault)}", contrastOnBlack(fault) >= 4.5)

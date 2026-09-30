@@ -7,7 +7,8 @@ package com.seizureguard.wear.alarm
  */
 object DisplayStatusColors {
     const val WARNING = 0xFFF57F17L   // amber-orange
-    const val ALARM = 0xFFB71C1CL     // red
+    /** Light red (was #B71C1C, ~3.2:1 on black). */
+    const val ALARM = 0xFFFF4D6AL
     const val DEGRADED = 0xFFFFC107L  // amber
     /** Cyan: "alarms are silenced". Not amber (degraded) nor red (alarm). */
     const val MUTED = 0xFF4DD0E1L

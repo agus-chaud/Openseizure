@@ -749,9 +749,14 @@ class SeizureMonitorService : Service() {
         val receivedAt = clockMs()
         lastAlarmStateAtMs = receivedAt
         _alarmFreshness.update { it.receivedAt(receivedAt) }   // atomic (CAS): no tick can undo it
-        alarmStateManager.handleAlarmState(alarmState)
+        // Display BEFORE haptics: if the vibrator throws, the screen must still show the received
+        // value (never the old state marked fresh). The exception is not swallowed.
         _alarmState.value = alarmState
+        hapticHandler(alarmState)
     }
+
+    /** Haptic response to an alarm state; replaceable in tests to simulate a vibrator failure. */
+    internal var hapticHandler: (Int) -> Unit = { alarmStateManager.handleAlarmState(it) }
 
     // ─── WakeLock ─────────────────────────────────────────────────────────────
 

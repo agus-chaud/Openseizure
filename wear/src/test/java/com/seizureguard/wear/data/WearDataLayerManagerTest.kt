@@ -1,6 +1,7 @@
 package com.seizureguard.wear.data
 
 import androidx.test.core.app.ApplicationProvider
+import com.seizureguard.wear.alarm.AlarmStateManager
 import org.json.JSONObject
 import com.seizureguard.wear.BuildConfig
 import org.junit.Assert.assertEquals
@@ -112,6 +113,54 @@ class WearDataLayerManagerTest {
         assertNull(manager.parseAlarmState(byteArrayOf(0x02)))
         assertNull(manager.parseAlarmState("no soy json".toByteArray(Charsets.UTF_8)))
         assertNull(manager.parseAlarmState("""{"otra_cosa":1}""".toByteArray(Charsets.UTF_8)))
+    }
+
+    private fun parse(value: String) =
+        manager.parseAlarmState("""{"alarm_state":$value}""".toByteArray(Charsets.UTF_8))
+
+    @Test
+    fun `parseAlarmState never wraps an out-of-range number into an alarm`() {
+        // getInt would return 2 for 4294967298 (2^32 + 2), 3 for 4294967299, 5 for 4294967301.
+        for (v in listOf("4294967298", "4294967299", "4294967301", "9223372036854775807",
+            "-9223372036854775808", "2147483648", "-2147483649", "1e10", "4294967298.0")) {
+            val parsed = parse(v)
+            assertEquals("$v must map to the invalid sentinel", WearDataLayerManager.ALARM_STATE_INVALID, parsed)
+            assertEquals("$v must be a silent fault", AlarmStateManager.Severity.SYSTEM_FAULT,
+                AlarmStateManager.classify(parsed!!))
+        }
+    }
+
+    @Test
+    fun `parseAlarmState never truncates a fractional number into an alarm`() {
+        for (v in listOf("2.5", "3.9", "5.0001", "0.5", "-1.5")) {
+            assertEquals(v, WearDataLayerManager.ALARM_STATE_INVALID, parse(v))
+        }
+    }
+
+    @Test
+    fun `parseAlarmState keeps exact in-range integers including unknown states`() {
+        assertEquals(2, parse("2"))
+        assertEquals(5, parse("5"))
+        assertEquals(2, parse("2.0"))
+        assertEquals(7, parse("7"))
+        assertEquals(99, parse("99"))
+        assertEquals(-1, parse("-1"))
+        assertEquals(Int.MAX_VALUE, parse("2147483647"))
+        assertEquals(Int.MIN_VALUE, parse("-2147483648"))
+    }
+
+    @Test
+    fun `parseAlarmState treats non-numeric values as unreadable`() {
+        assertNull(parse("true"))
+        assertNull(parse("null"))
+        assertNull(parse("[2]"))
+        assertNull(parse("\"abc\""))
+    }
+
+    @Test
+    fun `the invalid sentinel is classified as a silent system fault`() {
+        assertEquals(AlarmStateManager.Severity.SYSTEM_FAULT,
+            AlarmStateManager.classify(WearDataLayerManager.ALARM_STATE_INVALID))
     }
 
     // ─── settings handshake (battery + sample_freq) ──────────────────────────

@@ -174,9 +174,31 @@ class WearDataLayerManager(
      * sin crashear — preferimos perder un mensaje malformado a tumbar el listener).
      */
     fun parseAlarmState(data: ByteArray): Int? = try {
-        JSONObject(String(data, Charsets.UTF_8)).getInt("alarm_state")
+        val raw = JSONObject(String(data, Charsets.UTF_8)).get("alarm_state")
+        toAlarmState(raw)
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * Exact conversion of the JSON value to an Int. `JSONObject.getInt` silently wraps numbers
+     * outside the Int range (4294967298 -> 2 = ALARM) and truncates 2.5 -> 2, which would turn a
+     * garbled value into a vibrating alarm. Here an out-of-range or non-integral number becomes
+     * [ALARM_STATE_INVALID], which `AlarmStateManager.classify` treats as a silent SYSTEM_FAULT.
+     * Non-numeric values stay unreadable (null), as before.
+     */
+    private fun toAlarmState(raw: Any?): Int? {
+        val text = when (raw) {
+            is Number, is String -> raw.toString().trim()
+            else -> return null
+        }
+        val number = text.toBigDecimalOrNull()
+            ?: return if (raw is Number) ALARM_STATE_INVALID else null   // NaN / Infinity
+        return try {
+            number.intValueExact()
+        } catch (e: ArithmeticException) {
+            ALARM_STATE_INVALID
+        }
     }
 
     /**
@@ -218,6 +240,12 @@ class WearDataLayerManager(
         const val PATH_ALARM_STATE   = "/osd/alarm_state"
         const val PATH_SETTINGS      = "/osd/settings"       // reloj → OSD: batería + freq
         const val PATH_SEND_SETTINGS = "/osd/send_settings"  // OSD → reloj: pide settings ("start")
+        /**
+         * Returned by [parseAlarmState] for a numeric alarm_state that is not an exact Int
+         * (out of range or fractional). Outside every known OSD state, so it classifies as a
+         * silent SYSTEM_FAULT and can never vibrate.
+         */
+        const val ALARM_STATE_INVALID = Int.MIN_VALUE
         private const val TAG = "WearDataLayerManager"
     }
 }

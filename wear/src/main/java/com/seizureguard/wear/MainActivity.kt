@@ -25,7 +25,8 @@ import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
-import com.seizureguard.wear.alarm.AlarmStateManager
+import com.seizureguard.wear.alarm.DisplayStatus
+import com.seizureguard.wear.alarm.DisplayStatusMapper
 import com.seizureguard.wear.service.SeizureMonitorService
 
 /**
@@ -83,27 +84,37 @@ fun SeizureGuardWearApp(
     var isMonitoring by remember { mutableStateOf(false) }
     val alarmState by SeizureMonitorService.alarmState.collectAsState()
 
-    // Same classification the haptics use (DEC-057): a system fault (OSD FAULT/NETFAULT or an
-    // unknown value) must never be shown as a seizure ALARM, and must never vibrate.
-    val severity = AlarmStateManager.classify(alarmState)
+    val pipelineHealth by SeizureMonitorService.pipelineHealth.collectAsState()
+    val alarmStateStale by SeizureMonitorService.alarmStateStale.collectAsState()
 
-    // Text colour by severity
-    val statusColor = when (severity) {
-        AlarmStateManager.Severity.WARNING      -> Color(0xFFF57F17)   // Amber
-        AlarmStateManager.Severity.ALARM        -> Color(0xFFB71C1C)   // Red
-        AlarmStateManager.Severity.SYSTEM_FAULT -> Color(0xFF6D4C41)   // Brown: fault, not an alarm
-        else                                    -> Color.Unspecified   // Theme default
+    // One pure decision (DisplayStatusMapper, unit-tested): a dead link / frozen OSD must never
+    // leave the screen saying "Monitoreo activo", and a stale alarm is never shown as current.
+    // A FRESH live alarm stays visible even if the pipeline is degraded for another reason.
+    // Visual only: no vibration or sound is triggered from here (DEC-057).
+    val display = DisplayStatusMapper.map(
+        alarmState = alarmState,
+        pipelineDegraded = pipelineHealth == SeizureMonitorService.PipelineHealth.DEGRADED,
+        alarmStateStale = alarmStateStale
+    )
+    val degradedAmber = Color(0xFFFFC107)   // amber on the black Wear background, ~12:1 contrast
+
+    val statusColor = when (display.status) {
+        DisplayStatus.WARNING      -> Color(0xFFF57F17)   // Amber-orange
+        DisplayStatus.ALARM        -> Color(0xFFB71C1C)   // Red
+        DisplayStatus.SYSTEM_FAULT -> Color(0xFF6D4C41)   // Brown: fault, not an alarm
+        DisplayStatus.DEGRADED     -> degradedAmber
+        DisplayStatus.NORMAL       -> Color.Unspecified   // Theme default
     }
 
-    // Status text
-    val statusText = when (severity) {
-        AlarmStateManager.Severity.WARNING      -> stringResource(R.string.label_status_warning)
-        AlarmStateManager.Severity.ALARM        -> stringResource(R.string.label_status_alarm)
-        AlarmStateManager.Severity.SYSTEM_FAULT -> stringResource(R.string.label_status_system_fault)
-        else                                    -> if (isMonitoring)
-                                                       stringResource(R.string.label_monitoring_on)
-                                                   else
-                                                       stringResource(R.string.label_monitoring_off)
+    val statusText = when (display.status) {
+        DisplayStatus.WARNING      -> stringResource(R.string.label_status_warning)
+        DisplayStatus.ALARM        -> stringResource(R.string.label_status_alarm)
+        DisplayStatus.SYSTEM_FAULT -> stringResource(R.string.label_status_system_fault)
+        DisplayStatus.DEGRADED     -> stringResource(R.string.label_status_degraded)
+        DisplayStatus.NORMAL       -> if (isMonitoring)
+                                          stringResource(R.string.label_monitoring_on)
+                                      else
+                                          stringResource(R.string.label_monitoring_off)
     }
 
     MaterialTheme {
@@ -120,6 +131,14 @@ fun SeizureGuardWearApp(
                 style = MaterialTheme.typography.body1,
                 color = statusColor
             )
+            if (display.degradedHint) {
+                Text(
+                    text = stringResource(R.string.label_degraded_hint),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.caption1,
+                    color = degradedAmber
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

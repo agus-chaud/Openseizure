@@ -366,6 +366,7 @@ class SeizureMonitorService : Service() {
         lastSampleAtMs = now
         lastDeliveryOkAtMs = now
         lastAlarmStateAtMs = now   // the warm-up window covers the first companion keep-alive
+        _alarmStateStale.value = false
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
         startWatchdog()
@@ -435,6 +436,7 @@ class SeizureMonitorService : Service() {
         watchdogJob = null
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
+        _alarmStateStale.value = false
         // Desregistrar el sensor ANTES de stopSelf() para evitar que el
         // callback siga llegando durante el shutdown del Service.
         stopSensorCollection()
@@ -673,6 +675,8 @@ class SeizureMonitorService : Service() {
         // monitoreo largo (hasta 10h de uso nocturno). Re-acquire reinicia el timeout.
         wakeLock?.let { if (it.isHeld) it.acquire(WAKE_LOCK_TIMEOUT_MS) }
 
+        // Publish inbound staleness for the UI: a stale alarm state must not be shown as current.
+        _alarmStateStale.value = isAlarmStateStale(nowMs, lastAlarmStateAtMs)
         val instant = evaluateHealth(
             nowMs = nowMs,
             lastSampleAtMs = lastSampleAtMs,
@@ -709,6 +713,7 @@ class SeizureMonitorService : Service() {
         // proves the companion round trip is alive. Recorded before acting on the value so a
         // failure while vibrating can never leave the inbound watchdog blind.
         lastAlarmStateAtMs = System.currentTimeMillis()
+        _alarmStateStale.value = false
         alarmStateManager.handleAlarmState(alarmState)
         _alarmState.value = alarmState
     }
@@ -872,6 +877,18 @@ class SeizureMonitorService : Service() {
         val pipelineHealth: StateFlow<PipelineHealth> = _pipelineHealth.asStateFlow()
 
         /**
+         * true when no /osd/alarm_state arrived within [ALARM_STATE_STALE_MS], i.e. [alarmState]
+         * holds an old value. Refreshed every watchdog tick and cleared on each received state.
+         * The UI combines it with [alarmState] and [pipelineHealth] via DisplayStatusMapper.
+         */
+        private val _alarmStateStale = MutableStateFlow(false)
+        val alarmStateStale: StateFlow<Boolean> = _alarmStateStale.asStateFlow()
+
+        /** Same predicate evaluateHealth uses for the inbound path (strictly greater). */
+        fun isAlarmStateStale(nowMs: Long, lastAlarmStateAtMs: Long): Boolean =
+            nowMs - lastAlarmStateAtMs > ALARM_STATE_STALE_MS
+
+        /**
          * T8 — Lógica PURA de evaluación de salud (sin estado, sin Android → fácil de testear).
          *
          * Reglas:
@@ -895,7 +912,7 @@ class SeizureMonitorService : Service() {
             if (nowMs - monitoringStartedAtMs < WATCHDOG_WARMUP_MS) return PipelineHealth.HEALTHY
             val sampleStale     = nowMs - lastSampleAtMs > SAMPLE_STALE_MS
             val deliveryStale   = nowMs - lastDeliveryOkAtMs > DELIVERY_STALE_MS
-            val alarmStateStale = nowMs - lastAlarmStateAtMs > ALARM_STATE_STALE_MS
+            val alarmStateStale = isAlarmStateStale(nowMs, lastAlarmStateAtMs)
             return if (sampleStale || deliveryStale || alarmStateStale) PipelineHealth.DEGRADED
             else PipelineHealth.HEALTHY
         }

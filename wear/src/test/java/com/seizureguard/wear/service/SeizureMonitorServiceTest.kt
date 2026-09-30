@@ -1118,4 +1118,31 @@ class SeizureMonitorServiceTest {
         val phoneOsdDataFreshMs = 15_000L
         assertEquals("Signed ceiling for a frozen OSD (~75 s)", 75_000L, phoneOsdDataFreshMs + deadLink)
     }
+
+    // --- HIGH-1: inbound staleness is published for the UI -----------------------------------
+
+    @Test
+    fun alarmStateStale_predicate_matchesEvaluateHealthBoundary() {
+        val last = 1_000_000L
+        assertFalse(SeizureMonitorService.isAlarmStateStale(last + SeizureMonitorService.ALARM_STATE_STALE_MS, last))
+        assertTrue(SeizureMonitorService.isAlarmStateStale(last + SeizureMonitorService.ALARM_STATE_STALE_MS + 1, last))
+    }
+
+    @Test
+    fun watchdogTick_publishesStaleAlarmState_andStopClearsIt() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            assertFalse("fresh right after start", SeizureMonitorService.alarmStateStale.value)
+            controller.get().checkPipelineHealth(System.currentTimeMillis() + 10 * 60_000L)
+            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmStateStale.value)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+        assertFalse("stop must clear staleness", SeizureMonitorService.alarmStateStale.value)
+    }
 }

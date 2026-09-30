@@ -367,6 +367,8 @@ class SeizureMonitorService : Service() {
         lastDeliveryOkAtMs = now
         lastAlarmStateAtMs = now   // the warm-up window covers the first companion keep-alive
         _alarmStateStale.value = false
+        // A new session must not show the previous session's state (e.g. an old ALARM) as current.
+        _alarmState.value = AlarmStateManager.ALARM_OK
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
         startWatchdog()
@@ -437,6 +439,8 @@ class SeizureMonitorService : Service() {
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
         _alarmStateStale.value = false
+        // With monitoring off, no alarm state is current: never leave an old ALARM on screen.
+        _alarmState.value = AlarmStateManager.ALARM_OK
         // Desregistrar el sensor ANTES de stopSelf() para evitar que el
         // callback siga llegando durante el shutdown del Service.
         stopSensorCollection()
@@ -706,8 +710,10 @@ class SeizureMonitorService : Service() {
      * @param alarmState Raw OSD value (0-7, but any Int can arrive). What each value does is
      *   defined by [AlarmStateManager.classify] (DEC-057): 2/3/5 vibrate as ALARM, 4/7/unknown are
      *   silent system faults, 6 (MUTE) is silent.
+     *
+     * `internal` (not private) only so tests can deliver a state without the Data Layer.
      */
-    private fun onAlarmStateReceived(alarmState: Int) {
+    internal fun onAlarmStateReceived(alarmState: Int) {
         Log.i(TAG, "alarmState recibido: $alarmState")
         // Liveness first: ANY parseable alarm_state (including a silent-fault or unknown value)
         // proves the companion round trip is alive. Recorded before acting on the value so a

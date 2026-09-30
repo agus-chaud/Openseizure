@@ -157,12 +157,15 @@ diagnóstico médico** (solo detecta un patrón de movimiento).
       aparece "⚠ MONITOREO DEGRADADO".
 - [ ] La pantalla **no** dice **"⚠ MONITOREO DEGRADADO"** (ámbar). Si lo dice, algo falló (sensor,
       conexión con el teléfono, u OpenSeizureDetector detenido o congelado): revisá el reloj y el
-      teléfono. Puede tardar hasta 1 minuto en aparecer.
-- [ ] Si dice **"Falla del sistema (OSD) — sin vibración"** (marrón), OpenSeizureDetector informa
+      teléfono. Puede tardar hasta 1 minuto y medio en aparecer.
+- [ ] Si dice **"Falla del sistema (OSD) — sin vibración"** (violeta claro), OpenSeizureDetector informa
       una falla propia. No es una convulsión y el reloj no vibra. Revisá el teléfono: mientras dure
       esa falla, una convulsión podría no generar alarma.
-- [ ] Si OpenSeizureDetector está en **MUTE**, el reloj igual dice "Monitoreo activo": verificá
-      MUTE en OSD (está en la lista del teléfono, arriba).
+- [ ] Si la pantalla dice **"SILENCIADO, no avisa convulsiones"** (celeste), OpenSeizureDetector
+      está en **MUTE**: ante una convulsión **nada va a avisar** (ni el reloj, ni el teléfono, ni el
+      SMS). Sacá MUTE en OSD.
+- [ ] Si arriba de la pantalla dice **"VERSIÓN DE PRUEBA"**, ese reloj tiene la versión de
+      desarrollo, no la normal: instalá la versión normal.
 
 ### En TU teléfono (el del cuidador)
 

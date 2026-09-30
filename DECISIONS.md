@@ -2050,6 +2050,29 @@ ambos flavors (105 tests cada uno), re-corrido por el orquestador en la punta de
 
 ---
 
+## DEC-064: Mejoras de seguridad del reloj H7-4 a H7-7 (PR 7d) y texto del cartel de MUTE
+
+**Fase:** SDD `watch-osd-message-delivery`, seguimiento del Batch 7 | **Fecha:** 2026-09-30
+
+**Qué se hizo:** en dos ramas apiladas desde `main` (`07d-1` 199+/24−, `07d-2` 307+/15−):
+- H7-5: la vigilancia del enlace usa `elapsedRealtime` (reloj que no se puede ajustar); un cambio de
+  hora del sistema ya no la ciega.
+- H7-4: la frescura del estado de alarma se publica como snapshot atómico; una ALARMA recién llegada
+  se muestra al instante.
+- H7-6: MUTE muestra **"SILENCIADO, no avisa convulsiones"** (texto elegido por el usuario; la
+  propuesta "sin alarmas" se descartó por ambigua, hallazgo R8-F1).
+- H7-7: colores legibles (falla violeta claro, ALARMA rojo claro, todos ≥ 4.5:1 y testeados), números
+  fuera de rango → falla silenciosa (nunca alarma), test de 75 s simulado de verdad, cartel
+  "VERSIÓN DE PRUEBA" en `osdDirect`.
+- R8-F3: la pantalla se actualiza antes de vibrar.
+
+**Revisión:** `safety-reviewer` R8: `07d-1` PASS, `07d-2` PARTIAL PASS resuelto (sección 11 del
+registro). Sin constantes nuevas ni cambios en cuándo vibra el reloj. Tests `:wear` 130/130 en ambos
+flavors, re-corridos por el orquestador. Guía del cuidador actualizada (MUTE, color de falla,
+"hasta 1 minuto y medio", "VERSIÓN DE PRUEBA").
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

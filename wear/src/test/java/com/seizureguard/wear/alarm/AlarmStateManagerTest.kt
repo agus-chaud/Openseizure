@@ -110,11 +110,11 @@ class AlarmStateManagerTest {
     }
 
     /**
-     * alarmState=5 (> 2): tratado como ALARM, vibra.
+     * alarmState=5 (MANUAL): tratado como ALARM, vibra.
      *
-     * Qué testea: que cualquier valor >= 2 activa la alarma.
-     * El protocolo OSD define valores 3 (SEIZURE_DETECTED), 4, etc. que deben
-     * tratarse como ALARM a nivel háptico en el reloj.
+     * Nota (DEC-057): antes este test decía "cualquier valor >= 2 activa la alarma". Esa regla se
+     * eliminó: solo 2, 3 y 5 vibran como ALARM; 4, 7 y los desconocidos son falla silenciosa
+     * (ver los tests "Batch 7" al final del archivo). El assert de este test no cambió.
      */
     @Test
     fun alarmState_aboveAlarm_treatedAsAlarm() {
@@ -195,5 +195,70 @@ class AlarmStateManagerTest {
             1,
             AlarmStateManager.ALARM_WARNING
         )
+    }
+
+    // --- Batch 7 / T7.5: OSD alarm-state policy (DEC-057, WCT-3) ---------------------------
+
+    private fun vibrates(alarmState: Int): Boolean {
+        val vibrator = ApplicationProvider.getApplicationContext<Application>()
+            .getSystemService(Vibrator::class.java)
+        vibrator.cancel()                       // start each case from a silent vibrator
+        manager.handleAlarmState(alarmState)
+        return shadowOf(vibrator).isVibrating
+    }
+
+    @Test
+    fun alarmStates_2_3_5_vibrateAsAlarm() {
+        for (state in intArrayOf(2, 3, 5)) {
+            assertTrue("alarmState=$state must vibrate (real emergency)", vibrates(state))
+        }
+    }
+
+    @Test
+    fun alarmState_1_warning_vibrates() {
+        assertTrue(vibrates(AlarmStateManager.ALARM_WARNING))
+    }
+
+    @Test
+    fun faultStates_4_and_7_areSilent() {
+        assertFalse("FAULT (4) must never vibrate", vibrates(AlarmStateManager.ALARM_FAULT))
+        assertFalse("NETFAULT (7) must never vibrate", vibrates(AlarmStateManager.ALARM_NETFAULT))
+    }
+
+    @Test
+    fun muteState_6_isSilent() {
+        assertFalse("MUTE (6) must not vibrate", vibrates(AlarmStateManager.ALARM_MUTE))
+    }
+
+    @Test
+    fun okState_0_isSilent() {
+        assertFalse(vibrates(AlarmStateManager.ALARM_OK))
+    }
+
+    @Test
+    fun unknownStates_areSilentFault_neverAlarm() {
+        for (state in intArrayOf(8, 99, 255, -1, Int.MAX_VALUE, Int.MIN_VALUE)) {
+            assertFalse("unknown alarmState=$state must NOT vibrate", vibrates(state))
+        }
+    }
+
+    @Test
+    fun classify_mapsEveryOsdValueAsSpecified() {
+        val expected = mapOf(
+            0 to AlarmStateManager.Severity.OK,
+            1 to AlarmStateManager.Severity.WARNING,
+            2 to AlarmStateManager.Severity.ALARM,
+            3 to AlarmStateManager.Severity.ALARM,
+            4 to AlarmStateManager.Severity.SYSTEM_FAULT,
+            5 to AlarmStateManager.Severity.ALARM,
+            6 to AlarmStateManager.Severity.MUTE,
+            7 to AlarmStateManager.Severity.SYSTEM_FAULT,
+            8 to AlarmStateManager.Severity.SYSTEM_FAULT,
+            99 to AlarmStateManager.Severity.SYSTEM_FAULT,
+            -1 to AlarmStateManager.Severity.SYSTEM_FAULT
+        )
+        for ((state, severity) in expected) {
+            assertEquals("classify($state)", severity, AlarmStateManager.classify(state))
+        }
     }
 }

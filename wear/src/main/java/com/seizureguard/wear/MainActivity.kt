@@ -83,21 +83,27 @@ fun SeizureGuardWearApp(
     var isMonitoring by remember { mutableStateOf(false) }
     val alarmState by SeizureMonitorService.alarmState.collectAsState()
 
-    // Color del texto según alarmState
-    val statusColor = when (alarmState) {
-        AlarmStateManager.ALARM_WARNING -> Color(0xFFF57F17)   // Amarillo
-        in 2..Int.MAX_VALUE             -> Color(0xFFB71C1C)   // Rojo
-        else                            -> Color.Unspecified   // Color por defecto del tema
+    // Same classification the haptics use (DEC-057): a system fault (OSD FAULT/NETFAULT or an
+    // unknown value) must never be shown as a seizure ALARM, and must never vibrate.
+    val severity = AlarmStateManager.classify(alarmState)
+
+    // Text colour by severity
+    val statusColor = when (severity) {
+        AlarmStateManager.Severity.WARNING      -> Color(0xFFF57F17)   // Amber
+        AlarmStateManager.Severity.ALARM        -> Color(0xFFB71C1C)   // Red
+        AlarmStateManager.Severity.SYSTEM_FAULT -> Color(0xFF6D4C41)   // Brown: fault, not an alarm
+        else                                    -> Color.Unspecified   // Theme default
     }
 
-    // Texto del estado
-    val statusText = when (alarmState) {
-        AlarmStateManager.ALARM_WARNING -> stringResource(R.string.label_status_warning)
-        in 2..Int.MAX_VALUE             -> stringResource(R.string.label_status_alarm)
-        else                            -> if (isMonitoring)
-                                               stringResource(R.string.label_monitoring_on)
-                                           else
-                                               stringResource(R.string.label_monitoring_off)
+    // Status text
+    val statusText = when (severity) {
+        AlarmStateManager.Severity.WARNING      -> stringResource(R.string.label_status_warning)
+        AlarmStateManager.Severity.ALARM        -> stringResource(R.string.label_status_alarm)
+        AlarmStateManager.Severity.SYSTEM_FAULT -> stringResource(R.string.label_status_system_fault)
+        else                                    -> if (isMonitoring)
+                                                       stringResource(R.string.label_monitoring_on)
+                                                   else
+                                                       stringResource(R.string.label_monitoring_off)
     }
 
     MaterialTheme {

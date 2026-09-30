@@ -697,10 +697,9 @@ class SeizureMonitorService : Service() {
     /**
      * Procesa el alarmState recibido del teléfono via /osd/alarm_state.
      *
-     * @param alarmState Valor 0-7 según la especificación OSD:
-     *   0 = OK, 1 = WARNING, 2 = ALARM, 3 = SEIZURE_DETECTED, ...
-     *
-     * En Fase 2.2: actualizar UI y disparar vibración según el estado.
+     * @param alarmState Raw OSD value (0-7, but any Int can arrive). What each value does is
+     *   defined by [AlarmStateManager.classify] (DEC-057): 2/3/5 vibrate as ALARM, 4/7/unknown are
+     *   silent system faults, 6 (MUTE) is silent.
      */
     private fun onAlarmStateReceived(alarmState: Int) {
         Log.i(TAG, "alarmState recibido: $alarmState")
@@ -861,7 +860,8 @@ class SeizureMonitorService : Service() {
          *   o un patrón de binding complejo en esta fase.
          *   En Fase 3+ se puede migrar a un ViewModel compartido.
          *
-         * Valores posibles: ALARM_OK (0), ALARM_WARNING (1), ALARM_ALARM (2+)
+         * Raw OSD value (any Int). Interpret it with [AlarmStateManager.classify], never with a
+         * ">= 2" comparison: 4, 7 and unknown values are silent system faults, not alarms.
          */
         private val _alarmState = MutableStateFlow(AlarmStateManager.ALARM_OK)
         val alarmState: StateFlow<Int> = _alarmState.asStateFlow()

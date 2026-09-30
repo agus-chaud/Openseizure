@@ -25,4 +25,6 @@
     <!-- Fase 2.2 — Estados del alarmState en la UI -->
     <string name="label_status_warning">⚠ Movimiento detectado</string>
     <string name="label_status_alarm">🚨 ALARMA — Posible convulsión</string>
+    <!-- DEC-057: OSD fault (state 4/7 or unknown). Visual only, the watch never vibrates for it. -->
+    <string name="label_status_system_fault">Falla del sistema (OSD) — sin vibración</string>
 </resources>

@@ -9,6 +9,9 @@ import android.os.PowerManager
 import android.os.Vibrator
 import androidx.test.core.app.ApplicationProvider
 import com.seizureguard.wear.alarm.AlarmStateManager
+import com.seizureguard.wear.alarm.DisplayState
+import com.seizureguard.wear.alarm.DisplayStatus
+import com.seizureguard.wear.alarm.DisplayStatusMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -1052,7 +1055,7 @@ class SeizureMonitorServiceTest {
         try {
             val service = controller.get()
             // Two ticks far past warm-up with nothing fresh: hysteresis (2 ticks) declares DEGRADED.
-            val later = System.currentTimeMillis() + 10 * 60_000L
+            val later = service.clockMs() + 10 * 60_000L
             service.checkPipelineHealth(later)
             service.checkPipelineHealth(later + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
 
@@ -1087,7 +1090,7 @@ class SeizureMonitorServiceTest {
         ).create().startCommand(0, 1)
         try {
             val service = controller.get()
-            val later = System.currentTimeMillis() + 10 * 60_000L
+            val later = service.clockMs() + 10 * 60_000L
             service.checkPipelineHealth(later)
             service.checkPipelineHealth(later + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
 
@@ -1120,6 +1123,146 @@ class SeizureMonitorServiceTest {
         assertEquals("Signed ceiling for a frozen OSD (~75 s)", 75_000L, phoneOsdDataFreshMs + deadLink)
     }
 
+    // --- H7-5: the watchdog runs on a monotonic clock, never on the wall clock ----------------
+
+    /** Starts monitoring on a service whose monotonic clock is a controllable fake. */
+    private fun startWithFakeClock(startMs: Long, time: LongArray): Pair<org.robolectric.android.controller.ServiceController<SeizureMonitorService>, Application> {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        time[0] = startMs
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create()
+        controller.get().clockMs = { time[0] }
+        controller.startCommand(0, 1)
+        return controller to context
+    }
+
+    @Test
+    fun watchdog_readsTheInjectedMonotonicClock_notTheWallClock() {
+        // The fake clock (5 000 ms) has nothing to do with System.currentTimeMillis() (~1.7e12).
+        // If any watchdog timestamp or the default tick time came from the wall clock, the
+        // 10 simulated minutes below would not register (or would register wrongly).
+        val time = LongArray(1)
+        val (controller, context) = startWithFakeClock(5_000L, time)
+        try {
+            val service = controller.get()
+            time[0] += 10 * 60_000L
+            service.checkPipelineHealth()   // default nowMs = clockMs()
+            service.checkPipelineHealth(time[0] + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
+            assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, SeizureMonitorService.pipelineHealth.value)
+            assertTrue(SeizureMonitorService.alarmFreshness.value.stale)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun alarmStateTimestamp_comesFromTheMonotonicClock_andKeepsTheBoundary() {
+        val time = LongArray(1)
+        val (controller, context) = startWithFakeClock(1_000L, time)
+        try {
+            val service = controller.get()
+            time[0] = 100_000L
+            service.onAlarmStateReceived(AlarmStateManager.ALARM_OK)
+            service.checkPipelineHealth(100_000L + SeizureMonitorService.ALARM_STATE_STALE_MS)
+            assertFalse("exactly at the window is still fresh", SeizureMonitorService.alarmFreshness.value.stale)
+            service.checkPipelineHealth(100_000L + SeizureMonitorService.ALARM_STATE_STALE_MS + 1)
+            assertTrue("one ms past the window is stale", SeizureMonitorService.alarmFreshness.value.stale)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun watchdogPath_hasNoWallClockReads_exceptTheCsvTimestamp() {
+        // Guard against a regression to System.currentTimeMillis() in the watchdog/staleness path.
+        // (A wall-clock jump cannot be simulated in Robolectric, so this pins the source instead.)
+        val src = java.io.File("src/main/java/com/seizureguard/wear/service/SeizureMonitorService.kt").readLines()
+        val code = src.filter { val t = it.trim(); !t.startsWith("*") && !t.startsWith("//") && !t.startsWith("/*") }
+        val wall = code.filter { it.contains("currentTimeMillis") }
+        assertEquals("only the CSV sample timestamp may use the wall clock: $wall", 1, wall.size)
+        assertTrue(wall.single().contains("csvLogger.write"))
+    }
+
+    @Test
+    fun deadLinkCeiling_holdsOnTheMonotonicTimeline() {
+        // The 60 s dead-link ceiling, re-checked with timestamps shifted by an arbitrary offset
+        // (what a clock epoch change would look like): detection depends only on differences.
+        for (offset in longArrayOf(0L, 1_700_000_000_000L, 12_345L)) {
+            val worst = (1L..SeizureMonitorService.WATCHDOG_INTERVAL_MS step 97).maxOf { phase ->
+                var count = 0
+                var t = offset + phase
+                while (true) {
+                    val instant = SeizureMonitorService.evaluateHealth(
+                        nowMs = t, lastSampleAtMs = t, lastDeliveryOkAtMs = offset, lastAlarmStateAtMs = t,
+                        monitoringStartedAtMs = offset - SeizureMonitorService.WATCHDOG_WARMUP_MS - 1
+                    )
+                    count = SeizureMonitorService.nextUnhealthyCount(count, instant)
+                    if (SeizureMonitorService.effectiveHealth(count) == degraded) break
+                    t += SeizureMonitorService.WATCHDOG_INTERVAL_MS
+                }
+                t - offset
+            }
+            assertTrue("offset $offset: worst $worst must stay <= 60 s", worst <= 60_000L)
+        }
+    }
+
+    // --- H7-4: a watchdog tick can never hide a fresh alarm_state -----------------------------
+
+    @Test
+    fun tickThatReadTheClockBeforeAFreshAlarm_doesNotMarkItStale() {
+        // The interleaving of the original race, made deterministic:
+        //   1. the watchdog tick reads the clock (T0) while the last alarm_state is 50 s old,
+        //   2. a fresh ALARM arrives at T1 > T0 and is recorded,
+        //   3. the tick publishes using its OLD reading T0.
+        // Before the fix step 3 wrote stale = true over step 2; the ALARM was then shown as
+        // DEGRADED for up to one tick (10 s). Now the published snapshot stays fresh.
+        val time = LongArray(1)
+        val (controller, context) = startWithFakeClock(1_000L, time)
+        try {
+            val service = controller.get()
+            val tickReadsClockAt = 1_000L + 50_000L   // last alarm_state is 50 s old -> would be stale
+            time[0] = tickReadsClockAt + 5L           // the ALARM lands a moment after the tick read time
+            service.onAlarmStateReceived(AlarmStateManager.ALARM_ALARM)
+            service.checkPipelineHealth(tickReadsClockAt)   // the late publish with the old reading
+
+            val freshness = SeizureMonitorService.alarmFreshness.value
+            assertFalse("a fresh alarm_state must never be published as stale", freshness.stale)
+            val display = DisplayStatusMapper.map(
+                SeizureMonitorService.alarmState.value,
+                pipelineDegraded = false,
+                alarmStateStale = freshness.stale
+            )
+            assertEquals("fresh ALARM is displayed as ALARM immediately", DisplayState(DisplayStatus.ALARM), display)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun freshnessSnapshot_isRaceFree_underAnyInterleaving() {
+        // Exhaustive check of both orders of (tick at t, message at m) for every t, m on a grid:
+        // the message is always fresh right after it is applied, whichever side lands last.
+        val base = SeizureMonitorService.AlarmStateFreshness(lastAlarmStateAtMs = 0L, observedAtMs = 0L)
+        for (tickAt in 0L..120_000L step 7_000L) for (msgAt in 0L..120_000L step 5_000L) {
+            val msgFirst = base.receivedAt(msgAt).observedAt(tickAt)
+            val tickFirst = base.observedAt(tickAt).receivedAt(msgAt)
+            assertFalse("tick=$tickAt msg=$msgAt (message first)", msgFirst.stale && tickAt <= msgAt)
+            assertFalse("tick=$tickAt msg=$msgAt (tick first)", tickFirst.stale)
+        }
+    }
+
+    @Test
+    fun freshnessSnapshot_staleOnlyWhenTheTickReallyIsPastTheWindow() {
+        val f = SeizureMonitorService.AlarmStateFreshness().receivedAt(10_000L)
+        assertFalse(f.observedAt(10_000L + SeizureMonitorService.ALARM_STATE_STALE_MS).stale)
+        assertTrue(f.observedAt(10_000L + SeizureMonitorService.ALARM_STATE_STALE_MS + 1).stale)
+        // A tick with an older reading never moves observation backwards.
+        assertTrue(f.observedAt(100_000L).observedAt(20_000L).stale)
+    }
+
     // --- HIGH-1: inbound staleness is published for the UI -----------------------------------
 
     @Test
@@ -1138,13 +1281,13 @@ class SeizureMonitorServiceTest {
             SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
         ).create().startCommand(0, 1)
         try {
-            assertFalse("fresh right after start", SeizureMonitorService.alarmStateStale.value)
-            controller.get().checkPipelineHealth(System.currentTimeMillis() + 10 * 60_000L)
-            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmStateStale.value)
+            assertFalse("fresh right after start", SeizureMonitorService.alarmFreshness.value.stale)
+            controller.get().checkPipelineHealth(controller.get().clockMs() + 10 * 60_000L)
+            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmFreshness.value.stale)
         } finally {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
         }
-        assertFalse("stop must clear staleness", SeizureMonitorService.alarmStateStale.value)
+        assertFalse("stop must clear staleness", SeizureMonitorService.alarmFreshness.value.stale)
     }
 
     // --- H7-3: a previous session's alarm state is never shown as current ---------------------

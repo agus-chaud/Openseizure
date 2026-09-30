@@ -13,6 +13,7 @@ import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.seizureguard.wear.BuildConfig
@@ -33,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -75,6 +77,21 @@ class SeizureMonitorService : Service() {
      * `SeizureMonitorService.PipelineHealth`.
      */
     enum class PipelineHealth { HEALTHY, DEGRADED }
+
+    /**
+     * Immutable snapshot for the UI: when the last /osd/alarm_state was received and the latest
+     * time the watchdog (or a message) observed the clock. Both on the monotonic clock.
+     * [stale] is derived, never stored, so it cannot disagree with the timestamps.
+     */
+    data class AlarmStateFreshness(val lastAlarmStateAtMs: Long = 0L, val observedAtMs: Long = 0L) {
+        val stale: Boolean get() = isAlarmStateStale(observedAtMs, lastAlarmStateAtMs)
+
+        /** Watchdog tick: time only moves forward, and never touches [lastAlarmStateAtMs]. */
+        fun observedAt(nowMs: Long) = copy(observedAtMs = maxOf(observedAtMs, nowMs))
+
+        /** A message arrived at [atMs]: fresh by construction (age 0). */
+        fun receivedAt(atMs: Long) = AlarmStateFreshness(lastAlarmStateAtMs = atMs, observedAtMs = atMs)
+    }
 
     /**
      * CoroutineScope vinculado al lifecycle del Service.
@@ -263,12 +280,21 @@ class SeizureMonitorService : Service() {
      *   -> companion -> reloj).
      * - monitoringStartedAtMs: para el período de warm-up (no juzgar apenas arranca).
      */
+    // ALL watchdog/staleness timestamps are on the MONOTONIC clock ([clockMs], elapsedRealtime):
+    // a wall-clock jump (NTP/phone sync, timezone, manual change) must never fake a stale link or,
+    // worse, hide a real one (H7-5). Wall-clock time is used only for CSV logging.
     @Volatile private var lastSampleAtMs = 0L
     @Volatile private var lastDeliveryOkAtMs = 0L
     @Volatile private var lastAlarmStateAtMs = 0L
     private var monitoringStartedAtMs = 0L
     private var consecutiveUnhealthyChecks = 0
     private var watchdogJob: Job? = null
+
+    /**
+     * Monotonic time source for the whole watchdog/staleness path (ms since boot, includes deep
+     * sleep). Injectable so tests can move time without waiting or touching the wall clock.
+     */
+    internal var clockMs: () -> Long = { SystemClock.elapsedRealtime() }
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -361,12 +387,12 @@ class SeizureMonitorService : Service() {
         isMonitoringActive = true
         // T8: arrancar el reloj del watchdog. Inicializamos las marcas a "ahora" para que el
         // período de warm-up empiece a contar y no marque DEGRADADO apenas arranca.
-        val now = System.currentTimeMillis()
+        val now = clockMs()
         monitoringStartedAtMs = now
         lastSampleAtMs = now
         lastDeliveryOkAtMs = now
         lastAlarmStateAtMs = now   // the warm-up window covers the first companion keep-alive
-        _alarmStateStale.value = false
+        _alarmFreshness.value = AlarmStateFreshness(lastAlarmStateAtMs = now, observedAtMs = now)
         // A new session must not show the previous session's state (e.g. an old ALARM) as current.
         _alarmState.value = AlarmStateManager.ALARM_OK
         consecutiveUnhealthyChecks = 0
@@ -438,7 +464,7 @@ class SeizureMonitorService : Service() {
         watchdogJob = null
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
-        _alarmStateStale.value = false
+        _alarmFreshness.value = AlarmStateFreshness()
         // With monitoring off, no alarm state is current: never leave an old ALARM on screen.
         _alarmState.value = AlarmStateManager.ALARM_OK
         // Desregistrar el sensor ANTES de stopSelf() para evitar que el
@@ -600,7 +626,7 @@ class SeizureMonitorService : Service() {
     private fun onAccelerometerSample(x: Float, y: Float, z: Float) {
         // T8: marcar que el sensor está vivo. El watchdog usa esto para detectar
         // si el acelerómetro dejó de emitir (sensor muerto → DEGRADADO).
-        lastSampleAtMs = System.currentTimeMillis()
+        lastSampleAtMs = clockMs()
         // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
         val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
         accelerometerBuffer.add(magnitudeMilliG)
@@ -645,7 +671,7 @@ class SeizureMonitorService : Service() {
             // T8: marcar entrega EXITOSA. Si las entregas empiezan a fallar (teléfono
             // desconectado, Bluetooth caído), lastDeliveryOkAtMs deja de actualizarse y el
             // watchdog lo detecta. Antes el resultado del envío se ignoraba (H2).
-            if (delivered) lastDeliveryOkAtMs = System.currentTimeMillis()
+            if (delivered) lastDeliveryOkAtMs = clockMs()
             if (BuildConfig.DEBUG && isSequentialMode) {
                 sequentialSampleCounter += window.size.toLong()
             }
@@ -672,15 +698,17 @@ class SeizureMonitorService : Service() {
      * Un "tick" del watchdog. Renueva el WakeLock (M3), evalúa salud con histéresis
      * y, si el estado cambió, actualiza notificación + StateFlow. DEGRADED es solo visual (DEC-057).
      *
-     * `internal` (not private) and [nowMs] injectable only so tests can drive a tick without a clock.
+     * `internal` (not private) and [nowMs] injectable only so tests can drive a tick without a clock. [nowMs] must come from [clockMs].
      */
-    internal fun checkPipelineHealth(nowMs: Long = System.currentTimeMillis()) {
+    internal fun checkPipelineHealth(nowMs: Long = clockMs()) {
         // M3: renovar el WakeLock para que el timeout de 10h nunca expire durante un
         // monitoreo largo (hasta 10h de uso nocturno). Re-acquire reinicia el timeout.
         wakeLock?.let { if (it.isHeld) it.acquire(WAKE_LOCK_TIMEOUT_MS) }
 
-        // Publish inbound staleness for the UI: a stale alarm state must not be shown as current.
-        _alarmStateStale.value = isAlarmStateStale(nowMs, lastAlarmStateAtMs)
+        // Publish the tick time for the UI (H7-4). Only the observation time moves: the UI derives
+        // staleness from (last received, last observed), so a tick that read the clock BEFORE a
+        // fresh alarm_state arrived can never overwrite that message's freshness.
+        _alarmFreshness.update { it.observedAt(nowMs) }
         val instant = evaluateHealth(
             nowMs = nowMs,
             lastSampleAtMs = lastSampleAtMs,
@@ -718,8 +746,9 @@ class SeizureMonitorService : Service() {
         // Liveness first: ANY parseable alarm_state (including a silent-fault or unknown value)
         // proves the companion round trip is alive. Recorded before acting on the value so a
         // failure while vibrating can never leave the inbound watchdog blind.
-        lastAlarmStateAtMs = System.currentTimeMillis()
-        _alarmStateStale.value = false
+        val receivedAt = clockMs()
+        lastAlarmStateAtMs = receivedAt
+        _alarmFreshness.update { it.receivedAt(receivedAt) }   // atomic (CAS): no tick can undo it
         alarmStateManager.handleAlarmState(alarmState)
         _alarmState.value = alarmState
     }
@@ -883,12 +912,15 @@ class SeizureMonitorService : Service() {
         val pipelineHealth: StateFlow<PipelineHealth> = _pipelineHealth.asStateFlow()
 
         /**
-         * true when no /osd/alarm_state arrived within [ALARM_STATE_STALE_MS], i.e. [alarmState]
-         * holds an old value. Refreshed every watchdog tick and cleared on each received state.
-         * The UI combines it with [alarmState] and [pipelineHealth] via DisplayStatusMapper.
+         * Inbound freshness of [alarmState] as ONE immutable snapshot (H7-4). The UI reads
+         * `alarmFreshness.stale` at the point of use, together with [alarmState]. Both fields are
+         * monotonic-clock times and are updated with atomic compare-and-set, so the old race
+         * (a watchdog tick writing `stale = true` right after a fresh alarm_state cleared it,
+         * hiding a fresh ALARM for up to one tick) cannot happen: a tick only advances
+         * `observedAtMs`, and a message always sets `lastAlarmStateAtMs = observedAtMs = receive time`.
          */
-        private val _alarmStateStale = MutableStateFlow(false)
-        val alarmStateStale: StateFlow<Boolean> = _alarmStateStale.asStateFlow()
+        private val _alarmFreshness = MutableStateFlow(AlarmStateFreshness())
+        val alarmFreshness: StateFlow<AlarmStateFreshness> = _alarmFreshness.asStateFlow()
 
         /** Same predicate evaluateHealth uses for the inbound path (strictly greater). */
         fun isAlarmStateStale(nowMs: Long, lastAlarmStateAtMs: Long): Boolean =

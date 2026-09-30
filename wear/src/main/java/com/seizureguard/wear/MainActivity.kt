@@ -85,7 +85,7 @@ fun SeizureGuardWearApp(
     val alarmState by SeizureMonitorService.alarmState.collectAsState()
 
     val pipelineHealth by SeizureMonitorService.pipelineHealth.collectAsState()
-    val alarmStateStale by SeizureMonitorService.alarmStateStale.collectAsState()
+    val alarmFreshness by SeizureMonitorService.alarmFreshness.collectAsState()
 
     // One pure decision (DisplayStatusMapper, unit-tested): a dead link / frozen OSD must never
     // leave the screen saying "Monitoreo activo", and a stale alarm is never shown as current.
@@ -94,7 +94,7 @@ fun SeizureGuardWearApp(
     val display = DisplayStatusMapper.map(
         alarmState = alarmState,
         pipelineDegraded = pipelineHealth == SeizureMonitorService.PipelineHealth.DEGRADED,
-        alarmStateStale = alarmStateStale
+        alarmStateStale = alarmFreshness.stale
     )
     val degradedAmber = Color(0xFFFFC107)   // amber on the black Wear background, ~12:1 contrast
 

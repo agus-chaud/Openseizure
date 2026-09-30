@@ -778,7 +778,8 @@ class SeizureMonitorServiceTest {
         val justStarted = now - 5_000L
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = justStarted,
-            lastDeliveryOkAtMs = justStarted, monitoringStartedAtMs = justStarted
+            lastDeliveryOkAtMs = justStarted, lastAlarmStateAtMs = justStarted,
+            monitoringStartedAtMs = justStarted
         )
         assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
     }
@@ -787,7 +788,8 @@ class SeizureMonitorServiceTest {
     fun health_freshSampleAndDelivery_isHealthy() {
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 1_000L,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
     }
@@ -797,7 +799,8 @@ class SeizureMonitorServiceTest {
         // El sensor dejó de emitir hace 20s (> SAMPLE_STALE_MS), aunque las entregas estén al día.
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 20_000L,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
     }
@@ -807,7 +810,8 @@ class SeizureMonitorServiceTest {
         // El sensor emite, pero no hay una entrega exitosa al teléfono hace 70s (> DELIVERY_STALE_MS).
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 1_000L,
-            lastDeliveryOkAtMs = now - 70_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 70_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
     }
@@ -825,7 +829,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = lastSample,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         // Assert — el umbral es "> SAMPLE_STALE_MS" (estricto): justo en el borde NO es stale.
         assertEquals(
@@ -841,7 +846,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = lastSample,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         // Assert — cruzar el borde por 1ms ya dispara DEGRADADO (fija el off-by-one).
         assertEquals(
@@ -857,7 +863,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 30_000L,
-            lastDeliveryOkAtMs = now - 30_000L, monitoringStartedAtMs = started
+            lastDeliveryOkAtMs = now - 30_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = started
         )
         // Assert — el warm-up protege con "< WATCHDOG_WARMUP_MS"; justo en el borde ya juzga → DEGRADADO.
         assertEquals(
@@ -874,6 +881,156 @@ class SeizureMonitorServiceTest {
             "pipelineHealth debe arrancar en HEALTHY.",
             SeizureMonitorService.PipelineHealth.HEALTHY,
             SeizureMonitorService.pipelineHealth.value
+        )
+    }
+
+    // --- Batch 7 (T7.3/T7.4): signed constants, inbound staleness, worst-case timing ---------
+
+    private val healthy = SeizureMonitorService.PipelineHealth.HEALTHY
+    private val degraded = SeizureMonitorService.PipelineHealth.DEGRADED
+
+    @Test
+    fun watchdogConstants_matchSignedValues() {
+        // CLINICAL_SIGNOFF.md (DEC-059). Changing any of these requires a new human signature.
+        assertEquals(10_000L, SeizureMonitorService.WATCHDOG_INTERVAL_MS)
+        assertEquals(40_000L, SeizureMonitorService.DELIVERY_STALE_MS)
+        assertEquals(40_000L, SeizureMonitorService.ALARM_STATE_STALE_MS)
+        assertEquals(60_000L, SeizureMonitorService.WATCHDOG_WARMUP_MS)
+        assertEquals(10_000L, SeizureMonitorService.SAMPLE_STALE_MS)
+        assertEquals(2, SeizureMonitorService.UNHEALTHY_CHECKS_FOR_DEGRADED)
+    }
+
+    /** evaluateHealth with everything fresh except the alarm-state timestamp under test. */
+    private fun healthWithAlarmStateAge(ageMs: Long) = SeizureMonitorService.evaluateHealth(
+        nowMs = now, lastSampleAtMs = now - 1_000L, lastDeliveryOkAtMs = now - 1_000L,
+        lastAlarmStateAtMs = now - ageMs, monitoringStartedAtMs = pastWarmup
+    )
+
+    @Test
+    fun health_staleAlarmState_isDegradedEvenIfSendsSucceed() {
+        // Sends are acked by GMS and the sensor is alive, but nothing came back from the
+        // companion for 50 s: the end-to-end loop is broken, so the state must not look healthy.
+        assertEquals(degraded, healthWithAlarmStateAge(50_000L))
+    }
+
+    @Test
+    fun health_freshAlarmState_isHealthy() {
+        assertEquals(healthy, healthWithAlarmStateAge(10_000L))
+    }
+
+    @Test
+    fun health_alarmStateExactlyAtThreshold_isStillHealthy() {
+        assertEquals(healthy, healthWithAlarmStateAge(SeizureMonitorService.ALARM_STATE_STALE_MS))
+    }
+
+    @Test
+    fun health_alarmStateOneMsPastThreshold_isDegraded() {
+        assertEquals(degraded, healthWithAlarmStateAge(SeizureMonitorService.ALARM_STATE_STALE_MS + 1))
+    }
+
+    @Test
+    fun health_staleAlarmState_duringWarmup_isHealthy() {
+        val justStarted = now - 5_000L
+        val result = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = justStarted, lastDeliveryOkAtMs = justStarted,
+            lastAlarmStateAtMs = now - 500_000L, monitoringStartedAtMs = justStarted
+        )
+        assertEquals("Warm-up must still protect the start of monitoring.", healthy, result)
+    }
+
+    @Test
+    fun health_deliveryAt40sIsHealthy_and45sIsDegraded() {
+        // DELIVERY_STALE_MS went 60 s -> 40 s: 45 s of silence used to be tolerated, now it is not.
+        fun withDeliveryAge(ageMs: Long) = SeizureMonitorService.evaluateHealth(
+            nowMs = now, lastSampleAtMs = now - 1_000L, lastDeliveryOkAtMs = now - ageMs,
+            lastAlarmStateAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+        )
+        assertEquals(healthy, withDeliveryAge(40_000L))
+        assertEquals(degraded, withDeliveryAge(45_000L))
+    }
+
+    /**
+     * Simulates the watchdog for one broken path: at t = 0 the last good event happens, the tick
+     * grid is phaseMs + k * WATCHDOG_INTERVAL_MS, and each tick applies evaluateHealth followed
+     * by the real hysteresis functions. Returns the time (from the last good event) at which the
+     * watchdog declares DEGRADED.
+     */
+    private fun timeToDegraded(
+        phaseMs: Long,
+        lastSampleAtMs: (Long) -> Long,
+        lastDeliveryOkAtMs: (Long) -> Long,
+        lastAlarmStateAtMs: (Long) -> Long
+    ): Long {
+        var count = 0
+        var t = phaseMs
+        while (t < 10 * 60_000L) {
+            val instant = SeizureMonitorService.evaluateHealth(
+                nowMs = t,
+                lastSampleAtMs = lastSampleAtMs(t),
+                lastDeliveryOkAtMs = lastDeliveryOkAtMs(t),
+                lastAlarmStateAtMs = lastAlarmStateAtMs(t),
+                monitoringStartedAtMs = -SeizureMonitorService.WATCHDOG_WARMUP_MS - 1   // warm-up over
+            )
+            count = SeizureMonitorService.nextUnhealthyCount(count, instant)
+            if (SeizureMonitorService.effectiveHealth(count) == degraded) return t
+            t += SeizureMonitorService.WATCHDOG_INTERVAL_MS
+        }
+        error("watchdog never declared DEGRADED")
+    }
+
+    /** Worst case over every possible tick phase (1 ms resolution) after the last good event. */
+    private fun worstCaseMs(
+        lastSampleAtMs: (Long) -> Long,
+        lastDeliveryOkAtMs: (Long) -> Long,
+        lastAlarmStateAtMs: (Long) -> Long
+    ): Long = (1L..SeizureMonitorService.WATCHDOG_INTERVAL_MS).maxOf { phase ->
+        timeToDegraded(phase, lastSampleAtMs, lastDeliveryOkAtMs, lastAlarmStateAtMs)
+    }
+
+    private val alwaysFresh: (Long) -> Long = { t -> t }
+    private val frozenAtZero: (Long) -> Long = { 0L }
+
+    @Test
+    fun worstCase_outboundDeliveryLost_is60s() {
+        // 40 s stale + 2 hysteresis ticks x 10 s. (Signed ceiling: 60 s.)
+        val worst = worstCaseMs(alwaysFresh, frozenAtZero, alwaysFresh)
+        assertEquals(60_000L, worst)
+        assertEquals(
+            SeizureMonitorService.DELIVERY_STALE_MS +
+                SeizureMonitorService.UNHEALTHY_CHECKS_FOR_DEGRADED * SeizureMonitorService.WATCHDOG_INTERVAL_MS,
+            worst
+        )
+    }
+
+    @Test
+    fun worstCase_inboundAlarmStateLost_is60s() {
+        // The ceiling is measured from the last RECEIVED alarm_state: 40 s stale + 2 x 10 s = 60 s.
+        // (Signed ceiling: 60 s. The original task text "10 + 30 + 20" used a 30 s stale window and
+        // counted the keep-alive gap; the signed stale window is 40 s.)
+        val worst = worstCaseMs(alwaysFresh, alwaysFresh, frozenAtZero)
+        assertEquals(60_000L, worst)
+        assertEquals(
+            SeizureMonitorService.ALARM_STATE_STALE_MS +
+                SeizureMonitorService.UNHEALTHY_CHECKS_FOR_DEGRADED * SeizureMonitorService.WATCHDOG_INTERVAL_MS,
+            worst
+        )
+    }
+
+    @Test
+    fun worstCase_sensorDead_is30s() {
+        // 10 s stale + 2 x 10 s. (Signed: 30 s.)
+        assertEquals(30_000L, worstCaseMs(frozenAtZero, alwaysFresh, alwaysFresh))
+    }
+
+    @Test
+    fun bestCase_neverFiresBeforeStaleWindowPlusOneConfirmingTick() {
+        // The watchdog must not fire early: no false DEGRADED from a single late message.
+        val best = (1L..SeizureMonitorService.WATCHDOG_INTERVAL_MS).minOf { phase ->
+            timeToDegraded(phase, alwaysFresh, alwaysFresh, frozenAtZero)
+        }
+        assertTrue(
+            "Best case $best ms must exceed the 40 s stale window plus one confirming tick.",
+            best > SeizureMonitorService.ALARM_STATE_STALE_MS + SeizureMonitorService.WATCHDOG_INTERVAL_MS
         )
     }
 }

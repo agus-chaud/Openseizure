@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # USO:
-#   ./scripts/deploy_wear.sh                    # build debug + install
+#   ./scripts/deploy_wear.sh                    # build debug (flavor companion) + install
 #   ./scripts/deploy_wear.sh --tests-only       # solo correr tests sin instalar
 #   ./scripts/deploy_wear.sh --release          # build release (requiere keystore)
 #
@@ -47,18 +47,48 @@ fi
 log_info "Dispositivo detectado: $WATCH_DEVICE"
 
 # ─── Build ────────────────────────────────────────────────────────────────────
+# The :wear module has a `transport` flavor dimension (companion | osdDirect). Deploying always
+# builds the COMPANION flavor explicitly: the flavor-less outputs (wear/build/outputs/apk/debug/,
+# .../release/) are no longer produced, and a stale APK there must never be installed.
 if [[ "$MODE" == "--release" ]]; then
-  log_info "Build RELEASE del módulo :wear..."
-  ./gradlew :wear:assembleRelease
-  APK_PATH="wear/build/outputs/apk/release/wear-release.apk"
+  log_info "Build RELEASE (companion) del módulo :wear..."
+  BUILD_TASK=":wear:assembleCompanionRelease"
+  APK_DIR="wear/build/outputs/apk/companion/release"
 else
-  log_info "Build DEBUG del módulo :wear..."
-  ./gradlew :wear:assembleDebug
-  APK_PATH="wear/build/outputs/apk/debug/wear-debug.apk"
+  log_info "Build DEBUG (companion) del módulo :wear..."
+  BUILD_TASK=":wear:assembleCompanionDebug"
+  APK_DIR="wear/build/outputs/apk/companion/debug"
 fi
+
+# Remove any previous APK so one that survives can only have come from this build (Gradle
+# re-packages when its output is missing).
+rm -f "$APK_DIR"/*.apk
+# Timestamp marker taken BEFORE the build: the APK must be newer than this.
+BUILD_STAMP="$(mktemp)"
+trap 'rm -f "$BUILD_STAMP"' EXIT
+./gradlew "$BUILD_TASK"
+
+# Exactly one .apk is expected (name is derived by AGP, e.g. wear-companion-debug.apk, or
+# wear-companion-release-unsigned.apk when no keystore is configured). Anything else is an error.
+shopt -s nullglob
+APKS=("$APK_DIR"/*.apk)
+shopt -u nullglob
+if [[ ${#APKS[@]} -ne 1 ]]; then
+  log_error "Se esperaba exactamente 1 APK en $APK_DIR y hay ${#APKS[@]}."
+  exit 1
+fi
+APK_PATH="${APKS[0]}"
 
 if [[ ! -f "$APK_PATH" ]]; then
   log_error "APK no encontrado en: $APK_PATH"
+  exit 1
+fi
+if [[ ! "$APK_PATH" -nt "$BUILD_STAMP" ]]; then
+  log_error "APK desactualizado (más viejo que este build): $APK_PATH — no se instala."
+  exit 1
+fi
+if [[ "$APK_PATH" == *unsigned* ]]; then
+  log_error "APK release sin firmar ($APK_PATH): falta keystore.properties — no se puede instalar."
   exit 1
 fi
 

@@ -2,8 +2,10 @@ package com.seizureguard.wear.data
 
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONObject
+import com.seizureguard.wear.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -145,6 +147,48 @@ class WearDataLayerManagerTest {
             "El path de accel_data debe coincidir con SdDataSourceAw.java",
             "/osd/accel_data",
             WearDataLayerManager.PATH_ACCEL_DATA
+        )
+    }
+
+    // --- transport flavor (T7.1 / T7.2) ---------------------------------------
+
+    @Test
+    fun `transport mode follows the flavor flag and matches the installed applicationId`() {
+        // Runs once per flavor. The mode is derived from BuildConfig.OSD_DIRECT_MODE and must agree
+        // with the flavor's applicationId, which is what the Data Layer actually routes on.
+        assertEquals(
+            WearDataLayerManager.TransportMode.from(BuildConfig.OSD_DIRECT_MODE),
+            manager.transportMode
+        )
+        assertEquals(manager.transportMode.peerPackage, context.packageName)
+    }
+
+    @Test
+    fun `companion flavor is not in direct-to-OSD mode`() {
+        assumeFalse("Only meaningful in the default companion flavor", BuildConfig.OSD_DIRECT_MODE)
+        assertEquals(WearDataLayerManager.TransportMode.COMPANION, manager.transportMode)
+        assertEquals("com.seizureguard.wear", context.packageName)
+    }
+
+    @Test
+    fun `direct-to-OSD path is retained behind the flag`() {
+        val direct = WearDataLayerManager(context, osdDirectMode = true)
+        assertEquals(WearDataLayerManager.TransportMode.OSD_DIRECT, direct.transportMode)
+        assertEquals("uk.org.openseizuredetector", direct.transportMode.peerPackage)
+    }
+
+    @Test
+    fun `wire format is identical in both transport modes`() {
+        val samples = floatArrayOf(1f, 2f, 3f)
+        val companion = WearDataLayerManager(context, osdDirectMode = false)
+        val direct = WearDataLayerManager(context, osdDirectMode = true)
+        assertEquals(
+            String(companion.samplesToJsonBytes(samples), Charsets.UTF_8),
+            String(direct.samplesToJsonBytes(samples), Charsets.UTF_8)
+        )
+        assertEquals(
+            String(companion.settingsToJsonBytes(50, 25), Charsets.UTF_8),
+            String(direct.settingsToJsonBytes(50, 25), Charsets.UTF_8)
         )
     }
 }

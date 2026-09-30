@@ -125,11 +125,12 @@ en el reloj.
 
 ```powershell
 # Compilar la app del reloj (genera el APK):
-.\gradlew.bat :wear:assembleDebug
-# El archivo queda en: wear\build\outputs\apk\debug\wear-debug.apk
+.\gradlew.bat :wear:assembleCompanionDebug
+# El archivo queda en: wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
+# (Si existe la carpeta vieja wear\build\outputs\apk\debug\, borrala: ya no se genera y su APK es viejo.)
 
 # Instalarlo en el reloj (el "-r" = reinstalar si ya estaba):
-C:\Android\platform-tools\adb.exe install -r wear\build\outputs\apk\debug\wear-debug.apk
+C:\Android\platform-tools\adb.exe install -r wear\build\outputs\apk\companion\debug\wear-companion-debug.apk
 ```
 
 ---

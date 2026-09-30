@@ -8,14 +8,19 @@ package com.seizureguard.wear.alarm
  * [AlarmStateManager.handleAlarmState] / [AlarmStateManager.classify] and is not touched.
  */
 enum class DisplayStatus {
-    /** Nothing to report: the normal "monitoring on/off" text (states 0 and 6/MUTE). */
+    /** Nothing to report: the normal "monitoring on/off" text (state 0). */
     NORMAL,
     WARNING,
     ALARM,
     /** OSD reported a system fault (4, 7 or an unknown value). Not an alarm. */
     SYSTEM_FAULT,
     /** The monitoring pipeline is not working; the screen must not look reassuring. */
-    DEGRADED
+    DEGRADED,
+    /**
+     * OSD is muted (state 6): the watch will NOT vibrate for alarms. The screen must say so
+     * instead of the reassuring "Monitoreo activo" (H7-6). Visual only; no vibration (DEC-057).
+     */
+    MUTED
 }
 
 /** [status] to show, plus [degradedHint]: also show a small "degraded" hint under a live ALARM. */
@@ -32,7 +37,7 @@ object DisplayStatusMapper {
      *    hint: a live emergency is never hidden by a fault elsewhere (delivery or sensor).
      * 3. [pipelineDegraded] otherwise -> DEGRADED (overrides OK, WARNING, MUTE and SYSTEM_FAULT).
      * 4. Healthy and fresh -> by [AlarmStateManager.classify]: ALARM, WARNING, SYSTEM_FAULT,
-     *    and NORMAL for OK and MUTE.
+     *    MUTED for MUTE (alarms are silenced: never shown as plain monitoring) and NORMAL for OK.
      *
      * [pipelineDegraded] can only be true while monitoring runs (the service resets it on stop), so
      * no separate "monitoring is on" input is needed and an Activity re-created mid-night cannot
@@ -50,7 +55,8 @@ object DisplayStatusMapper {
                     AlarmStateManager.Severity.ALARM -> DisplayStatus.ALARM
                     AlarmStateManager.Severity.WARNING -> DisplayStatus.WARNING
                     AlarmStateManager.Severity.SYSTEM_FAULT -> DisplayStatus.SYSTEM_FAULT
-                    AlarmStateManager.Severity.OK, AlarmStateManager.Severity.MUTE -> DisplayStatus.NORMAL
+                    AlarmStateManager.Severity.MUTE -> DisplayStatus.MUTED
+                    AlarmStateManager.Severity.OK -> DisplayStatus.NORMAL
                 }
             )
         }

@@ -2,6 +2,7 @@ package com.seizureguard.wear.alarm
 
 import com.seizureguard.wear.alarm.DisplayStatus.ALARM
 import com.seizureguard.wear.alarm.DisplayStatus.DEGRADED
+import com.seizureguard.wear.alarm.DisplayStatus.MUTED
 import com.seizureguard.wear.alarm.DisplayStatus.NORMAL
 import com.seizureguard.wear.alarm.DisplayStatus.SYSTEM_FAULT
 import com.seizureguard.wear.alarm.DisplayStatus.WARNING
@@ -31,7 +32,7 @@ class DisplayStatusMapperTest {
     /** Healthy pipeline, fresh alarm state: the display follows the state. */
     private val healthyFresh = mapOf(
         "OK" to NORMAL, "WARNING" to WARNING, "ALARM" to ALARM,
-        "SYSTEM_FAULT" to SYSTEM_FAULT, "MUTE" to NORMAL
+        "SYSTEM_FAULT" to SYSTEM_FAULT, "MUTE" to MUTED
     )
 
     @Test
@@ -85,6 +86,55 @@ class DisplayStatusMapperTest {
                 assertTrue("degraded must not show NORMAL",
                     map(s, degraded = true, stale = stale).status != NORMAL)
             }
+        }
+    }
+
+    @Test
+    fun mute_isNeverShownAsPlainMonitoring() {
+        // H7-6: with OSD muted the watch does not vibrate; the screen must not say "Monitoreo activo".
+        assertEquals(DisplayState(MUTED), map(6, degraded = false, stale = false))
+        assertTrue(map(6, degraded = false, stale = false).status != NORMAL)
+    }
+
+    @Test
+    fun mute_precedence_staleAndDegradedOverrideIt_andAnAlarmIsNeverHidden() {
+        assertEquals(DisplayState(DEGRADED), map(6, degraded = false, stale = true))
+        assertEquals(DisplayState(DEGRADED), map(6, degraded = true, stale = false))
+        assertEquals(DisplayState(DEGRADED), map(6, degraded = true, stale = true))
+        // A fresh ALARM after a MUTE is displayed as ALARM immediately (mapping is per last state).
+        assertEquals(DisplayState(ALARM), map(2, degraded = false, stale = false))
+    }
+
+    @Test
+    fun onlyOkIsNormal() {
+        for ((label, states) in classes) for (s in states) {
+            val isNormal = map(s, degraded = false, stale = false).status == NORMAL
+            assertEquals("$label($s)", label == "OK", isNormal)
+        }
+    }
+
+    private fun luminance(argb: Long): Double {
+        fun ch(shift: Int): Double {
+            val c = ((argb shr shift) and 0xFF) / 255.0
+            return if (c <= 0.03928) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * ch(16) + 0.7152 * ch(8) + 0.0722 * ch(0)
+    }
+
+    private fun contrastOnBlack(argb: Long) = (luminance(argb) + 0.05) / 0.05
+
+    private fun colorDistance(a: Long, b: Long): Double {
+        fun d(shift: Int) = (((a shr shift) and 0xFF) - ((b shr shift) and 0xFF)).toDouble()
+        return Math.sqrt(d(16) * d(16) + d(8) * d(8) + d(0) * d(0))
+    }
+
+    @Test
+    fun mutedColor_hasAtLeast4_5ContrastOnBlack_andIsDistinctFromDegradedAndAlarm() {
+        assertTrue("muted contrast ${contrastOnBlack(DisplayStatusColors.MUTED)}",
+            contrastOnBlack(DisplayStatusColors.MUTED) >= 4.5)
+        for (other in longArrayOf(DisplayStatusColors.DEGRADED, DisplayStatusColors.ALARM, DisplayStatusColors.WARNING)) {
+            assertTrue("muted too close to ${other.toString(16)}",
+                colorDistance(DisplayStatusColors.MUTED, other) > 100)
         }
     }
 

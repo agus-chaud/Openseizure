@@ -26,6 +26,7 @@ import androidx.wear.compose.material.ButtonDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.seizureguard.wear.alarm.DisplayStatus
+import com.seizureguard.wear.alarm.DisplayStatusColors
 import com.seizureguard.wear.alarm.DisplayStatusMapper
 import com.seizureguard.wear.service.SeizureMonitorService
 
@@ -96,13 +97,14 @@ fun SeizureGuardWearApp(
         pipelineDegraded = pipelineHealth == SeizureMonitorService.PipelineHealth.DEGRADED,
         alarmStateStale = alarmFreshness.stale
     )
-    val degradedAmber = Color(0xFFFFC107)   // amber on the black Wear background, ~12:1 contrast
+    val degradedAmber = Color(DisplayStatusColors.DEGRADED)   // amber on the black Wear background, ~12:1 contrast
 
     val statusColor = when (display.status) {
-        DisplayStatus.WARNING      -> Color(0xFFF57F17)   // Amber-orange
-        DisplayStatus.ALARM        -> Color(0xFFB71C1C)   // Red
-        DisplayStatus.SYSTEM_FAULT -> Color(0xFF6D4C41)   // Brown: fault, not an alarm
+        DisplayStatus.WARNING      -> Color(DisplayStatusColors.WARNING)
+        DisplayStatus.ALARM        -> Color(DisplayStatusColors.ALARM)
+        DisplayStatus.SYSTEM_FAULT -> Color(DisplayStatusColors.SYSTEM_FAULT)   // fault, not an alarm
         DisplayStatus.DEGRADED     -> degradedAmber
+        DisplayStatus.MUTED        -> Color(DisplayStatusColors.MUTED)
         DisplayStatus.NORMAL       -> Color.Unspecified   // Theme default
     }
 
@@ -111,6 +113,7 @@ fun SeizureGuardWearApp(
         DisplayStatus.ALARM        -> stringResource(R.string.label_status_alarm)
         DisplayStatus.SYSTEM_FAULT -> stringResource(R.string.label_status_system_fault)
         DisplayStatus.DEGRADED     -> stringResource(R.string.label_status_degraded)
+        DisplayStatus.MUTED        -> stringResource(R.string.label_status_muted)
         DisplayStatus.NORMAL       -> if (isMonitoring)
                                           stringResource(R.string.label_monitoring_on)
                                       else

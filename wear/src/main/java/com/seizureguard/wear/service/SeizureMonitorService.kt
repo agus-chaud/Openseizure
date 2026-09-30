@@ -679,11 +679,8 @@ class SeizureMonitorService : Service() {
             monitoringStartedAtMs = monitoringStartedAtMs
         )
         // Histéresis: exigimos varios checks DEGRADED seguidos para no oscilar por un bache puntual.
-        consecutiveUnhealthyChecks =
-            if (instant == PipelineHealth.DEGRADED) consecutiveUnhealthyChecks + 1 else 0
-        val effective =
-            if (consecutiveUnhealthyChecks >= UNHEALTHY_CHECKS_FOR_DEGRADED) PipelineHealth.DEGRADED
-            else PipelineHealth.HEALTHY
+        consecutiveUnhealthyChecks = nextUnhealthyCount(consecutiveUnhealthyChecks, instant)
+        val effective = effectiveHealth(consecutiveUnhealthyChecks)
 
         if (effective != _pipelineHealth.value) {
             _pipelineHealth.value = effective
@@ -900,6 +897,17 @@ class SeizureMonitorService : Service() {
             return if (sampleStale || deliveryStale || alarmStateStale) PipelineHealth.DEGRADED
             else PipelineHealth.HEALTHY
         }
+
+        /**
+         * Hysteresis, extracted as pure functions so the worst-case timing is testable without a
+         * clock: the count of consecutive DEGRADED ticks, and the health it maps to.
+         */
+        fun nextUnhealthyCount(current: Int, instant: PipelineHealth): Int =
+            if (instant == PipelineHealth.DEGRADED) current + 1 else 0
+
+        fun effectiveHealth(consecutiveUnhealthyChecks: Int): PipelineHealth =
+            if (consecutiveUnhealthyChecks >= UNHEALTHY_CHECKS_FOR_DEGRADED) PipelineHealth.DEGRADED
+            else PipelineHealth.HEALTHY
 
         // Watchdog timing constants. Values signed in CLINICAL_SIGNOFF.md (DEC-059).
         // Signed worst-case visible-fault ceiling, measured from the last good event:

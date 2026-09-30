@@ -166,6 +166,17 @@ class WearDataLayerManagerTest {
     // ─── settings handshake (battery + sample_freq) ──────────────────────────
 
     @Test
+    fun `settings payload advertises contract_version 1 and keeps the previous fields`() {
+        val json = JSONObject(String(manager.settingsToJsonBytes(87, 25), Charsets.UTF_8))
+
+        assertEquals(1, WearDataLayerManager.TRANSPORT_CONTRACT_VERSION)
+        assertEquals(1, json.getInt("contract_version"))
+        assertEquals(87, json.getInt("battery"))
+        assertEquals(25, json.getInt("sample_freq"))
+        assertEquals(3, json.length())
+    }
+
+    @Test
     fun `settingsToJson produces the format OSD handleSettings expects`() {
         val json = JSONObject(String(manager.settingsToJsonBytes(87, 25), Charsets.UTF_8))
 

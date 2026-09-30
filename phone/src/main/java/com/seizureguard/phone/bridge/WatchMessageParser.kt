@@ -2,8 +2,12 @@ package com.seizureguard.phone.bridge
 
 import org.json.JSONObject
 
-/** DEC-046 `/osd/settings` payload as sent by the watch: {"battery":0-100,"sample_freq":Hz}. */
-data class WatchSettings(val battery: Int, val sampleFreq: Int)
+/**
+ * DEC-046 `/osd/settings` payload as sent by the watch: {"battery":0-100,"sample_freq":Hz}.
+ * [contractVersion] is the optional watch transport-contract version (null when absent or invalid).
+ * It is never forwarded to OSD.
+ */
+data class WatchSettings(val battery: Int, val sampleFreq: Int, val contractVersion: Int? = null)
 
 /**
  * Defensive validation of inbound Data Layer payloads (design Threat Matrix row 2).
@@ -36,7 +40,9 @@ object WatchMessageParser {
         val battery = wholeNumber(o.opt("battery")) ?: return@parse null
         val freq = wholeNumber(o.opt("sample_freq")) ?: return@parse null
         if (battery !in 0..100 || freq != SAMPLE_FREQ_HZ) return@parse null
-        WatchSettings(battery, freq)
+        // Optional and advisory: absent, negative or non-integer -> null, message still accepted.
+        val version = wholeNumber(o.opt("contract_version"))?.takeIf { it >= 0 }
+        WatchSettings(battery, freq, version)
     }
 
     private fun wholeNumber(v: Any?): Int? {

@@ -79,4 +79,35 @@ class WatchMessageParserTest {
         assertNull(WatchMessageParser.parseSettings("""{"battery":50}""".toByteArray()))
         assertEquals(WatchSettings(50, 25), WatchMessageParser.parseSettings("""{"battery":50,"sample_freq":25.0}""".toByteArray()))
     }
+
+    // ── contract_version (Batch 8a): advisory, optional, never rejects the message ──
+
+    @Test fun settings_contractVersionExposed() =
+        assertEquals(1, WatchMessageParser.parseSettings("""{"battery":87,"sample_freq":25,"contract_version":1}""".toByteArray())?.contractVersion)
+
+    @Test fun settings_oldWatchWithoutVersionStillAccepted() {
+        val s = WatchMessageParser.parseSettings("""{"battery":87,"sample_freq":25}""".toByteArray())
+        assertEquals(WatchSettings(87, 25, null), s)
+        assertNull(s?.contractVersion)
+    }
+
+    @Test fun settings_invalidVersionIsNullButMessageAccepted() {
+        listOf("-1", "\"1\"", "1.5", "null", "true", "[]", "{}", "1e99", "99999999999").forEach {
+            val s = WatchMessageParser.parseSettings("""{"battery":87,"sample_freq":25,"contract_version":$it}""".toByteArray())
+            assertNotNull(it, s)
+            assertNull(it, s?.contractVersion)
+            assertEquals(87, s?.battery)
+        }
+    }
+
+    @Test fun settings_versionNeverReachesOsdPayload() {
+        val withV = WatchMessageParser.parseSettings("""{"battery":87,"sample_freq":25,"contract_version":7}""".toByteArray())!!
+        val without = WatchMessageParser.parseSettings("""{"battery":87,"sample_freq":25}""".toByteArray())!!
+        // Same call OsdBridgeService.postSettings makes: only battery and sampleFreq feed the codec.
+        val a = OsdPayloadCodec.settingsJson(withV.battery, withV.sampleFreq)
+        val b = OsdPayloadCodec.settingsJson(without.battery, without.sampleFreq)
+        assertEquals(b, a)
+        assertEquals(setOf("dataType", "analysisPeriod", "sampleFreq", "battery", "watchPartNo", "watchFwVersion", "sdVersion", "sdName"),
+            org.json.JSONObject(a).keys().asSequence().toSet())
+    }
 }

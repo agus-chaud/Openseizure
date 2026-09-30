@@ -122,11 +122,16 @@ class WearDataLayerManager(
         sendToAllNodes(PATH_SETTINGS, settingsToJsonBytes(batteryPct, sampleFreq))
     }
 
-    /** Serializa los settings al JSON que espera OSD: {"battery":N,"sample_freq":F}. */
+    /**
+     * Serializes the settings message: {"battery":N,"sample_freq":F,"contract_version":V}.
+     * `contract_version` is consumed by the phone bridge only; the bridge re-serializes
+     * battery/sample_freq for OSD and never forwards it.
+     */
     fun settingsToJsonBytes(batteryPct: Int, sampleFreq: Int): ByteArray {
         val obj = JSONObject()
             .put("battery", batteryPct)
             .put("sample_freq", sampleFreq)
+            .put("contract_version", TRANSPORT_CONTRACT_VERSION)
         return obj.toString().toByteArray(Charsets.UTF_8)
     }
 
@@ -238,6 +243,8 @@ class WearDataLayerManager(
     companion object {
         const val PATH_ACCEL_DATA    = "/osd/accel_data"
         const val PATH_ALARM_STATE   = "/osd/alarm_state"
+        /** Watch<->phone transport-contract version advertised in /osd/settings (Batch 8, T8.1). */
+        const val TRANSPORT_CONTRACT_VERSION = 1
         const val PATH_SETTINGS      = "/osd/settings"       // reloj → OSD: batería + freq
         const val PATH_SEND_SETTINGS = "/osd/send_settings"  // OSD → reloj: pide settings ("start")
         /**

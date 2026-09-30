@@ -1099,4 +1099,23 @@ class SeizureMonitorServiceTest {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
         }
     }
+
+    // --- Batch 7 / T7.7: signed ceilings accepted (60 s dead link, ~75 s frozen OSD) ----------
+
+    @Test
+    fun signedCeilings_60sDeadLink_and_75sFrozenOsd() {
+        // T7.7 resolution: the signed ceilings are ACCEPTED, and the arithmetic uses the real 40 s
+        // stale windows (not 30 s). Constants were not changed to reach 60 s.
+        val deadLink = maxOf(
+            worstCaseMs(alwaysFresh, frozenAtZero, alwaysFresh),   // outbound sends stop being acked
+            worstCaseMs(alwaysFresh, alwaysFresh, frozenAtZero)    // no alarm_state comes back
+        )
+        assertEquals("Signed ceiling for a lost companion link", 60_000L, deadLink)
+
+        // OSD frozen while the companion keeps polling: the companion (:phone OSD_DATA_FRESH_MS =
+        // 15 s, mirrored here on purpose - :wear cannot depend on :phone) keeps relaying the last
+        // OSD answer until it is 15 s old, then stops relaying; the watch then needs the inbound path.
+        val phoneOsdDataFreshMs = 15_000L
+        assertEquals("Signed ceiling for a frozen OSD (~75 s)", 75_000L, phoneOsdDataFreshMs + deadLink)
+    }
 }

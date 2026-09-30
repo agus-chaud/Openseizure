@@ -2043,7 +2043,9 @@ vibración (antes mostraba "ALARMA" para cualquier estado ≥ 2); alias de tarea
 ver DEGRADED, falla de OSD, MUTE), `HARDWARE_RUNBOOK.md` (APK `companion`), `CLINICAL_SIGNOFF.md`
 (política de estados). Estos textos describen el comportamiento **después** de mergear el Batch 7.
 
-**Seguimientos:** H7-3 a H7-7 (sección 10 del registro). Tests: `:wear:testDebugUnitTest` verde en
+**PRs:** #29 (`07a`), #30 (`07b-1`), #31 (`07b-2`), #32 (`07c`, incluye además el arreglo H7-3: el estado mostrado vuelve a OK al iniciar y detener).
+
+**Seguimientos:** H7-4 a H7-7 (sección 10 del registro). Tests: `:wear:testDebugUnitTest` verde en
 ambos flavors (105 tests cada uno), re-corrido por el orquestador en la punta de `07c`.
 
 ---

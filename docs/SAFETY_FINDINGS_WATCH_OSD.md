@@ -228,11 +228,13 @@ a DEGRADED en ≈80 s como máximo.
 |---|---|---|---|
 | H7-1 | ALTO | Con el enlace caído la pantalla seguía diciendo "Monitoreo activo" (o una "ALARMA" vieja): el estado recibido no vence y la pantalla no leía DEGRADED. | **ARREGLADO** (commit `5fc1d8d`, rama `07c`): "⚠ MONITOREO DEGRADADO" en ámbar; un estado vencido nunca se muestra como vigente; una alarma vigente nunca se oculta. Tests de todas las combinaciones |
 | H7-2 | ALTO | El script de instalación apuntaba a la ruta vieja del APK: podía instalar un APK anterior que vibra ante fallas. | **ARREGLADO** (commit `4423358`, rama `07a`): compila el flavor `companion`, borra APKs viejos y falla si el APK falta o es anterior a la compilación. `HARDWARE_RUNBOOK.md` corregido |
-| H7-3 | BAJO-MEDIO | Al reiniciar o detener el monitoreo, la pantalla conserva el último estado de la sesión anterior (una "ALARMA" vieja puede quedar en pantalla con el monitoreo apagado). No causa alarmas perdidas. | Seguimiento: resetear el estado en inicio y parada |
+| H7-3 | BAJO-MEDIO | Al reiniciar o detener el monitoreo, la pantalla conserva el último estado de la sesión anterior (una "ALARMA" vieja puede quedar en pantalla con el monitoreo apagado). No causa alarmas perdidas. | **ARREGLADO** (commit `86c9fb2`, rama `07c`): el estado mostrado vuelve a OK al iniciar y al detener, con test |
 | H7-4 | BAJO | Carrera entre el tick y el listener: tras un corte, una ALARMA nueva puede verse como DEGRADED hasta 10 s. La vibración no se afecta. | Seguimiento |
 | H7-5 | MEDIO | La vigilancia usa el reloj de pared: un salto hacia atrás del reloj la ciega por esa duración. | Seguimiento: usar `elapsedRealtime` |
 | H7-6 | MEDIO | MUTE (6) se ve como "Monitoreo activo" en el reloj. | Seguimiento (riesgo A3); documentado en la guía |
 | H7-7 | BAJO | Etiqueta de falla de OSD con poco contraste; test de 75 s solo aritmético; `getInt` puede desbordar un valor grande; `osdDirectDebug` sin banner. | Seguimientos |
+
+**PRs abiertos (2026-09-30):** `07a` [#29](https://github.com/agus-chaud/Openseizure/pull/29), `07b-1` [#30](https://github.com/agus-chaud/Openseizure/pull/30), `07b-2` [#31](https://github.com/agus-chaud/Openseizure/pull/31), `07c` [#32](https://github.com/agus-chaud/Openseizure/pull/32). Sin mergear.
 
 **Condición de merge:** `07b-2` saca la vibración de DEGRADED y `07c` agrega la etiqueta en
 pantalla. Hay que mergearlos **seguidos, en la misma sesión**, sin instalar en el reloj un build de

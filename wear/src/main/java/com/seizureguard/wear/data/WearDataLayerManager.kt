@@ -2,6 +2,7 @@ package com.seizureguard.wear.data
 
 import android.content.Context
 import android.util.Log
+import com.seizureguard.wear.BuildConfig
 import com.google.android.gms.wearable.MessageClient
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.tasks.await
@@ -22,9 +23,40 @@ import org.json.JSONObject
  * el parser de OSD (que en su fallback binario lee int16, no float32, y responde JSON). Ver engram
  * `architecture/seizureguard-aw-contract`.
  *
- * @param context Contexto Android. Debe ser el applicationContext del Service.
+ * TRANSPORT (watch-osd-message-delivery, Batch 7 / T7.2): the peer of these messages is the phone
+ * *companion* (`:phone` module), which translates them into OSD's HTTP ingest. The message format
+ * (`/osd/...` paths + DEC-046 JSON) is IDENTICAL in both modes: the Wear Data Layer routes by
+ * AppKey = applicationId + signing certificate, so the effective destination is fixed by the
+ * build flavor's `applicationId` (`companion` -> this same package, shared with `:phone`;
+ * `osdDirect` -> `uk.org.openseizuredetector`), not by an address in code. The direct-to-OSD path
+ * is retained behind [BuildConfig.OSD_DIRECT_MODE] and was NOT deleted.
+ *
+ * @param context Android context. Must be the Service's applicationContext.
+ * @param osdDirectMode true only in the `osdDirect` flavor (messages go straight to OSD). Defaults
+ *   to [BuildConfig.OSD_DIRECT_MODE]; a parameter so both modes are testable.
  */
-class WearDataLayerManager(private val context: Context) {
+class WearDataLayerManager(
+    private val context: Context,
+    osdDirectMode: Boolean = BuildConfig.OSD_DIRECT_MODE
+) {
+
+    /** Active transport mode (fixed at compile time by the `transport` flavor). */
+    val transportMode: TransportMode = TransportMode.from(osdDirectMode)
+
+    /**
+     * Message peer for each transport mode: the `:phone` companion (default) or the OSD app
+     * directly. The Data Layer routes by AppKey, so the flavor's `applicationId` is what actually
+     * decides who receives the messages; [peerPackage] documents and logs that expectation.
+     */
+    enum class TransportMode(val peerPackage: String) {
+        COMPANION("com.seizureguard.wear"),
+        OSD_DIRECT("uk.org.openseizuredetector");
+
+        companion object {
+            fun from(osdDirectMode: Boolean): TransportMode =
+                if (osdDirectMode) OSD_DIRECT else COMPANION
+        }
+    }
 
     private val messageClient: MessageClient by lazy {
         Wearable.getMessageClient(context)
@@ -45,7 +77,8 @@ class WearDataLayerManager(private val context: Context) {
      * Registra un listener para recibir el alarmState de la app OSD.
      * OSD envía JSON: {"alarm_state": <int>, "alarm_phrase": "<texto>"}.
      *
-     * @param onAlarmState Callback que recibe el alarmState como Int (0=OK, 1=WARNING, 2+=ALARM).
+     * @param onAlarmState Callback receiving the RAW alarmState Int (0-7 from OSD, or any other
+     *   value). Interpretation (what vibrates vs. what is a silent fault) belongs to AlarmStateManager.
      * @return El listener registrado — guardarlo para poder removerlo después.
      */
     fun addAlarmStateListener(
@@ -150,6 +183,10 @@ class WearDataLayerManager(private val context: Context) {
      * @return true si el mensaje se entregó al menos a un nodo, false si no había nodos
      *   conectados o si hubo una excepción. El watchdog del Service usa este booleano para
      *   detectar desconexiones prolongadas (antes este método se tragaba todo en silencio).
+     *
+     *   NOTE: `true` means ONLY "GMS accepted the message" (transport ack). It does NOT prove the
+     *   companion or OSD processed it: the true end-to-end liveness signal is the arrival of
+     *   `/osd/alarm_state` (see ALARM_STATE_STALE_MS in SeizureMonitorService).
      */
     private suspend fun sendToAllNodes(path: String, data: ByteArray): Boolean {
         return try {
@@ -165,7 +202,8 @@ class WearDataLayerManager(private val context: Context) {
             var anyDelivered = false
             nodes.forEach { node ->
                 messageClient.sendMessage(node.id, path, data).await()
-                Log.d(TAG, "Enviado $path a ${node.displayName} (${data.size} bytes)")
+                Log.d(TAG, "Enviado $path a ${node.displayName} (${data.size} bytes) " +
+                    "[transport=$transportMode, peer=${transportMode.peerPackage}]")
                 anyDelivered = true
             }
             anyDelivered

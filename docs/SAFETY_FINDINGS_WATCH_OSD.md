@@ -267,3 +267,21 @@ techos firmados sin cambios.
 | R8-F4 | BAJO | Un número inválido cuenta como señal de vida (muestra la falla violeta). | Aceptado |
 | R8-F5 | BAJO | El test de 75 s tiene margen cero y copia a mano constantes de `:phone`. | Seguimiento |
 | R8-F6 | INFO | En `:phone`: `2.5` de OSD se trunca a 2; un OSD congelado en 1 o 6 nunca vence en el reloj. | Seguimiento (preexistente, `:phone`) |
+
+---
+
+## 12. `safety-reviewer` R9 sobre el Batch 8a (2026-09-30)
+
+**Qué se revisó:** rama `sdd/watch-osd-delivery-08a-wear-contract-version` (`955d7f9`, `63352e8`):
+el reloj agrega `"contract_version":1` a `/osd/settings`; el celular lo lee (nulo si falta o es
+inválido) y **no** lo reenvía a OSD. Todavía no compara versiones (Batch 8b).
+
+**Veredicto: PASS.** Ningún mensaje de configuración que antes se aceptaba ahora se rechaza; lo que
+el celular manda a OSD es idéntico byte a byte; reloj viejo + celular nuevo y reloj nuevo + celular
+viejo siguen funcionando. Sin cambios en alarma, vibración, vigilancia ni constantes firmadas.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R9-F1 | BAJO | El flavor `osdDirectDebug` manda la clave nueva directo a OSD; se espera que OSD la ignore, sin confirmar en dispositivo. | Seguimiento (solo flavor de prueba) |
+| R9-F2 | INFO | Preexistente: si el reloj no puede leer la batería manda -1 y el celular rechaza ese mensaje. | Revisar en 8b |
+| R9-F3 | INFO | El test de "no se reenvía a OSD" llama al codec, no a `postSettings`; la garantía viene del código leído. | Seguimiento |

@@ -9,6 +9,9 @@ import android.os.PowerManager
 import android.os.Vibrator
 import androidx.test.core.app.ApplicationProvider
 import com.seizureguard.wear.alarm.AlarmStateManager
+import com.seizureguard.wear.alarm.DisplayState
+import com.seizureguard.wear.alarm.DisplayStatus
+import com.seizureguard.wear.alarm.DisplayStatusMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -1149,7 +1152,7 @@ class SeizureMonitorServiceTest {
             service.checkPipelineHealth()   // default nowMs = clockMs()
             service.checkPipelineHealth(time[0] + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
             assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, SeizureMonitorService.pipelineHealth.value)
-            assertTrue(SeizureMonitorService.alarmStateStale.value)
+            assertTrue(SeizureMonitorService.alarmFreshness.value.stale)
         } finally {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
         }
@@ -1164,9 +1167,9 @@ class SeizureMonitorServiceTest {
             time[0] = 100_000L
             service.onAlarmStateReceived(AlarmStateManager.ALARM_OK)
             service.checkPipelineHealth(100_000L + SeizureMonitorService.ALARM_STATE_STALE_MS)
-            assertFalse("exactly at the window is still fresh", SeizureMonitorService.alarmStateStale.value)
+            assertFalse("exactly at the window is still fresh", SeizureMonitorService.alarmFreshness.value.stale)
             service.checkPipelineHealth(100_000L + SeizureMonitorService.ALARM_STATE_STALE_MS + 1)
-            assertTrue("one ms past the window is stale", SeizureMonitorService.alarmStateStale.value)
+            assertTrue("one ms past the window is stale", SeizureMonitorService.alarmFreshness.value.stale)
         } finally {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
         }
@@ -1206,6 +1209,60 @@ class SeizureMonitorServiceTest {
         }
     }
 
+    // --- H7-4: a watchdog tick can never hide a fresh alarm_state -----------------------------
+
+    @Test
+    fun tickThatReadTheClockBeforeAFreshAlarm_doesNotMarkItStale() {
+        // The interleaving of the original race, made deterministic:
+        //   1. the watchdog tick reads the clock (T0) while the last alarm_state is 50 s old,
+        //   2. a fresh ALARM arrives at T1 > T0 and is recorded,
+        //   3. the tick publishes using its OLD reading T0.
+        // Before the fix step 3 wrote stale = true over step 2; the ALARM was then shown as
+        // DEGRADED for up to one tick (10 s). Now the published snapshot stays fresh.
+        val time = LongArray(1)
+        val (controller, context) = startWithFakeClock(1_000L, time)
+        try {
+            val service = controller.get()
+            val tickReadsClockAt = 1_000L + 50_000L   // last alarm_state is 50 s old -> would be stale
+            time[0] = tickReadsClockAt + 5L           // the ALARM lands a moment after the tick read time
+            service.onAlarmStateReceived(AlarmStateManager.ALARM_ALARM)
+            service.checkPipelineHealth(tickReadsClockAt)   // the late publish with the old reading
+
+            val freshness = SeizureMonitorService.alarmFreshness.value
+            assertFalse("a fresh alarm_state must never be published as stale", freshness.stale)
+            val display = DisplayStatusMapper.map(
+                SeizureMonitorService.alarmState.value,
+                pipelineDegraded = false,
+                alarmStateStale = freshness.stale
+            )
+            assertEquals("fresh ALARM is displayed as ALARM immediately", DisplayState(DisplayStatus.ALARM), display)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun freshnessSnapshot_isRaceFree_underAnyInterleaving() {
+        // Exhaustive check of both orders of (tick at t, message at m) for every t, m on a grid:
+        // the message is always fresh right after it is applied, whichever side lands last.
+        val base = SeizureMonitorService.AlarmStateFreshness(lastAlarmStateAtMs = 0L, observedAtMs = 0L)
+        for (tickAt in 0L..120_000L step 7_000L) for (msgAt in 0L..120_000L step 5_000L) {
+            val msgFirst = base.receivedAt(msgAt).observedAt(tickAt)
+            val tickFirst = base.observedAt(tickAt).receivedAt(msgAt)
+            assertFalse("tick=$tickAt msg=$msgAt (message first)", msgFirst.stale && tickAt <= msgAt)
+            assertFalse("tick=$tickAt msg=$msgAt (tick first)", tickFirst.stale)
+        }
+    }
+
+    @Test
+    fun freshnessSnapshot_staleOnlyWhenTheTickReallyIsPastTheWindow() {
+        val f = SeizureMonitorService.AlarmStateFreshness().receivedAt(10_000L)
+        assertFalse(f.observedAt(10_000L + SeizureMonitorService.ALARM_STATE_STALE_MS).stale)
+        assertTrue(f.observedAt(10_000L + SeizureMonitorService.ALARM_STATE_STALE_MS + 1).stale)
+        // A tick with an older reading never moves observation backwards.
+        assertTrue(f.observedAt(100_000L).observedAt(20_000L).stale)
+    }
+
     // --- HIGH-1: inbound staleness is published for the UI -----------------------------------
 
     @Test
@@ -1224,13 +1281,13 @@ class SeizureMonitorServiceTest {
             SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
         ).create().startCommand(0, 1)
         try {
-            assertFalse("fresh right after start", SeizureMonitorService.alarmStateStale.value)
+            assertFalse("fresh right after start", SeizureMonitorService.alarmFreshness.value.stale)
             controller.get().checkPipelineHealth(controller.get().clockMs() + 10 * 60_000L)
-            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmStateStale.value)
+            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmFreshness.value.stale)
         } finally {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
         }
-        assertFalse("stop must clear staleness", SeizureMonitorService.alarmStateStale.value)
+        assertFalse("stop must clear staleness", SeizureMonitorService.alarmFreshness.value.stale)
     }
 
     // --- H7-3: a previous session's alarm state is never shown as current ---------------------

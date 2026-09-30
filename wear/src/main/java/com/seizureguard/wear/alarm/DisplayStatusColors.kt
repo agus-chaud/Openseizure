@@ -11,5 +11,6 @@ object DisplayStatusColors {
     const val DEGRADED = 0xFFFFC107L  // amber
     /** Cyan: "alarms are silenced". Not amber (degraded) nor red (alarm). */
     const val MUTED = 0xFF4DD0E1L
-    const val SYSTEM_FAULT = 0xFF6D4C41L
+    /** Light purple: an OSD fault, not an alarm. Replaces the old brown (#6D4C41, ~2.4:1 on black). */
+    const val SYSTEM_FAULT = 0xFFCE93D8L
 }

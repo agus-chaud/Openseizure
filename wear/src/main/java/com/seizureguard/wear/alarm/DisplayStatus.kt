@@ -26,6 +26,15 @@ enum class DisplayStatus {
 /** [status] to show, plus [degradedHint]: also show a small "degraded" hint under a live ALARM. */
 data class DisplayState(val status: DisplayStatus, val degradedHint: Boolean = false)
 
+/**
+ * The `osdDirect` flavor talks to OSD without the companion: a build meant for testing, not the
+ * supported configuration. It shows a persistent banner so nobody mistakes it for the real app
+ * (H7-7). The `companion` flavor shows nothing.
+ */
+object TestBuildBanner {
+    fun visible(osdDirectMode: Boolean): Boolean = osdDirectMode
+}
+
 object DisplayStatusMapper {
 
     /**

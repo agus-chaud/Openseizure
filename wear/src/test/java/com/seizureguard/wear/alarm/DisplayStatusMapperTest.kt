@@ -139,6 +139,25 @@ class DisplayStatusMapperTest {
     }
 
     @Test
+    fun faultColor_hasAtLeast4_5ContrastOnBlack_andIsDistinctFromAlarmDegradedAndMuted() {
+        val fault = DisplayStatusColors.SYSTEM_FAULT
+        assertTrue("fault contrast ${contrastOnBlack(fault)}", contrastOnBlack(fault) >= 4.5)
+        for (other in longArrayOf(DisplayStatusColors.ALARM, DisplayStatusColors.DEGRADED,
+            DisplayStatusColors.MUTED, DisplayStatusColors.WARNING)) {
+            assertTrue("fault too close to ${other.toString(16)}", colorDistance(fault, other) > 100)
+        }
+    }
+
+    @Test
+    fun testBuildBanner_followsOsdDirectMode() {
+        assertTrue(TestBuildBanner.visible(osdDirectMode = true))
+        assertFalse(TestBuildBanner.visible(osdDirectMode = false))
+        // In the real build: visible in the osdDirect flavor only, nothing in companion.
+        assertEquals(com.seizureguard.wear.BuildConfig.FLAVOR == "osdDirect",
+            TestBuildBanner.visible(com.seizureguard.wear.BuildConfig.OSD_DIRECT_MODE))
+    }
+
+    @Test
     fun noHintWhenNotAliveAlarmUnderDegradation() {
         assertFalse(map(0, degraded = true, stale = false).degradedHint)
         assertFalse(map(2, degraded = false, stale = false).degradedHint)

@@ -28,6 +28,7 @@ import androidx.wear.compose.material.Text
 import com.seizureguard.wear.alarm.DisplayStatus
 import com.seizureguard.wear.alarm.DisplayStatusColors
 import com.seizureguard.wear.alarm.DisplayStatusMapper
+import com.seizureguard.wear.alarm.TestBuildBanner
 import com.seizureguard.wear.service.SeizureMonitorService
 
 /**
@@ -128,6 +129,14 @@ fun SeizureGuardWearApp(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            if (TestBuildBanner.visible(BuildConfig.OSD_DIRECT_MODE)) {
+                Text(
+                    text = stringResource(R.string.label_test_build_banner),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.caption1,
+                    color = Color.White
+                )
+            }
             Text(
                 text = statusText,
                 textAlign = TextAlign.Center,

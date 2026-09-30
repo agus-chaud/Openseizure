@@ -32,4 +32,6 @@
     <string name="label_status_system_fault">Falla del sistema (OSD) — sin vibración</string>
     <!-- H7-6: OSD is muted (state 6). Visual only; the watch does not vibrate for it (DEC-057). -->
     <string name="label_status_muted">SILENCIADO — sin alarmas</string>
+    <!-- H7-7: persistent banner in the osdDirect flavor (not the supported companion setup). -->
+    <string name="label_test_build_banner">VERSIÓN DE PRUEBA</string>
 </resources>

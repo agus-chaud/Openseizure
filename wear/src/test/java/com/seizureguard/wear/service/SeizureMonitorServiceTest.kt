@@ -1116,11 +1116,57 @@ class SeizureMonitorServiceTest {
         )
         assertEquals("Signed ceiling for a lost companion link", 60_000L, deadLink)
 
-        // OSD frozen while the companion keeps polling: the companion (:phone OSD_DATA_FRESH_MS =
-        // 15 s, mirrored here on purpose - :wear cannot depend on :phone) keeps relaying the last
-        // OSD answer until it is 15 s old, then stops relaying; the watch then needs the inbound path.
+    }
+
+    /**
+     * H7-7: frozen OSD. The phone companion (:phone OSD_DATA_FRESH_MS = 15 s, mirrored here on
+     * purpose - :wear cannot depend on :phone) keeps sending alarm_state 0 every 10 s until the
+     * frozen OSD answer is 15 s old, then goes silent. The watch only sees the silence.
+     *
+     * The OSD freezes at t = 0 (its last good answer). [sendPhaseMs] shifts the companion's 10 s
+     * keep-alive grid; the watchdog tick grid is shifted by the phase inside [timeToDegraded].
+     * Returns the time from the freeze at which the REAL watchdog functions declare DEGRADED.
+     */
+    private fun frozenOsdWorstCaseMs(
+        inboundStillTrusted: (Long) -> Boolean = { true }
+    ): Long {
         val phoneOsdDataFreshMs = 15_000L
-        assertEquals("Signed ceiling for a frozen OSD (~75 s)", 75_000L, phoneOsdDataFreshMs + deadLink)
+        val keepAliveMs = 10_000L
+        var worst = 0L
+        for (sendPhase in 500L..keepAliveMs step 500L) {
+            // Last keep-alive the companion still sends: the latest grid point <= 15 s after the freeze.
+            val lastSend = generateSequence(sendPhase - keepAliveMs) { it + keepAliveMs }
+                .takeWhile { it <= phoneOsdDataFreshMs }.last()
+            val worstForPhase = (1L..SeizureMonitorService.WATCHDOG_INTERVAL_MS).maxOf { tickPhase ->
+                timeToDegraded(
+                    phaseMs = tickPhase,
+                    lastSampleAtMs = alwaysFresh,          // sensor alive
+                    lastDeliveryOkAtMs = alwaysFresh,      // sends to the phone are still acked
+                    lastAlarmStateAtMs = { t -> if (inboundStillTrusted(t)) t.coerceAtMost(lastSend) else t }
+                )
+            }
+            worst = maxOf(worst, worstForPhase)
+        }
+        return worst
+    }
+
+    @Test
+    fun signedCeiling_75sFrozenOsd_isMetBySimulatingTheRealWatchdog() {
+        val worst = frozenOsdWorstCaseMs()
+        assertTrue("frozen OSD must be declared within the signed ~75 s, was $worst ms", worst <= 75_000L)
+        // Not trivially true: the companion's 15 s of extra keep-alives really do add to the
+        // 60 s dead-link path (otherwise the model ignored the phone window).
+        assertTrue("the 15 s phone window must show up in the result, was $worst ms", worst > 60_000L)
+        assertEquals(75_000L, worst)
+    }
+
+    @Test
+    fun signedCeiling_75sSimulation_failsIfTheInboundWatchdogIsBroken() {
+        // Negative control: a watchdog that ignores the inbound path (alarm_state always looks
+        // fresh) never declares DEGRADED, so the simulation must blow up instead of passing.
+        val failure = runCatching { frozenOsdWorstCaseMs(inboundStillTrusted = { false }) }.exceptionOrNull()
+        assertTrue("a broken inbound watchdog must fail the simulation, got $failure",
+            failure is IllegalStateException)
     }
 
     // --- H7-5: the watchdog runs on a monotonic clock, never on the wall clock ----------------

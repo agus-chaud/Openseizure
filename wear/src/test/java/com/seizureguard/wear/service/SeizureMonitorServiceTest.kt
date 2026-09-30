@@ -8,6 +8,7 @@ import android.hardware.SensorManager
 import android.os.PowerManager
 import android.os.Vibrator
 import androidx.test.core.app.ApplicationProvider
+import com.seizureguard.wear.alarm.AlarmStateManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -1117,5 +1118,63 @@ class SeizureMonitorServiceTest {
         // OSD answer until it is 15 s old, then stops relaying; the watch then needs the inbound path.
         val phoneOsdDataFreshMs = 15_000L
         assertEquals("Signed ceiling for a frozen OSD (~75 s)", 75_000L, phoneOsdDataFreshMs + deadLink)
+    }
+
+    // --- HIGH-1: inbound staleness is published for the UI -----------------------------------
+
+    @Test
+    fun alarmStateStale_predicate_matchesEvaluateHealthBoundary() {
+        val last = 1_000_000L
+        assertFalse(SeizureMonitorService.isAlarmStateStale(last + SeizureMonitorService.ALARM_STATE_STALE_MS, last))
+        assertTrue(SeizureMonitorService.isAlarmStateStale(last + SeizureMonitorService.ALARM_STATE_STALE_MS + 1, last))
+    }
+
+    @Test
+    fun watchdogTick_publishesStaleAlarmState_andStopClearsIt() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            assertFalse("fresh right after start", SeizureMonitorService.alarmStateStale.value)
+            controller.get().checkPipelineHealth(System.currentTimeMillis() + 10 * 60_000L)
+            assertTrue("stale after 10 minutes without alarm_state", SeizureMonitorService.alarmStateStale.value)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+        assertFalse("stop must clear staleness", SeizureMonitorService.alarmStateStale.value)
+    }
+
+    // --- H7-3: a previous session's alarm state is never shown as current ---------------------
+
+    @Test
+    fun stopAndRestart_resetDisplayedAlarmState_toOk() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            controller.get().onAlarmStateReceived(AlarmStateManager.ALARM_ALARM)
+            assertEquals(AlarmStateManager.ALARM_ALARM, SeizureMonitorService.alarmState.value)
+
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+            assertEquals(
+                "stop must not leave an old ALARM on screen",
+                AlarmStateManager.ALARM_OK, SeizureMonitorService.alarmState.value
+            )
+
+            controller.get().onAlarmStateReceived(AlarmStateManager.ALARM_ALARM)
+            controller.get().onStartCommand(SeizureMonitorService.startIntent(context), 0, 3)
+            assertEquals(
+                "a new session must not show the previous session's ALARM as current",
+                AlarmStateManager.ALARM_OK, SeizureMonitorService.alarmState.value
+            )
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 4)
+        }
     }
 }

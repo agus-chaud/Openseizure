@@ -6,6 +6,7 @@ import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.os.PowerManager
+import android.os.Vibrator
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -1032,5 +1033,70 @@ class SeizureMonitorServiceTest {
             "Best case $best ms must exceed the 40 s stale window plus one confirming tick.",
             best > SeizureMonitorService.ALARM_STATE_STALE_MS + SeizureMonitorService.WATCHDOG_INTERVAL_MS
         )
+    }
+
+    // --- Batch 7 / T7.6: DEGRADED is visual only (DEC-057) -----------------------------------
+
+    @Test
+    fun degraded_isVisualOnly_noVibration() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val vibrator = context.getSystemService(Vibrator::class.java)
+        vibrator.cancel()
+
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            val service = controller.get()
+            // Two ticks far past warm-up with nothing fresh: hysteresis (2 ticks) declares DEGRADED.
+            val later = System.currentTimeMillis() + 10 * 60_000L
+            service.checkPipelineHealth(later)
+            service.checkPipelineHealth(later + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
+
+            assertEquals(
+                "Precondition: the watchdog must have declared DEGRADED",
+                SeizureMonitorService.PipelineHealth.DEGRADED,
+                SeizureMonitorService.pipelineHealth.value
+            )
+            assertFalse(
+                "DEGRADED must be visual only: no haptic on entering it (DEC-057).",
+                shadowOf(vibrator).isVibrating
+            )
+            // ... nor while it persists.
+            service.checkPipelineHealth(later + 2 * SeizureMonitorService.WATCHDOG_INTERVAL_MS)
+            assertFalse(
+                "DEGRADED must not vibrate while it persists.",
+                shadowOf(vibrator).isVibrating
+            )
+        } finally {
+            // Restore the process-wide StateFlow for other tests (ACTION_STOP resets it to HEALTHY).
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun degraded_isShownOnNotification() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            val service = controller.get()
+            val later = System.currentTimeMillis() + 10 * 60_000L
+            service.checkPipelineHealth(later)
+            service.checkPipelineHealth(later + SeizureMonitorService.WATCHDOG_INTERVAL_MS)
+
+            val title = context.getSystemService(NotificationManager::class.java)
+                .activeNotifications.first()
+                .notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+            assertTrue("DEGRADED must be shown on the notification. Title: $title",
+                title?.contains("DEGRADADO") == true)
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
     }
 }

@@ -1996,6 +1996,26 @@ Se confirmó con `git diff --stat` que el Batch 7 no dejó ningún cambio filtra
 
 ---
 
+## DEC-062: Firma de `techo_latencia_clinica` (40 s) y aprobación del texto médico de la guía
+
+**Fase:** SDD `watch-osd-message-delivery` (antes del Batch 7) | **Fecha:** 2026-09-30
+
+**Qué se decidió:** el usuario firmó `techo_latencia_clinica` = **40 s**: tiempo máximo aceptable
+entre el inicio de la convulsión y la alarma. No había valor propuesto; se le presentaron dos
+opciones (30 s, estricta y probablemente incumplible; 60 s, realista con margen) y eligió 40 s.
+Además aprobó el texto médico de `CAREGIVER_GUIDE.md` ("llamar a emergencias si dura más de
+3 minutos") como correcto; no se vuelve a pedir su revisión.
+
+**Presupuesto del techo:** paso de análisis de OSD ≤ 5 s + relay de alarma ≤ 8 s (ya firmado) =
+hasta 13 s. Quedan ≈ 27 s para que el modelo reconozca la convulsión dentro de su ventana de 30 s.
+Ese tiempo de reconocimiento **no está medido**; se valida en las pruebas con hardware (DV). Si la
+medición lo supera, se revisa el valor y se vuelve a firmar.
+
+**Consecuencia:** las 16 constantes de detección quedan firmadas. El stride de 5 s queda dentro
+del techo. No cambia código del Batch 7. Nada más bloquea el inicio del Batch 7.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

@@ -21,7 +21,7 @@ sección **Firmadas**. Mientras esté en **Pendientes**, la fase asociada queda 
 | `umbral_WARNING` | 0.5 (plan maestro / OSD) | Prob ≥ 0.5 dispara WARNING. Bajar = más sensible PERO más falsas alarmas → fatiga del cuidador. Subir = menos falsas alarmas PERO se pierde el aviso temprano. | 3.3 / 4.3 | ⏳ PENDIENTE |
 | `umbral_ALARM` | 0.8 (plan maestro) | Prob ≥ 0.8 dispara ALARM (sirena + SMS). Bajar = alarma más temprana PERO más falsas alarmas que despiertan al cuidador sin convulsión real. Subir = menos falsas PERO más riesgo de falso negativo = no se despierta a nadie. | 3.3 / 4.3 | ⏳ PENDIENTE |
 | `N_ventanas_warning_alarm` | (a definir — el plan usa umbral por prob, no por N ventanas; confirmar si se usa conteo) | Más ventanas para confirmar = menos falsas alarmas PERO más latencia. Menos = alarma más rápida PERO más falsas. | 3.3 | ⏳ PENDIENTE |
-| `techo_latencia_clinica` | (a definir) | Tiempo máximo aceptable desde el inicio de la convulsión hasta que suena la alarma. Define el rango legal del stride de inferencia. Más alto = menos batería PERO respuesta más lenta. | 3.2 | ⏳ PENDIENTE |
+| `techo_latencia_clinica` | **40 s** | Tiempo máximo aceptable desde el inicio de la convulsión hasta que suena la alarma. Define el rango legal del stride de inferencia. Más alto = menos batería PERO respuesta más lenta. | 3.2 | ✅ FIRMADA 2026-09-30 |
 
 > Nota sobre el **stride de inferencia (5s)**: NO es una constante clínica en sí — es `peripheral`
 > MIENTRAS respete el `techo_latencia_clinica` firmado. Default 5s heredado del patrón OSD/Graham
@@ -66,7 +66,7 @@ Registro de hallazgos: `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
 | Techo del relay de alarma | (diseño) **8 s** | celular (mergeado) | Máximo desde que OSD calcula un estado hasta que llega al reloj. Típico: menos de 1 s. | Firmar 8 s | ✅ FIRMADA 2026-09-19 |
 | Rango de `sample_freq` aceptado | 1 a 200 → **exactamente 25** | celular (requiere cambio de código) | Un valor distinto de 25 desescala el análisis de OSD sin avisar. | Firmar 25 y endurecer el parser (hallazgo F6) | ✅ FIRMADA 2026-09-19 |
 | `DEFAULT_HANDSHAKE_BATTERY` | (nueva) **100** | celular (mergeado) | Batería que se le informa a OSD si pide ajustes antes de que el reloj mande los suyos. Puede ocultar una batería baja unos segundos. | Dejar 100 | ✅ FIRMADA 2026-09-19 |
-| `techo_latencia_clinica` (de la tabla de arriba) | (a definir) | — | Tiempo máximo aceptable entre el inicio de la convulsión y la alarma. Lo define OSD (ventana de 30 s con paso de 5 s) más el relay. | **Tu decisión clínica**, no la puedo recomendar | ⏳ PENDIENTE |
+| `techo_latencia_clinica` (de la tabla de arriba) | (a definir) → **40 s** | — | Tiempo máximo aceptable entre el inicio de la convulsión y la alarma. Lo define OSD (ventana de 30 s con paso de 5 s) más el relay. | Decisión clínica del usuario (se le presentaron 30 s y 60 s; eligió 40 s) | ✅ FIRMADA 2026-09-30 |
 
 **No requieren firma** (solo afectan el registro y el resumen, no la detección ni la alarma; se
 listan por transparencia): `SERVICE_DOWN_THRESHOLD_MS` 120 s, `ALIVE_WRITE_INTERVAL_MS` 60 s,
@@ -94,3 +94,4 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 | Techo del relay de alarma | 8 s | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Diseño; típico menos de 1 s. Detalle en la tabla de arriba. |
 | Rango de `sample_freq` aceptado | exactamente 25 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. **Endurecido en código** (Batch 5e, PR #27, mergeado 2026-09-19): un valor distinto de 25 se descarta y no llega a OSD. Detalle en la tabla de arriba. |
 | `DEFAULT_HANDSHAKE_BATTERY` | 100 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
+| `techo_latencia_clinica` | 40 s | agus-chaud (usuario del proyecto) | 2026-09-30 | Decisión clínica del usuario, sin valor propuesto previo. Presupuesto: paso de análisis de OSD ≤ 5 s + relay ≤ 8 s = hasta 13 s, lo que deja ≈ 27 s para que el modelo reconozca la convulsión dentro de su ventana de 30 s. Ese tiempo de reconocimiento **no está medido**: se valida en las pruebas con hardware (DV). Si no se cumple, se revisa y se vuelve a firmar. El stride de 5 s queda dentro del techo. |

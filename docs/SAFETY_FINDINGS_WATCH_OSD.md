@@ -27,8 +27,8 @@ un hallazgo o se hace una revisión nueva. Contexto de la arquitectura: DEC-050,
 | R7 | RDD (`gentle-ai review`) sobre el **diff real** del Batch 7 | — | Diff congelado de `:wear` (watchdog, alarma, flavors) | — | **PENDIENTE** (antes de abrir el PR del Batch 7) |
 | R8 | RDD / revisión sobre el Batch 5c | — | Corrección de F1 en `:phone` | — | **PENDIENTE** (opcional, recomendado: es ruta de alarma) |
 | R9 | `sdd-verify` (validar implementación contra spec/tareas) | — | Todo el cambio | — | **PENDIENTE** (al terminar Batch 9) |
-| R10 | Firma humana de constantes de detección | 2026-09-19 | Sección 3 de este documento | **15 de 16 firmadas** tal cual se propusieron; queda `techo_latencia_clinica` | **PARCIAL** |
-| R11 | Revisión de documentación de cuidadores | 2026-09-19 | `CAREGIVER_GUIDE.md`, `HARDWARE_RUNBOOK.md` §4 reescritos; `CLINICAL_SIGNOFF.md` con constantes firmadas | Reescritas por un asistente y revisadas por otro (textos citados verificados contra la app). **Falta revisión humana del texto médico** (ver sección 5) | **PARCIAL** |
+| R10 | Firma humana de constantes de detección | 2026-09-19 | Sección 3 de este documento | **16 de 16 firmadas**: 15 tal cual se propusieron (2026-09-19) y `techo_latencia_clinica` = 40 s (2026-09-30, DEC-062) | **HECHA** |
+| R11 | Revisión de documentación de cuidadores | 2026-09-19 | `CAREGIVER_GUIDE.md`, `HARDWARE_RUNBOOK.md` §4 reescritos; `CLINICAL_SIGNOFF.md` con constantes firmadas | Reescritas por un asistente y revisadas por otro (textos citados verificados contra la app). Texto médico aprobado por el usuario el 2026-09-30 | **HECHA** |
 | R12 | Pruebas en hardware real (DV-1..DV-7) | — | Reloj + teléfono + OSD | — | **PENDIENTE** (sin acceso al reloj; GATE-0 asumido como PASS, DEC-052) |
 
 **Nota honesta sobre lo que no se hizo:** los Batches 1–6 se mergearon con CI + tests locales +
@@ -71,7 +71,7 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 
 | Constante | Valor propuesto | Dónde vive | Recomendación del revisor | Estado |
 |---|---|---|---|---|
-| `techo_latencia_clinica` | PENDIENTE | ya en cola de firma | Firmar primero: de él dependen el stride y el techo de 8 s del relay | Sin firmar |
+| `techo_latencia_clinica` | 40 s | `CLINICAL_SIGNOFF.md` | Firmar primero: de él dependen el stride y el techo de 8 s del relay | **Firmada 2026-09-30** (5 s + 8 s caben; ≈ 27 s restantes para el modelo, sin medir) |
 | Techo "falla visible" (ventana ciega máxima) | 60 s | spec / `design.md` | Escalar: es un techo de latencia. Aceptar ~65–70 s firmado, o bajar `STALE` a 30 s | **Firmada 2026-09-19** |
 | `WATCHDOG_INTERVAL_MS` | 30 s → 10 s | `SeizureMonitorService.kt` (Batch 7) | Razonable | **Firmada 2026-09-19** |
 | `DELIVERY_STALE_MS` | 60 s → 40 s | ídem | Firmar | **Firmada 2026-09-19** |
@@ -90,8 +90,8 @@ Cuando firmes, anotalo en `CLINICAL_SIGNOFF.md` y actualizá la columna "Estado"
 - [x] **1.** F1 arreglado y con tests de estado congelado (Batch 5c, PRs #22/#23 mergeados). Falta DV-4 en hardware.
 - [~] **2.** Política para los estados 3–7: **definida** (DEC-057) y **spec enmendado** (2026-09-19, `watch-companion-transport.md` y `phone-companion-bridge.md`). Falta implementarla (T7.5).
 - [~] **3.** ~~DEGRADED persistente~~ reemplazado por DEGRADED solo visual (DEC-057). Falta reescribir T7.6.
-- [~] **4.** Constantes firmadas (15 de 16, 2026-09-19) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). Falta `techo_latencia_clinica` y reescribir T7.7.
-- [~] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 **reescritos** (2026-09-19). Falta que un humano revise el texto médico y que se corrijan `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `docs/RUNBOOK_EXPORTACION_DATOS.md`, que aún mandan por el camino roto.
+- [~] **4.** Constantes firmadas (16 de 16: 15 el 2026-09-19, `techo_latencia_clinica` = 40 s el 2026-09-30) con las cuentas de peor caso: 60 s enlace, ≈75 s OSD congelado (P2 aceptado con firma). Falta reescribir T7.7 (Batch 7).
+- [~] **5.** `CAREGIVER_GUIDE.md` y `HARDWARE_RUNBOOK.md` §4 **reescritos** (2026-09-19). Texto médico revisado y aprobado por el usuario (2026-09-30: "llamar a emergencias si dura más de 3 minutos" es correcto). Falta que se corrijan `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `docs/RUNBOOK_EXPORTACION_DATOS.md`, que aún mandan por el camino roto.
 - [ ] **6.** `osdDirect` fuera de `release` (F7).
 - [x] **7.** Segundo `safety-reviewer` (R6, 2026-09-28): **PARCIAL PASS**, con 3 hallazgos documentales
   ya corregidos el mismo día (ver sección 9). Ningún hallazgo de código. No hace falta un tercer
@@ -107,9 +107,9 @@ cargado.
 
 | Documento | Qué está mal | Estado |
 |---|---|---|
-| `CAREGIVER_GUIDE.md` (líneas ~39–46, 95–97) | Pide "la app del teléfono abierta y dice que recibe datos": el puente no tiene pantalla de estado. No describe la arquitectura de dos apps ni el DEGRADED (2 pulsos). "Deja de proteger si…" omite OSD cerrado/fuente incorrecta, puente detenido, reinicio del teléfono, notificaciones bloqueadas. No dice qué hacer ante una notificación de falla. | **REESCRITA 2026-09-19** (banner de no verificado, política silenciosa, checklist nocturno, resumen matutino). Pendiente: revisión humana del texto médico |
+| `CAREGIVER_GUIDE.md` (líneas ~39–46, 95–97) | Pide "la app del teléfono abierta y dice que recibe datos": el puente no tiene pantalla de estado. No describe la arquitectura de dos apps ni el DEGRADED (2 pulsos). "Deja de proteger si…" omite OSD cerrado/fuente incorrecta, puente detenido, reinicio del teléfono, notificaciones bloqueadas. No dice qué hacer ante una notificación de falla. | **REESCRITA 2026-09-19** (banner de no verificado, política silenciosa, checklist nocturno, resumen matutino). Texto médico aprobado por el usuario 2026-09-30 |
 | `HARDWARE_RUNBOOK.md` §4 (líneas ~137–212) | Describe habilitar la fuente Android Wear, el camino roto por DEC-050. | **REESCRITA 2026-09-19** (flujo de dos apps, tabla DV-1..DV-7). La sección 5 solo recibió una nota |
-| `CLINICAL_SIGNOFF.md` | Falta registrar las constantes de la sección 3 y la política de F2. | **PARCIAL:** 15 de 16 constantes firmadas; falta `techo_latencia_clinica` y registrar la política de F2 |
+| `CLINICAL_SIGNOFF.md` | Falta registrar las constantes de la sección 3 y la política de F2. | **PARCIAL:** 16 de 16 constantes firmadas (2026-09-30); falta registrar la política de F2 |
 | `DISCLAIMER.md` | No verificado (no se encontraron menciones a OSD ni al teléfono). | SIN VERIFICAR |
 
 ---

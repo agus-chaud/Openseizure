@@ -13,6 +13,7 @@ import android.hardware.SensorManager
 import android.os.BatteryManager
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.seizureguard.wear.BuildConfig
@@ -263,12 +264,21 @@ class SeizureMonitorService : Service() {
      *   -> companion -> reloj).
      * - monitoringStartedAtMs: para el período de warm-up (no juzgar apenas arranca).
      */
+    // ALL watchdog/staleness timestamps are on the MONOTONIC clock ([clockMs], elapsedRealtime):
+    // a wall-clock jump (NTP/phone sync, timezone, manual change) must never fake a stale link or,
+    // worse, hide a real one (H7-5). Wall-clock time is used only for CSV logging.
     @Volatile private var lastSampleAtMs = 0L
     @Volatile private var lastDeliveryOkAtMs = 0L
     @Volatile private var lastAlarmStateAtMs = 0L
     private var monitoringStartedAtMs = 0L
     private var consecutiveUnhealthyChecks = 0
     private var watchdogJob: Job? = null
+
+    /**
+     * Monotonic time source for the whole watchdog/staleness path (ms since boot, includes deep
+     * sleep). Injectable so tests can move time without waiting or touching the wall clock.
+     */
+    internal var clockMs: () -> Long = { SystemClock.elapsedRealtime() }
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -361,7 +371,7 @@ class SeizureMonitorService : Service() {
         isMonitoringActive = true
         // T8: arrancar el reloj del watchdog. Inicializamos las marcas a "ahora" para que el
         // período de warm-up empiece a contar y no marque DEGRADADO apenas arranca.
-        val now = System.currentTimeMillis()
+        val now = clockMs()
         monitoringStartedAtMs = now
         lastSampleAtMs = now
         lastDeliveryOkAtMs = now
@@ -600,7 +610,7 @@ class SeizureMonitorService : Service() {
     private fun onAccelerometerSample(x: Float, y: Float, z: Float) {
         // T8: marcar que el sensor está vivo. El watchdog usa esto para detectar
         // si el acelerómetro dejó de emitir (sensor muerto → DEGRADADO).
-        lastSampleAtMs = System.currentTimeMillis()
+        lastSampleAtMs = clockMs()
         // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
         val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
         accelerometerBuffer.add(magnitudeMilliG)
@@ -645,7 +655,7 @@ class SeizureMonitorService : Service() {
             // T8: marcar entrega EXITOSA. Si las entregas empiezan a fallar (teléfono
             // desconectado, Bluetooth caído), lastDeliveryOkAtMs deja de actualizarse y el
             // watchdog lo detecta. Antes el resultado del envío se ignoraba (H2).
-            if (delivered) lastDeliveryOkAtMs = System.currentTimeMillis()
+            if (delivered) lastDeliveryOkAtMs = clockMs()
             if (BuildConfig.DEBUG && isSequentialMode) {
                 sequentialSampleCounter += window.size.toLong()
             }
@@ -672,9 +682,9 @@ class SeizureMonitorService : Service() {
      * Un "tick" del watchdog. Renueva el WakeLock (M3), evalúa salud con histéresis
      * y, si el estado cambió, actualiza notificación + StateFlow. DEGRADED es solo visual (DEC-057).
      *
-     * `internal` (not private) and [nowMs] injectable only so tests can drive a tick without a clock.
+     * `internal` (not private) and [nowMs] injectable only so tests can drive a tick without a clock. [nowMs] must come from [clockMs].
      */
-    internal fun checkPipelineHealth(nowMs: Long = System.currentTimeMillis()) {
+    internal fun checkPipelineHealth(nowMs: Long = clockMs()) {
         // M3: renovar el WakeLock para que el timeout de 10h nunca expire durante un
         // monitoreo largo (hasta 10h de uso nocturno). Re-acquire reinicia el timeout.
         wakeLock?.let { if (it.isHeld) it.acquire(WAKE_LOCK_TIMEOUT_MS) }
@@ -718,7 +728,7 @@ class SeizureMonitorService : Service() {
         // Liveness first: ANY parseable alarm_state (including a silent-fault or unknown value)
         // proves the companion round trip is alive. Recorded before acting on the value so a
         // failure while vibrating can never leave the inbound watchdog blind.
-        lastAlarmStateAtMs = System.currentTimeMillis()
+        lastAlarmStateAtMs = clockMs()
         _alarmStateStale.value = false
         alarmStateManager.handleAlarmState(alarmState)
         _alarmState.value = alarmState

@@ -253,7 +253,7 @@ class SeizureMonitorService : Service() {
      * Detecta fallas silenciosas: sensor que deja de emitir, teléfono desconectado,
      * entregas que fallan. Todas comparten el mismo veneno — el sistema muestra "todo bien"
      * mientras la red de seguridad está rota. El watchdog las convierte en estado DEGRADADO
-     * visible (notificación + vibración distintiva).
+     * visible: SOLO visual (notificación). Sin vibración ni sonido para DEGRADED (DEC-057).
      *
      * - lastSampleAtMs:     marca de la última muestra del acelerómetro recibida.
      * - lastDeliveryOkAtMs: marca de la última entrega EXITOSA al teléfono.
@@ -664,15 +664,17 @@ class SeizureMonitorService : Service() {
 
     /**
      * Un "tick" del watchdog. Renueva el WakeLock (M3), evalúa salud con histéresis
-     * y, si el estado cambió, actualiza notificación + vibración + StateFlow.
+     * y, si el estado cambió, actualiza notificación + StateFlow. DEGRADED es solo visual (DEC-057).
+     *
+     * `internal` (not private) and [nowMs] injectable only so tests can drive a tick without a clock.
      */
-    private fun checkPipelineHealth() {
+    internal fun checkPipelineHealth(nowMs: Long = System.currentTimeMillis()) {
         // M3: renovar el WakeLock para que el timeout de 10h nunca expire durante un
         // monitoreo largo (hasta 10h de uso nocturno). Re-acquire reinicia el timeout.
         wakeLock?.let { if (it.isHeld) it.acquire(WAKE_LOCK_TIMEOUT_MS) }
 
         val instant = evaluateHealth(
-            nowMs = System.currentTimeMillis(),
+            nowMs = nowMs,
             lastSampleAtMs = lastSampleAtMs,
             lastDeliveryOkAtMs = lastDeliveryOkAtMs,
             lastAlarmStateAtMs = lastAlarmStateAtMs,
@@ -686,8 +688,8 @@ class SeizureMonitorService : Service() {
             _pipelineHealth.value = effective
             refreshNotification()
             if (effective == PipelineHealth.DEGRADED) {
-                Log.e(TAG, "Pipeline DEGRADADO: sin muestras o sin entregas recientes al teléfono")
-                alarmStateManager.vibrateDegraded()
+                // Visual only (notification refreshed above): no haptic, no sound (DEC-057).
+                Log.e(TAG, "Pipeline DEGRADADO: sin muestras, sin entregas o sin alarm_state del companion")
             } else {
                 Log.i(TAG, "Pipeline recuperado: HEALTHY")
             }
@@ -697,10 +699,9 @@ class SeizureMonitorService : Service() {
     /**
      * Procesa el alarmState recibido del teléfono via /osd/alarm_state.
      *
-     * @param alarmState Valor 0-7 según la especificación OSD:
-     *   0 = OK, 1 = WARNING, 2 = ALARM, 3 = SEIZURE_DETECTED, ...
-     *
-     * En Fase 2.2: actualizar UI y disparar vibración según el estado.
+     * @param alarmState Raw OSD value (0-7, but any Int can arrive). What each value does is
+     *   defined by [AlarmStateManager.classify] (DEC-057): 2/3/5 vibrate as ALARM, 4/7/unknown are
+     *   silent system faults, 6 (MUTE) is silent.
      */
     private fun onAlarmStateReceived(alarmState: Int) {
         Log.i(TAG, "alarmState recibido: $alarmState")
@@ -861,7 +862,8 @@ class SeizureMonitorService : Service() {
          *   o un patrón de binding complejo en esta fase.
          *   En Fase 3+ se puede migrar a un ViewModel compartido.
          *
-         * Valores posibles: ALARM_OK (0), ALARM_WARNING (1), ALARM_ALARM (2+)
+         * Raw OSD value (any Int). Interpret it with [AlarmStateManager.classify], never with a
+         * ">= 2" comparison: 4, 7 and unknown values are silent system faults, not alarms.
          */
         private val _alarmState = MutableStateFlow(AlarmStateManager.ALARM_OK)
         val alarmState: StateFlow<Int> = _alarmState.asStateFlow()

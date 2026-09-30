@@ -778,7 +778,8 @@ class SeizureMonitorServiceTest {
         val justStarted = now - 5_000L
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = justStarted,
-            lastDeliveryOkAtMs = justStarted, monitoringStartedAtMs = justStarted
+            lastDeliveryOkAtMs = justStarted, lastAlarmStateAtMs = justStarted,
+            monitoringStartedAtMs = justStarted
         )
         assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
     }
@@ -787,7 +788,8 @@ class SeizureMonitorServiceTest {
     fun health_freshSampleAndDelivery_isHealthy() {
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 1_000L,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.HEALTHY, result)
     }
@@ -797,7 +799,8 @@ class SeizureMonitorServiceTest {
         // El sensor dejó de emitir hace 20s (> SAMPLE_STALE_MS), aunque las entregas estén al día.
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 20_000L,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
     }
@@ -807,7 +810,8 @@ class SeizureMonitorServiceTest {
         // El sensor emite, pero no hay una entrega exitosa al teléfono hace 70s (> DELIVERY_STALE_MS).
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 1_000L,
-            lastDeliveryOkAtMs = now - 70_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 70_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         assertEquals(SeizureMonitorService.PipelineHealth.DEGRADED, result)
     }
@@ -825,7 +829,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = lastSample,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         // Assert — el umbral es "> SAMPLE_STALE_MS" (estricto): justo en el borde NO es stale.
         assertEquals(
@@ -841,7 +846,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = lastSample,
-            lastDeliveryOkAtMs = now - 1_000L, monitoringStartedAtMs = pastWarmup
+            lastDeliveryOkAtMs = now - 1_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = pastWarmup
         )
         // Assert — cruzar el borde por 1ms ya dispara DEGRADADO (fija el off-by-one).
         assertEquals(
@@ -857,7 +863,8 @@ class SeizureMonitorServiceTest {
         // Act
         val result = SeizureMonitorService.evaluateHealth(
             nowMs = now, lastSampleAtMs = now - 30_000L,
-            lastDeliveryOkAtMs = now - 30_000L, monitoringStartedAtMs = started
+            lastDeliveryOkAtMs = now - 30_000L, lastAlarmStateAtMs = now - 1_000L,
+            monitoringStartedAtMs = started
         )
         // Assert — el warm-up protege con "< WATCHDOG_WARMUP_MS"; justo en el borde ya juzga → DEGRADADO.
         assertEquals(

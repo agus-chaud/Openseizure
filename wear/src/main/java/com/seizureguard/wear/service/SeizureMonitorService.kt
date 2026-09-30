@@ -257,10 +257,15 @@ class SeizureMonitorService : Service() {
      *
      * - lastSampleAtMs:     marca de la última muestra del acelerómetro recibida.
      * - lastDeliveryOkAtMs: marca de la última entrega EXITOSA al teléfono.
+     * - lastAlarmStateAtMs: marca del último /osd/alarm_state RECIBIDO del companion (Batch 7).
+     *   `lastDeliveryOkAtMs` solo prueba que GMS aceptó el envío (ack de transporte); la llegada
+     *   de un alarm_state es la única señal de vida extremo a extremo (reloj -> companion -> OSD
+     *   -> companion -> reloj).
      * - monitoringStartedAtMs: para el período de warm-up (no juzgar apenas arranca).
      */
     @Volatile private var lastSampleAtMs = 0L
     @Volatile private var lastDeliveryOkAtMs = 0L
+    @Volatile private var lastAlarmStateAtMs = 0L
     private var monitoringStartedAtMs = 0L
     private var consecutiveUnhealthyChecks = 0
     private var watchdogJob: Job? = null
@@ -360,6 +365,7 @@ class SeizureMonitorService : Service() {
         monitoringStartedAtMs = now
         lastSampleAtMs = now
         lastDeliveryOkAtMs = now
+        lastAlarmStateAtMs = now   // the warm-up window covers the first companion keep-alive
         consecutiveUnhealthyChecks = 0
         _pipelineHealth.value = PipelineHealth.HEALTHY
         startWatchdog()
@@ -669,6 +675,7 @@ class SeizureMonitorService : Service() {
             nowMs = System.currentTimeMillis(),
             lastSampleAtMs = lastSampleAtMs,
             lastDeliveryOkAtMs = lastDeliveryOkAtMs,
+            lastAlarmStateAtMs = lastAlarmStateAtMs,
             monitoringStartedAtMs = monitoringStartedAtMs
         )
         // Histéresis: exigimos varios checks DEGRADED seguidos para no oscilar por un bache puntual.
@@ -700,6 +707,10 @@ class SeizureMonitorService : Service() {
      */
     private fun onAlarmStateReceived(alarmState: Int) {
         Log.i(TAG, "alarmState recibido: $alarmState")
+        // Liveness first: ANY parseable alarm_state (including a silent-fault or unknown value)
+        // proves the companion round trip is alive. Recorded before acting on the value so a
+        // failure while vibrating can never leave the inbound watchdog blind.
+        lastAlarmStateAtMs = System.currentTimeMillis()
         alarmStateManager.handleAlarmState(alarmState)
         _alarmState.value = alarmState
     }
@@ -868,7 +879,10 @@ class SeizureMonitorService : Service() {
          *  - Durante el warm-up ([WATCHDOG_WARMUP_MS] desde el arranque) siempre HEALTHY: el
          *    primer chunk tarda ~5s y el primer handshake con el teléfono puede demorar.
          *  - Pasado el warm-up: DEGRADED si no llegó una muestra del sensor en
-         *    [SAMPLE_STALE_MS], O si no hubo una entrega exitosa al teléfono en [DELIVERY_STALE_MS].
+         *    [SAMPLE_STALE_MS], O si no hubo una entrega exitosa al teléfono en [DELIVERY_STALE_MS],
+         *    O si no llegó un /osd/alarm_state del companion en [ALARM_STATE_STALE_MS].
+         *  - La entrega "exitosa" es solo un ack de transporte de GMS; el staleness de alarm_state
+         *    (entrante) es la señal de vida extremo a extremo.
          *
          * La histéresis (exigir varios DEGRADED seguidos) la aplica el loop, no esta función.
          */
@@ -876,22 +890,39 @@ class SeizureMonitorService : Service() {
             nowMs: Long,
             lastSampleAtMs: Long,
             lastDeliveryOkAtMs: Long,
+            lastAlarmStateAtMs: Long,
             monitoringStartedAtMs: Long
         ): PipelineHealth {
             if (nowMs - monitoringStartedAtMs < WATCHDOG_WARMUP_MS) return PipelineHealth.HEALTHY
-            val sampleStale   = nowMs - lastSampleAtMs > SAMPLE_STALE_MS
-            val deliveryStale = nowMs - lastDeliveryOkAtMs > DELIVERY_STALE_MS
-            return if (sampleStale || deliveryStale) PipelineHealth.DEGRADED else PipelineHealth.HEALTHY
+            val sampleStale     = nowMs - lastSampleAtMs > SAMPLE_STALE_MS
+            val deliveryStale   = nowMs - lastDeliveryOkAtMs > DELIVERY_STALE_MS
+            val alarmStateStale = nowMs - lastAlarmStateAtMs > ALARM_STATE_STALE_MS
+            return if (sampleStale || deliveryStale || alarmStateStale) PipelineHealth.DEGRADED
+            else PipelineHealth.HEALTHY
         }
 
-        /** Cada cuánto corre el watchdog. */
-        const val WATCHDOG_INTERVAL_MS = 30_000L
+        // Watchdog timing constants. Values signed in CLINICAL_SIGNOFF.md (DEC-059).
+        // Signed worst-case visible-fault ceiling, measured from the last good event:
+        // STALE + UNHEALTHY_CHECKS_FOR_DEGRADED * WATCHDOG_INTERVAL_MS
+        //   lost companion link (outbound or inbound): 40 s + 2 x 10 s = 60 s
+        //   dead sensor:                               10 s + 2 x 10 s = 30 s
+        //   OSD frozen while the companion keeps polling: 15 s companion freshness + 60 s = ~75 s
+        // (computed, not measured on hardware).
+
+        /** Cada cuánto corre el watchdog (10 s; antes 30 s). */
+        const val WATCHDOG_INTERVAL_MS = 10_000L
         /** Período de gracia tras arrancar el monitoreo antes de empezar a juzgar. */
         const val WATCHDOG_WARMUP_MS = 60_000L
         /** Sin muestras del sensor por más de esto → sensor muerto. */
         const val SAMPLE_STALE_MS = 10_000L
-        /** Sin entregas exitosas al teléfono por más de esto → desconexión (chunks van cada ~5s). */
-        const val DELIVERY_STALE_MS = 60_000L
+        /** Sin entregas exitosas al teléfono por más de esto → desconexión (chunks van cada ~5s). 40 s; antes 60 s. */
+        const val DELIVERY_STALE_MS = 40_000L
+        /**
+         * Sin un /osd/alarm_state del companion por más de esto → el estado de alarma que tiene el
+         * reloj ya no es vigente (companion caído, OSD detenido o enlace roto). El companion
+         * refresca cada 10 s, así que 40 s tolera ~3 refrescos perdidos.
+         */
+        const val ALARM_STATE_STALE_MS = 40_000L
         /** Checks DEGRADED consecutivos requeridos para declarar DEGRADED (histéresis). */
         const val UNHEALTHY_CHECKS_FOR_DEGRADED = 2
 

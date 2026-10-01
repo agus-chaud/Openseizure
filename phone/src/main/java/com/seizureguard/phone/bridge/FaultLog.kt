@@ -52,8 +52,8 @@ class FaultLog(private val store: StringStore, private val wallClockMs: () -> Lo
 
     /**
      * Tracks the contract-version period independently of [onFault]: it opens on the first incompatible result,
-     * closes on a [VersionCompatibility.MATCH], and never closes, replaces or hides another open period.
-     * Writes only on a transition.
+     * closes ONLY on a [VersionCompatibility.MATCH] from a real watch settings message, and never closes, replaces or
+     * hides another open period. Writes only on a transition.
      */
     @Synchronized
     fun onVersionCompatibility(result: VersionCompatibility) {
@@ -68,13 +68,17 @@ class FaultLog(private val store: StringStore, private val wallClockMs: () -> Lo
         save(list, now)
     }
 
-    /** Closes any open fault period at [endMs] (clean stop, or a restart after the process died). */
+    /**
+     * Closes any open [BridgeFault]-derived period at [endMs] (clean stop, or a restart after the process died).
+     * A [FaultKind.VERSION_MISMATCH] period is NOT closed here: the incompatibility outlives the bridge process and is
+     * only resolved by a [VersionCompatibility.MATCH] from a real watch message (Batch 8c, R10-F3).
+     */
     @Synchronized
     fun closeOpen(endMs: Long) {
         val list = load()
         var changed = false
         list.forEachIndexed { i, p ->
-            if (p.endMs == null) { list[i] = p.copy(endMs = maxOf(endMs, p.startMs)); changed = true }
+            if (p.endMs == null && p.kind != FaultKind.VERSION_MISMATCH) { list[i] = p.copy(endMs = maxOf(endMs, p.startMs)); changed = true }
         }
         if (changed) save(list, wallClockMs())
     }
@@ -93,7 +97,11 @@ class FaultLog(private val store: StringStore, private val wallClockMs: () -> Lo
 
     private fun save(list: MutableList<FaultPeriod>, nowMs: Long) {
         list.removeAll { it.endMs != null && it.endMs < nowMs - FAULT_LOG_RETENTION_MS }
-        while (list.size > FAULT_LOG_MAX_ENTRIES) list.removeAt(0)
+        while (list.size > FAULT_LOG_MAX_ENTRIES) {
+            // An open version period is live state, not history: drop the oldest other entry instead.
+            val evict = list.indexOfFirst { !(it.kind == FaultKind.VERSION_MISMATCH && it.endMs == null) }
+            list.removeAt(if (evict >= 0) evict else 0)
+        }
         store.put(KEY, JSONArray().also { arr ->
             list.forEach { arr.put(JSONObject().put("k", it.kind.name).put("s", it.startMs).apply { it.endMs?.let { e -> put("e", e) } }) }
         }.toString())

@@ -167,4 +167,28 @@ class MorningSummaryTest {
     @Test fun faultKind_mapsEveryBridgeFault() {
         BridgeFault.values().filter { it != BridgeFault.NONE }.forEach { assertNotNull(FaultKind.from(it)) }
     }
+
+    @Test fun versionMismatch_isLeftOutOfTheSummary_untilBatch8c() {
+        val d = buildSummary(
+            listOf(p(FaultKind.VERSION_MISMATCH, start + H, null), p(FaultKind.NO_WATCH_DATA, start + 2 * H, start + 3 * H)),
+            start, end,
+        )
+        assertEquals(SummaryData(1, 60, listOf(FaultKind.NO_WATCH_DATA to 60L)), d)
+        assertEquals(SummaryData(0, 0, emptyList()), buildSummary(listOf(p(FaultKind.VERSION_MISMATCH, start, null)), start, end))
+    }
+
+    @Test fun receiver_withOpenVersionMismatch_saysNoInterruptions_andDoesNotCrash() {
+        BridgePrefs.setWasBridging(app, true)
+        val store = MemoryStore()
+        val now = 10 * H
+        FaultLog(store) { now }.add(p(FaultKind.VERSION_MISMATCH, now - 5 * H, null))
+        ServiceLiveness(store, { now - MIN }, { 0L }).touch()
+        receiver(store, now).onReceive(app, Intent())
+        assertEquals("No interruptions last night.",
+            shadowOf(nm).getNotification(BridgeNotifications.SUMMARY_NOTIFICATION_ID).extras.getString("android.text"))
+    }
+
+    @Test fun faultKind_versionMismatchIsNotABridgeFault() {
+        assertTrue(BridgeFault.values().none { it.name == FaultKind.VERSION_MISMATCH.name })
+    }
 }

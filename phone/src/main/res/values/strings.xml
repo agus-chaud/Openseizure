@@ -13,6 +13,9 @@
     <string name="bridge_start_failed_title">SeizureGuard: monitoring is not working</string>
     <string name="bridge_start_failed_text">The bridge could not start. Open SeizureGuard and allow the Nearby devices (Bluetooth) permission.</string>
     <string name="bridge_restart_needed_text">The phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge.</string>
+    <string name="version_notice_title">SeizureGuard: update needed</string>
+    <string name="version_notice_mismatch">SeizureGuard on the watch and on this phone are different versions. Update both to the same version.</string>
+    <string name="version_notice_missing">SeizureGuard on the watch looks out of date. Update it to the latest version.</string>
     <string name="bridge_summary_channel">Morning summary (silent)</string>
     <string name="summary_title">SeizureGuard: last night</string>
     <string name="summary_none">No interruptions last night.</string>

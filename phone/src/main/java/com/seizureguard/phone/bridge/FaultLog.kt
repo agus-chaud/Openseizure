@@ -53,19 +53,32 @@ class FaultLog(private val store: StringStore, private val wallClockMs: () -> Lo
     /**
      * Tracks the contract-version period independently of [onFault]: it opens on the first incompatible result,
      * closes ONLY on a [VersionCompatibility.MATCH] from a real watch settings message, and never closes, replaces or
-     * hides another open period. Writes only on a transition.
+     * hides another open period. Writes only on a transition (a period opening or closing, or the incompatible result
+     * changing between MISMATCH and MISSING, which only picks the notice wording).
      */
     @Synchronized
     fun onVersionCompatibility(result: VersionCompatibility) {
         val list = load()
         val open = list.lastOrNull { it.endMs == null && it.kind == FaultKind.VERSION_MISMATCH }
         val now = wallClockMs()
+        if (result.isIncompatible && store.get(KEY_VERSION_RESULT) != result.name) store.put(KEY_VERSION_RESULT, result.name)
         when {
             result.isIncompatible && open == null -> list += FaultPeriod(FaultKind.VERSION_MISMATCH, now, null)
             !result.isIncompatible && open != null -> list[list.indexOf(open)] = open.copy(endMs = maxOf(now, open.startMs))
             else -> return
         }
         save(list, now)
+    }
+
+    /**
+     * The incompatible result behind the currently open [FaultKind.VERSION_MISMATCH] period, or null when none is open.
+     * Falls back to [VersionCompatibility.MISMATCH] (the stronger wording) when the period predates this record.
+     */
+    @Synchronized
+    fun openVersionResult(): VersionCompatibility? {
+        if (load().none { it.endMs == null && it.kind == FaultKind.VERSION_MISMATCH }) return null
+        val saved = VersionCompatibility.values().firstOrNull { it.name == store.get(KEY_VERSION_RESULT) }
+        return saved?.takeIf { it.isIncompatible } ?: VersionCompatibility.MISMATCH
     }
 
     /**
@@ -123,5 +136,6 @@ class FaultLog(private val store: StringStore, private val wallClockMs: () -> Lo
 
     private companion object {
         const val KEY = "fault_periods"
+        const val KEY_VERSION_RESULT = "version_result"
     }
 }

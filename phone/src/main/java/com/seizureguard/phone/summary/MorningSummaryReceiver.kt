@@ -54,11 +54,16 @@ class MorningSummaryReceiver : BroadcastReceiver() {
         }
 
         fun summaryText(context: Context, d: SummaryData): String {
-            if (d.interruptions == 0) return context.getString(R.string.summary_none)
-            val kinds = d.minutesByKind.joinToString(", ") { context.getString(kindLabel(it.first)) }
-            return context.resources.getQuantityString(
-                R.plurals.summary_interrupted, d.interruptions, d.interruptions, d.totalMinutes, kinds,
-            )
+            val base = if (d.interruptions == 0) {
+                context.getString(R.string.summary_none)
+            } else {
+                val kinds = d.minutesByKind.joinToString(", ") { context.getString(kindLabel(it.first)) }
+                context.resources.getQuantityString(
+                    R.plurals.summary_interrupted, d.interruptions, d.interruptions, d.totalMinutes, kinds,
+                )
+            }
+            // A version difference is a note on its own line, never an interruption: data kept flowing.
+            return if (d.versionMismatch) base + "\n" + context.getString(R.string.summary_version_note) else base
         }
 
         private fun kindLabel(kind: FaultKind) = when (kind) {
@@ -68,7 +73,7 @@ class MorningSummaryReceiver : BroadcastReceiver() {
             FaultKind.OSD_REJECTS_DATA -> R.string.summary_kind_osd_rejects_data
             FaultKind.OSD_DATA_STALE -> R.string.summary_kind_osd_data_stale
             FaultKind.SERVICE_DOWN -> R.string.summary_kind_service_down
-            FaultKind.VERSION_MISMATCH -> R.string.summary_kind_version_mismatch // not reachable until 8c: buildSummary omits it
+            FaultKind.VERSION_MISMATCH -> R.string.summary_kind_version_mismatch // not an interruption: buildSummary reports it as SummaryData.versionMismatch, never in minutesByKind
         }
     }
 }

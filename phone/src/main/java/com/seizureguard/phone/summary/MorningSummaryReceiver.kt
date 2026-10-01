@@ -68,6 +68,7 @@ class MorningSummaryReceiver : BroadcastReceiver() {
             FaultKind.OSD_REJECTS_DATA -> R.string.summary_kind_osd_rejects_data
             FaultKind.OSD_DATA_STALE -> R.string.summary_kind_osd_data_stale
             FaultKind.SERVICE_DOWN -> R.string.summary_kind_service_down
+            FaultKind.VERSION_MISMATCH -> R.string.summary_kind_version_mismatch // not reachable until 8c: buildSummary omits it
         }
     }
 }

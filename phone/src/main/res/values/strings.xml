@@ -26,6 +26,7 @@
     <string name="summary_kind_osd_rejects_data">OSD rejected data</string>
     <string name="summary_kind_osd_data_stale">OSD not analysing</string>
     <string name="summary_kind_service_down">phone stopped</string>
+    <string name="summary_kind_version_mismatch">watch and phone app versions differ</string>
     <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, never with sound or vibration.
 
 Before starting:

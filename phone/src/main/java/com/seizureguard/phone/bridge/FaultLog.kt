@@ -8,7 +8,10 @@ const val FAULT_LOG_RETENTION_MS = 14L * 24 * 60 * 60 * 1000
 const val FAULT_LOG_MAX_ENTRIES = 300
 
 enum class FaultKind {
-    NO_WATCH_DATA, OSD_UNREACHABLE, OSD_WRONG_DATASOURCE, OSD_REJECTS_DATA, OSD_DATA_STALE, SERVICE_DOWN;
+    NO_WATCH_DATA, OSD_UNREACHABLE, OSD_WRONG_DATASOURCE, OSD_REJECTS_DATA, OSD_DATA_STALE, SERVICE_DOWN,
+
+    /** Watch and companion transport-contract versions differ (Batch 8b). Not a [BridgeFault]: see [FaultLog.onVersionCompatibility]. */
+    VERSION_MISMATCH;
 
     companion object {
         fun from(fault: BridgeFault): FaultKind? = if (fault == BridgeFault.NONE) null else valueOf(fault.name)
@@ -34,15 +37,34 @@ internal class PrefsStringStore(context: Context) : StringStore {
 class FaultLog(private val store: StringStore, private val wallClockMs: () -> Long = System::currentTimeMillis) {
     private var periods: MutableList<FaultPeriod>? = null
 
+    /** Tracks the single open [BridgeFault]-derived period; a [FaultKind.VERSION_MISMATCH] period is never touched here. */
     @Synchronized
     fun onFault(fault: BridgeFault) {
         val list = load()
         val kind = FaultKind.from(fault)
-        val open = list.lastOrNull { it.endMs == null }
+        val open = list.lastOrNull { it.endMs == null && it.kind != FaultKind.VERSION_MISMATCH }
         if (open?.kind == kind) return
         val now = wallClockMs()
         if (open != null) list[list.indexOf(open)] = open.copy(endMs = now)
         if (kind != null) list += FaultPeriod(kind, now, null)
+        save(list, now)
+    }
+
+    /**
+     * Tracks the contract-version period independently of [onFault]: it opens on the first incompatible result,
+     * closes on a [VersionCompatibility.MATCH], and never closes, replaces or hides another open period.
+     * Writes only on a transition.
+     */
+    @Synchronized
+    fun onVersionCompatibility(result: VersionCompatibility) {
+        val list = load()
+        val open = list.lastOrNull { it.endMs == null && it.kind == FaultKind.VERSION_MISMATCH }
+        val now = wallClockMs()
+        when {
+            result.isIncompatible && open == null -> list += FaultPeriod(FaultKind.VERSION_MISMATCH, now, null)
+            !result.isIncompatible && open != null -> list[list.indexOf(open)] = open.copy(endMs = maxOf(now, open.startMs))
+            else -> return
+        }
         save(list, now)
     }
 

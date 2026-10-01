@@ -22,9 +22,13 @@ private fun union(intervals: List<LongRange>): List<LongRange> {
     return merged
 }
 
-/** Open periods run to the window end; everything is clipped to the window; overlaps count as one interruption. */
+/**
+ * Open periods run to the window end; everything is clipped to the window; overlaps count as one interruption.
+ * [FaultKind.VERSION_MISMATCH] is left out until Batch 8c defines its caregiver wording: data keeps flowing to OSD
+ * during a mismatch, so counting it as an "interruption" of monitoring would mislabel the night.
+ */
 fun buildSummary(periods: List<FaultPeriod>, windowStartMs: Long, windowEndMs: Long): SummaryData {
-    val clipped = periods.mapNotNull { p ->
+    val clipped = periods.filter { it.kind != FaultKind.VERSION_MISMATCH }.mapNotNull { p ->
         val s = maxOf(p.startMs, windowStartMs)
         val e = minOf(p.endMs ?: windowEndMs, windowEndMs)
         if (e > s) p.kind to (s..e) else null

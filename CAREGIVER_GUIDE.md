@@ -66,6 +66,12 @@ una falla no suena ni vibra en ninguno de los dos.
 > Si la pantalla dice **"ALARMA"** con un texto chico "⚠ Monitoreo degradado" debajo, la alarma es
 > real: actuá igual y arreglá la falla después.
 
+**Un aviso más, también silencioso, en el teléfono de la persona:** si el reloj y la aplicación del
+teléfono ("SeizureGuard Companion") tienen **versiones distintas**, el teléfono muestra una
+notificación que dice **"SeizureGuard: update needed"** (está en inglés), sin sonido ni vibración.
+El envío de datos **no se corta**, pero con versiones distintas **no está garantizado que la
+detección funcione bien**. No es una emergencia: arreglalo **de día**, no a las 3 de la mañana.
+
 > 👉 El SMS solo hace ruido en tu teléfono **si vos lo dejaste configurado para eso**. Mirá la
 > sección "Tu teléfono" más abajo. Es lo más fácil de olvidar.
 
@@ -127,11 +133,37 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
 - Al iniciar la aplicación del teléfono se **negó un permiso** (Bluetooth): no arranca, y **tampoco
   avisa fuerte**.
 - **Tu teléfono** está en silencio o en No molestar sin la excepción para este contacto.
+- El **reloj** y la aplicación **"SeizureGuard Companion"** del teléfono tienen **versiones
+  distintas**: el sistema sigue mandando datos, pero **no está garantizado que se entiendan bien**.
+  Avisa con la notificación **"SeizureGuard: update needed"**, sin sonido.
 - Convulsiones **sin mucho movimiento** (ausencias, algunas focales): **puede no detectarlas**.
   Detecta sobre todo las de **movimiento fuerte** (tónico-clónicas).
 
 Además: **no llama solo a una ambulancia** (te avisa a vos y vos decidís) y **no es un
 diagnóstico médico** (solo detecta un patrón de movimiento).
+
+---
+
+## Si el teléfono dice "SeizureGuard: update needed"
+
+| Dice | Qué significa |
+|---|---|
+| "SeizureGuard on the watch and on this phone are different versions. Update both to the same version." | El reloj y el teléfono tienen versiones distintas de SeizureGuard. |
+| "SeizureGuard on the watch looks out of date. Update it to the latest version." | El reloj no informa su versión: casi seguro tiene una versión vieja. Hay que actualizar el reloj. |
+
+1. **Avisá a quien configuró el sistema** para instalar la **misma versión** en el reloj y en el
+   teléfono. Hacelo **de día**, nunca con la persona durmiendo: mientras se actualiza, el sistema no
+   protege.
+2. **Después de actualizar**, con "SeizureGuard Companion" iniciada (**"Start bridge"**),
+   **detené y volvé a iniciar el monitoreo en el reloj** ("Iniciar monitoreo"). El aviso se borra
+   **solo** cuando el reloj vuelve a mandar su versión y coincide. Si actualizaste solo el teléfono,
+   también hay que reiniciar el monitoreo del reloj.
+3. **No se puede borrar deslizándolo.** Si sigue ahí después del paso 2, las versiones todavía no
+   coinciden o el reloj no reenvió su versión: avisá a quien configuró el sistema.
+4. Mientras el aviso esté puesto, tratá la noche como **no confirmada**: extremá los otros cuidados
+   y repetí **la prueba de día**.
+5. Si tocás **"Stop bridge"**, el aviso **queda puesto** a propósito, hasta que las versiones
+   coincidan.
 
 ---
 
@@ -148,6 +180,8 @@ diagnóstico médico** (solo detecta un patrón de movimiento).
 - [ ] El teléfono está **cargando** durante toda la noche.
 - [ ] El **volumen de alarma** está alto y **No molestar** no está tapando la alarma.
 - [ ] **MUTE** no está activo en OpenSeizureDetector.
+- [ ] **No** hay una notificación **"SeizureGuard: update needed"**. Si está, el reloj y el teléfono
+      tienen versiones distintas: arreglalo **antes** de dormir (ver la sección con ese nombre).
 
 ### En el reloj
 
@@ -212,6 +246,13 @@ Causas que puede mencionar:
 | "OSD not analysing" | OpenSeizureDetector estaba abierta pero sin analizar. |
 | "phone stopped" | La aplicación del teléfono se detuvo un rato. |
 
+Puede aparecer además **en una línea aparte**: **"Note: the watch and phone apps were on different
+versions. Update both."** Significa que durante la noche el reloj y el teléfono tenían versiones
+distintas de SeizureGuard. **No cuenta como corte** (por eso puede aparecer junto a "No
+interruptions last night."), pero la noche **no está confirmada**: seguí los pasos de "Si el
+teléfono dice 'SeizureGuard: update needed'". En la notificación cerrada esa línea puede quedar
+oculta: **abrila (expandila)** para leerla completa.
+
 **⚠️ El resumen NO está garantizado.** No llega si la aplicación "SeizureGuard Companion" se cerró
 a la fuerza, si el teléfono estaba apagado, si alguien tocó **"Stop bridge"**, o si las
 notificaciones están bloqueadas. Además puede ser que solo avise de una parte de los cortes.
@@ -228,6 +269,9 @@ notificaciones están bloqueadas. Además puede ser que solo avise de una parte 
   y el reloj, y avisá a quien configuró el sistema.
 - [ ] **Si viste "⚠ MONITOREO DEGRADADO" en la pantalla o en las notificaciones del reloj** → algo
   falló: mismo procedimiento.
+- [ ] **Si el resumen trae la línea "Note: ... different versions"** → versiones distintas:
+  actualizá reloj y teléfono de día (ver "Si el teléfono dice 'SeizureGuard: update needed'") y
+  avisá a quien configuró el sistema.
 
 ---
 

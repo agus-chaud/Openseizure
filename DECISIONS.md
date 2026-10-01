@@ -2095,6 +2095,28 @@ obligatorio en la regla de `main`.
 
 ---
 
+## DEC-066: Batch 8c — una diferencia de versión se muestra en silencio y persiste hasta que coincidan
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 8c | **Fecha:** 2026-10-01
+
+**Qué se decidió:**
+- La anotación `VERSION_MISMATCH` **sobrevive a reinicios** del celular y solo se cierra cuando el
+  reloj manda una versión que coincide (arregla R10-F3).
+- Mientras esté abierta, el celular muestra una notificación **silenciosa** y fija, "SeizureGuard:
+  update needed" (ID 4105, mismo canal sin sonido que las fallas, DEC-057), con texto distinto para
+  "versiones distintas" y para "el reloj no informa versión" (más suave). No se cancela con "Stop
+  bridge": la incompatibilidad sigue existiendo.
+- El resumen de la mañana agrega una nota aparte; **no cuenta como corte** porque los datos siguieron
+  llegando a OSD. Las noches sin diferencia de versión dan el mismo texto que antes.
+- No se movió la anotación fuera del hilo principal (R10-F2): requería un ejecutor serializado para
+  no invertir el orden MISMATCH/MATCH; hoy es una escritura breve solo en las transiciones.
+
+**Revisión:** `safety-reviewer` R11: 8c-1 PASS, 8c-2/8c-3 PARTIAL PASS con la condición de la guía,
+cumplida (sección 14 del registro). Residual R11-F1 (aviso viejo hasta reiniciar el monitoreo del
+reloj), mitigado en la guía.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

@@ -306,7 +306,29 @@ detectar). Ver DEC-065.
 | ID | Severidad | Hallazgo | Estado |
 |---|---|---|---|
 | R10-F2 | BAJO | La anotación corre en el hilo principal y usa el mismo lock que el tick de salud. | Seguimiento opcional (8c) |
-| R10-F3 | BAJO hoy / MEDIO para 8c | Al reiniciar el servicio del celular, la anotación de versión se cierra y no se reabre hasta que el reloj reinicie el monitoreo. | **Resolver en 8c** (antes de mostrarla) |
+| R10-F3 | BAJO hoy / MEDIO para 8c | Al reiniciar el servicio del celular, la anotación de versión se cierra y no se reabre hasta que el reloj reinicie el monitoreo. | **ARREGLADO** (8c-1, `baa31fb`); queda el residual R11-F1 |
 | R10-F4 | INFO | La poda del registro no distingue tipos; impacto solo tras ~300 ciclos en 14 días. | Sin acción |
 | R10-F5 | INFO | La spec PCB-9 dice "rather than proceeding": dejar escrito que una diferencia se muestra y nunca bloquea. | DEC-065; spec en Batch 9 |
 | R10-F6 | INFO | Texto suave para "sin versión" en la 8c; R9-F2 (batería -1) sigue abierto. | 8c |
+
+---
+
+## 14. `safety-reviewer` R11 sobre el Batch 8c (2026-10-01)
+
+**Qué se revisó:** `8c-1` (`baa31fb`: la anotación `VERSION_MISMATCH` sobrevive a reinicios y solo
+se cierra con un MATCH real), `8c-2` (`20a1d8c`: notificación silenciosa "SeizureGuard: update
+needed", ID 4105, mismo canal silencioso que las fallas) y `8c-3` (`6bf1420`: nota en el resumen de
+la mañana, sin contar como corte).
+
+**Veredicto:** `8c-1` **PASS**; `8c-2` y `8c-3` **PARTIAL PASS** con una sola condición: documentar
+el aviso y la nota en `CAREGIVER_GUIDE.md` (hecho en `mia`, mismo commit que esta sección). La ruta de
+la alarma no se tocó; ningún código nuevo puede tumbar el servicio (todo envuelto en `runCatching`,
+después de encolar el envío a OSD).
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R11-F1 | MEDIO | El aviso puede quedar viejo: si solo se actualiza el teléfono, "update needed" sigue hasta que el reloj reinicie el monitoreo (el reloj manda su versión solo al iniciar). Falso positivo persistente, no se puede deslizar. | Mitigado en la guía (paso 2: reiniciar el monitoreo del reloj). Seguimiento: guardar la última versión del reloj y re-evaluarla al iniciar el servicio |
+| R11-F2 | BAJO | `restore()` corre en `onCreate` antes de `startForeground`; barato y envuelto. | Sin acción |
+| R11-F3 | INFO | Preexistente: `postStartFailure` en `enterForeground` no está envuelto. | Endurecimiento opcional |
+| R11-F4 | BAJO | Con la notificación del resumen cerrada, la nota puede quedar oculta. | Documentado en la guía (expandirla) |
+| R11-F7 | INFO | R9-F2 (batería -1 rechazada) podría dejar el aviso viejo si el reloj arreglado sigue mandando -1. | Seguimiento (Batch 9) |

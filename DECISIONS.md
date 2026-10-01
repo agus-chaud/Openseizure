@@ -2073,6 +2073,28 @@ flavors, re-corridos por el orquestador. Guía del cuidador actualizada (MUTE, c
 
 ---
 
+## DEC-065: Batch 8 en tres partes; una diferencia de versión reloj/celular se anota y nunca corta la detección
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 8 | **Fecha:** 2026-10-01
+
+**Qué se decidió:** el Batch 8 (compatibilidad de versiones) se divide en 8a (el reloj informa su
+versión, PR #35), 8b (el celular compara y anota) y 8c (aviso silencioso). En 8b:
+- Versión del contrato del celular = 1; resultados `MATCH`, `MISMATCH` y `MISSING`. Un reloj que no
+  manda versión (anterior a la 8a, o incluso al Batch 7, mismo `applicationId`) cuenta como
+  incompatible.
+- La diferencia se anota como período `VERSION_MISMATCH` propio en el registro de fallas. **No** es un
+  `BridgeFault`: si lo fuera, el celular dejaría de mandar OK al reloj y el reloj quedaría en DEGRADED.
+- **Nunca se corta el envío a OSD** por una diferencia de versión. La spec PCB-9 dice "rather than
+  proceeding"; se interpreta como "no ignorarla en silencio", porque cortar el envío garantizaría
+  convulsiones sin detectar. Los parsers estrictos ya rechazan mensajes fuera de contrato.
+
+**También:** el CI ahora corre tests y lint de `:phone` (PR #36). El check nuevo todavía no es
+obligatorio en la regla de `main`.
+
+**Revisión:** `safety-reviewer` R10: 8b-1 PASS, 8b-2 PASS condicionado a R10-F3 en 8c (sección 13).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

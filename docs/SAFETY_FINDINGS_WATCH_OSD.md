@@ -285,3 +285,28 @@ viejo siguen funcionando. Sin cambios en alarma, vibración, vigilancia ni const
 | R9-F1 | BAJO | El flavor `osdDirectDebug` manda la clave nueva directo a OSD; se espera que OSD la ignore, sin confirmar en dispositivo. | Seguimiento (solo flavor de prueba) |
 | R9-F2 | INFO | Preexistente: si el reloj no puede leer la batería manda -1 y el celular rechaza ese mensaje. | Revisar en 8b |
 | R9-F3 | INFO | El test de "no se reenvía a OSD" llama al codec, no a `postSettings`; la garantía viene del código leído. | Seguimiento |
+
+---
+
+## 13. `safety-reviewer` R10 sobre el Batch 8b (2026-10-01)
+
+**Qué se revisó:** `8b-1` (`190ee68`: comparación de versiones `MATCH`/`MISMATCH`/`MISSING`,
+`COMPANION_CONTRACT_VERSION = 1`, período `VERSION_MISMATCH` independiente en el registro de fallas,
+excluido del resumen matutino) y `8b-2` (`659957c`: el celular evalúa la versión en cada
+`/osd/settings` real del reloj, después de encolar el envío a OSD).
+
+**Veredicto:** `8b-1` **PASS** (sin efecto en ejecución, nadie lo llama todavía). `8b-2` **PASS**
+condicionado a resolver R10-F3 en la 8c. Nada demora, descarta ni altera el envío a OSD ni el relay
+de alarmas; la diferencia de versión no es un `BridgeFault`, así que nunca deja al reloj en DEGRADED.
+
+**Decisiones registradas:** si el reloj no manda versión cuenta como incompatible (solo se anota);
+una diferencia de versión **nunca corta** el envío a OSD (cortar garantizaría convulsiones sin
+detectar). Ver DEC-065.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R10-F2 | BAJO | La anotación corre en el hilo principal y usa el mismo lock que el tick de salud. | Seguimiento opcional (8c) |
+| R10-F3 | BAJO hoy / MEDIO para 8c | Al reiniciar el servicio del celular, la anotación de versión se cierra y no se reabre hasta que el reloj reinicie el monitoreo. | **Resolver en 8c** (antes de mostrarla) |
+| R10-F4 | INFO | La poda del registro no distingue tipos; impacto solo tras ~300 ciclos en 14 días. | Sin acción |
+| R10-F5 | INFO | La spec PCB-9 dice "rather than proceeding": dejar escrito que una diferencia se muestra y nunca bloquea. | DEC-065; spec en Batch 9 |
+| R10-F6 | INFO | Texto suave para "sin versión" en la 8c; R9-F2 (batería -1) sigue abierto. | 8c |

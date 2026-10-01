@@ -2,8 +2,8 @@ name: CI
 
 # Corre en cada push a main y en cada Pull Request.
 # Objetivo: que ningun cambio (propio o de un contribuidor externo) entre sin
-# pasar los tests unitarios y el lint del modulo :wear. Es la red de seguridad
-# del proyecto ahora que el repo se publica en la org OpenSeizureDetector.
+# pasar los tests unitarios y el lint de los modulos :wear y :phone. Es la red
+# de seguridad del proyecto ahora que el repo se publica en la org OpenSeizureDetector.
 on:
   push:
     branches: [main]
@@ -52,4 +52,39 @@ jobs:
           path: |
             wear/build/reports/tests/
             wear/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+
+  # El puente del celular (:phone) es parte de la ruta de la alarma: reenvia los datos
+  # del reloj a OSD y devuelve el estado de alarma. Job separado para que el nombre del
+  # check de :wear (requerido por la regla de la rama main) no cambie.
+  test-phone:
+    name: Unit tests + lint (:phone)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Tests unitarios (Robolectric, JVM)
+        run: ./gradlew :phone:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew :phone:lintDebug --no-daemon --stacktrace
+
+      - name: Subir reportes de test y lint
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reportes-phone
+          path: |
+            phone/build/reports/tests/
+            phone/build/reports/lint-results-*.html
           if-no-files-found: ignore

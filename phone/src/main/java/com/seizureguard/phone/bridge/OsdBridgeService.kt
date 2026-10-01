@@ -36,6 +36,12 @@ internal interface BridgeObserver {
     /** Current fault, every [HEALTH_TICK_MS]. */
     fun onHealthTick(fault: BridgeFault)
 
+    /**
+     * A valid `/osd/settings` message really sent by the watch (never the handshake default). Called AFTER the
+     * message was queued for OSD, from the main thread, and must not throw: forwarding never depends on it.
+     */
+    fun onWatchSettings(settings: WatchSettings) = Unit
+
     companion object {
         val NONE = object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = Unit
@@ -61,10 +67,10 @@ internal interface BridgeObserver {
 class OsdBridgeService : Service() {
 
     internal var observer: BridgeObserver = BridgeObserver.NONE
-    private val forwarder = OsdHttpForwarder()
+    internal var forwarder = OsdHttpForwarder() // seam: tests point it at a loopback stub
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val accelSlot = LatestSlot<DoubleArray>()
-    private val settingsSlot = LatestSlot<WatchSettings>()
+    internal val settingsSlot = LatestSlot<WatchSettings>()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val pollMutex = Mutex()
     private lateinit var state: BridgeState
@@ -97,8 +103,10 @@ class OsdBridgeService : Service() {
         )
         val notifications = BridgeNotifications(this)
         val (faultLog, liveness) = BridgeHistory.of(this)
+        val versionRecorder = VersionMismatchRecorder(faultLog)
         return object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)
+            override fun onWatchSettings(settings: WatchSettings) { versionRecorder.onWatchSettings(settings) }
             override fun onHealthTick(fault: BridgeFault) {
                 notifications.onHealthTick(fault)
                 faultLog.onFault(fault)
@@ -198,7 +206,7 @@ class OsdBridgeService : Service() {
         }
     }
 
-    private fun onMessage(event: MessageEvent) {
+    internal fun onMessage(event: MessageEvent) {
         when (event.path) {
             PATH_ACCEL -> {
                 val samples = WatchMessageParser.parseAccel(event.data)
@@ -224,6 +232,8 @@ class OsdBridgeService : Service() {
                 state.onSettings(s)
                 settingsSlot.offer(s)
                 wake.trySend(Unit)
+                // After the message is queued for OSD: a version result may be recorded but never stops forwarding.
+                runCatching { observer.onWatchSettings(s) }.onFailure { Log.e(TAG, "Version check failed", it) }
             }
         }
     }

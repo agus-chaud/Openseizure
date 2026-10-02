@@ -136,11 +136,37 @@ class FaultLogTest {
         assertTrue(store.get("fault_periods")!!.contains("\"VERSION_MISMATCH\""))
     }
 
-    @Test fun versionMismatch_closeOpenClosesItLikeAnyOtherOpenPeriod() {
+    // ── R10-F3 (Batch 8c): the version period survives stop/start and restarts; only a real MATCH closes it ──
+
+    @Test fun versionMismatch_closeOpenLeavesItOpen_butStillClosesBridgeFaults() {
         val log = log()
+        log.onFault(BridgeFault.OSD_UNREACHABLE) // 1000
+        now = 2_000
         log.onVersionCompatibility(VersionCompatibility.MISMATCH)
         log.closeOpen(4_000)
-        assertEquals(4_000L, log.periods().single().endMs)
+        assertEquals(
+            listOf(FaultPeriod(FaultKind.OSD_UNREACHABLE, 1_000, 4_000), FaultPeriod(FaultKind.VERSION_MISMATCH, 2_000, null)),
+            log.periods(),
+        )
+    }
+
+    @Test fun versionMismatch_survivesRestartAndCloseOpen_thenMatchClosesIt() {
+        log().onVersionCompatibility(VersionCompatibility.MISSING)
+        val reborn = log() // process restart: new instance over the same storage
+        reborn.closeOpen(3_000) // what BridgeHistory does on service start / clean stop
+        assertEquals(listOf(FaultPeriod(FaultKind.VERSION_MISMATCH, 1_000, null)), log().periods())
+        now = 5_000
+        reborn.onVersionCompatibility(VersionCompatibility.MATCH)
+        assertEquals(listOf(FaultPeriod(FaultKind.VERSION_MISMATCH, 1_000, 5_000)), log().periods())
+    }
+
+    @Test fun entryCap_neverEvictsAnOpenVersionPeriod() {
+        val log = log()
+        log.onVersionCompatibility(VersionCompatibility.MISMATCH) // oldest entry, open
+        repeat(FAULT_LOG_MAX_ENTRIES + 20) { log.add(FaultPeriod(FaultKind.NO_WATCH_DATA, now, now + 1)) }
+        assertEquals(FAULT_LOG_MAX_ENTRIES, log.periods().size)
+        assertEquals(FaultKind.VERSION_MISMATCH, log.periods().first().kind)
+        assertNull(log.periods().first().endMs)
     }
 
     @Test fun oldLogWithoutTheNewKind_stillLoads_andNewKindCanBeAdded() {

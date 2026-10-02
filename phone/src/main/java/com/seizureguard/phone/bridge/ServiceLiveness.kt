@@ -62,15 +62,27 @@ internal object BridgeHistory {
 
     fun onServiceStart(context: android.content.Context) {
         val (log, liveness) = of(context)
-        val lastAlive = liveness.lastAliveMs()
-        val period = liveness.onServiceStart(BridgePrefs.wasBridging(context))
-        log.closeOpen(if (lastAlive > 0) lastAlive else System.currentTimeMillis())
-        period?.let(log::add)
+        onServiceStart(log, liveness, BridgePrefs.wasBridging(context), System.currentTimeMillis())
     }
 
     fun onCleanStop(context: android.content.Context) {
         val (log, liveness) = of(context)
+        onCleanStop(log, liveness, System.currentTimeMillis())
+    }
+
+    /**
+     * Context-free core of [onServiceStart] (JVM-testable). Closes open bridge-fault periods at the last alive stamp;
+     * an open VERSION_MISMATCH period is kept by [FaultLog.closeOpen] (R10-F3).
+     */
+    internal fun onServiceStart(log: FaultLog, liveness: ServiceLiveness, wasBridging: Boolean, nowMs: Long) {
+        val lastAlive = liveness.lastAliveMs()
+        val period = liveness.onServiceStart(wasBridging)
+        log.closeOpen(if (lastAlive > 0) lastAlive else nowMs)
+        period?.let(log::add)
+    }
+
+    internal fun onCleanStop(log: FaultLog, liveness: ServiceLiveness, nowMs: Long) {
         liveness.markCleanStop()
-        log.closeOpen(System.currentTimeMillis())
+        log.closeOpen(nowMs)
     }
 }

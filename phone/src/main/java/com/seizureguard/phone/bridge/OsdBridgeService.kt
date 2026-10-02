@@ -103,7 +103,9 @@ class OsdBridgeService : Service() {
         )
         val notifications = BridgeNotifications(this)
         val (faultLog, liveness) = BridgeHistory.of(this)
-        val versionRecorder = VersionMismatchRecorder(faultLog)
+        val versionRecorder = VersionMismatchRecorder(faultLog, notice = VersionNoticeNotifier(this))
+        // An open version period survives restarts (R10-F3): put its silent notice back, or clear a stale one.
+        versionRecorder.restore()
         return object : BridgeObserver {
             override fun onAlarmDataPolled(body: String?) = relay.onAlarmDataPolled(body)
             override fun onWatchSettings(settings: WatchSettings) { versionRecorder.onWatchSettings(settings) }

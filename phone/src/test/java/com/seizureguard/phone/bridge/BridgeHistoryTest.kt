@@ -38,6 +38,7 @@ class BridgeHistoryTest {
         val reborn = log()
         BridgeHistory.onServiceStart(reborn, liveness(9_000), wasBridging = true, nowMs = 9_000)
         assertEquals(listOf(FaultPeriod(FaultKind.VERSION_MISMATCH, 2_000, null)), reborn.periods().filter { it.endMs == null })
+        assertEquals(VersionCompatibility.MISMATCH, reborn.openVersionResult())
     }
 
     @Test fun crashRestart_closesTheBridgeFaultAtLastAlive_andKeepsTheVersionPeriod() {
@@ -51,5 +52,6 @@ class BridgeHistoryTest {
         assertEquals(1_000L, byKind.getValue(FaultKind.NO_WATCH_DATA).endMs)
         assertNull(byKind.getValue(FaultKind.VERSION_MISMATCH).endMs)
         assertNotNull(byKind[FaultKind.SERVICE_DOWN]) // downtime still reported exactly as before
+        assertEquals(VersionCompatibility.MISSING, reborn.openVersionResult())
     }
 }

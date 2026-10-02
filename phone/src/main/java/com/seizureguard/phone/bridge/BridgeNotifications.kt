@@ -20,6 +20,15 @@ fun faultAction(fault: BridgeFault, shown: BridgeFault): FaultAction = when {
     else -> FaultAction.NONE
 }
 
+/**
+ * Shows the "watch and phone versions differ" notice (Batch 8c) on the existing silent fault channel, under its own
+ * notification id so it never replaces, hides or is hidden by the bridge-fault notification.
+ */
+internal class VersionNoticeNotifier(private val context: Context) : VersionNoticeSink {
+    override fun show(result: VersionCompatibility) = BridgeNotifications.postVersionNotice(context, result)
+    override fun clear() = BridgeNotifications.clearVersionNotice(context)
+}
+
 /** Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine. */
 internal class BridgeNotifications(private val context: Context) {
     private var shown = BridgeFault.NONE
@@ -51,6 +60,7 @@ internal class BridgeNotifications(private val context: Context) {
         const val FAULT_NOTIFICATION_ID = 4103
         const val SUMMARY_CHANNEL_ID = "osd_bridge_summary"
         const val SUMMARY_NOTIFICATION_ID = 4104
+        const val VERSION_NOTIFICATION_ID = 4105
         private const val TAG = "BridgeNotifications"
 
         fun faultTextRes(fault: BridgeFault): Int = when (fault) {
@@ -60,6 +70,29 @@ internal class BridgeNotifications(private val context: Context) {
             BridgeFault.OSD_REJECTS_DATA -> R.string.fault_osd_rejects_data
             BridgeFault.OSD_DATA_STALE -> R.string.fault_osd_data_stale
             BridgeFault.NONE -> R.string.bridge_status_text
+        }
+
+        /** MISMATCH: both apps differ; MISSING (a watch that advertises no version): the milder "looks out of date". */
+        fun versionTextRes(result: VersionCompatibility): Int = when (result) {
+            VersionCompatibility.MISSING -> R.string.version_notice_missing
+            VersionCompatibility.MISMATCH, VersionCompatibility.MATCH -> R.string.version_notice_mismatch
+        }
+
+        /** Silent, ongoing, passive: same channel and flags as every bridge fault, own id. No-op for [VersionCompatibility.MATCH]. */
+        fun postVersionNotice(context: Context, result: VersionCompatibility) {
+            if (!result.isIncompatible) return
+            notifySafely(
+                context, VERSION_NOTIFICATION_ID,
+                faultNotification(context, versionTextRes(result), titleRes = R.string.version_notice_title),
+            )
+        }
+
+        fun clearVersionNotice(context: Context) {
+            try {
+                nm(context).cancel(VERSION_NOTIFICATION_ID)
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not clear version notification", e)
+            }
         }
 
         fun buildStatus(context: Context): Notification {
@@ -112,7 +145,12 @@ internal class BridgeNotifications(private val context: Context) {
             )
         }
 
-        private fun faultNotification(context: Context, textRes: Int, contentIntent: PendingIntent? = null): Notification {
+        private fun faultNotification(
+            context: Context,
+            textRes: Int,
+            contentIntent: PendingIntent? = null,
+            titleRes: Int = R.string.bridge_start_failed_title,
+        ): Notification {
             val manager = nm(context)
             manager.deleteNotificationChannel(LEGACY_FAULT_CHANNEL_ID)
             manager.createNotificationChannel(
@@ -129,7 +167,7 @@ internal class BridgeNotifications(private val context: Context) {
             val text = context.getString(textRes)
             return NotificationCompat.Builder(context, FAULT_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_notify_error)
-                .setContentTitle(context.getString(R.string.bridge_start_failed_title))
+                .setContentTitle(context.getString(titleRes))
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setCategory(NotificationCompat.CATEGORY_STATUS)

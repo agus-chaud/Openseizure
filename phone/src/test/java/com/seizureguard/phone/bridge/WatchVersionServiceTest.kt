@@ -2,6 +2,8 @@ package com.seizureguard.phone.bridge
 
 import android.Manifest
 import android.app.Application
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.google.android.gms.wearable.MessageEvent
@@ -133,6 +135,60 @@ class WatchVersionServiceTest {
         assertEquals(1, open())
         service.onMessage(settingsMsg("1"))
         assertEquals(0, open())
+    }
+
+    // ── Batch 8c: silent notice + R10-F3 restart survival, through the real service wiring ──
+
+    private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun versionNotice() = shadowOf(nm).getNotification(BridgeNotifications.VERSION_NOTIFICATION_ID)
+    private fun createDefaultService() = Robolectric.buildService(OsdBridgeService::class.java).create().also { controller = it }.get()
+
+    @Test fun defaultObserver_postsTheSilentNotice_thenAServiceRestartRestoresIt_andOnlyMatchClearsIt() {
+        val processLog = BridgeHistory.of(app).first
+        processLog.onVersionCompatibility(VersionCompatibility.MATCH) // isolate from other tests: process-wide singleton
+        val first = createDefaultService()
+        assertNull(versionNotice())
+        first.onMessage(settingsMsg(null)) // watch older than 8a -> MISSING
+        assertEquals(
+            "SeizureGuard on the watch looks out of date. Update it to the latest version.",
+            versionNotice().extras.getString("android.text"),
+        )
+
+        // Service stopped and the process lost its notification state: the period is still open and the notice returns.
+        controller!!.destroy()
+        nm.cancel(BridgeNotifications.VERSION_NOTIFICATION_ID)
+        assertNull(versionNotice())
+        BridgeHistory.onCleanStop(app)
+        BridgeHistory.onServiceStart(app)
+        assertEquals(1, processLog.periods().count { it.kind == FaultKind.VERSION_MISMATCH && it.endMs == null })
+        val second = createDefaultService()
+        assertEquals(
+            "SeizureGuard on the watch looks out of date. Update it to the latest version.",
+            versionNotice().extras.getString("android.text"),
+        )
+
+        second.onMessage(settingsMsg("1")) // real MATCH from the watch
+        assertNull(versionNotice())
+        assertEquals(0, processLog.periods().count { it.kind == FaultKind.VERSION_MISMATCH && it.endMs == null })
+    }
+
+    @Test fun serviceStartWithNoOpenPeriod_clearsAStaleNoticeLeftByADeadProcess() {
+        BridgeHistory.of(app).first.onVersionCompatibility(VersionCompatibility.MATCH)
+        BridgeNotifications.postVersionNotice(app, VersionCompatibility.MISMATCH)
+        assertNotNull(versionNotice())
+        createDefaultService()
+        assertNull(versionNotice())
+    }
+
+    @Test fun versionNotice_doesNotTouchTheBridgeFaultNotification_orForwarding() {
+        BridgeHistory.of(app).first.onVersionCompatibility(VersionCompatibility.MATCH)
+        BridgeNotifications(app).onHealthTick(BridgeFault.OSD_UNREACHABLE)
+        val service = createDefaultService()
+        service.onMessage(settingsMsg("2"))
+        assertNotNull(versionNotice())
+        assertNotNull(shadowOf(nm).getNotification(BridgeNotifications.FAULT_NOTIFICATION_ID))
+        assertEquals(WatchSettings(87, 25, 2), service.settingsSlot.take()) // still queued for OSD
+        BridgeHistory.of(app).first.onVersionCompatibility(VersionCompatibility.MATCH)
     }
 
     // ── forwarding never depends on the version result ────────────────────────

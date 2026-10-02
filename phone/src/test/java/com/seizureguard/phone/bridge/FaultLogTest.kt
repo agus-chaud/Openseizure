@@ -148,6 +148,7 @@ class FaultLogTest {
             listOf(FaultPeriod(FaultKind.OSD_UNREACHABLE, 1_000, 4_000), FaultPeriod(FaultKind.VERSION_MISMATCH, 2_000, null)),
             log.periods(),
         )
+        assertEquals(VersionCompatibility.MISMATCH, log.openVersionResult())
     }
 
     @Test fun versionMismatch_survivesRestartAndCloseOpen_thenMatchClosesIt() {
@@ -158,6 +159,26 @@ class FaultLogTest {
         now = 5_000
         reborn.onVersionCompatibility(VersionCompatibility.MATCH)
         assertEquals(listOf(FaultPeriod(FaultKind.VERSION_MISMATCH, 1_000, 5_000)), log().periods())
+        assertNull(log().openVersionResult())
+    }
+
+    @Test fun openVersionResult_isNullWithoutAnOpenPeriod_andTracksTheLatestIncompatibleResult() {
+        val log = log()
+        assertNull(log.openVersionResult())
+        log.onVersionCompatibility(VersionCompatibility.MISSING)
+        assertEquals(VersionCompatibility.MISSING, log().openVersionResult()) // persisted across restarts
+        log.onVersionCompatibility(VersionCompatibility.MISMATCH) // same period, new wording
+        assertEquals(VersionCompatibility.MISMATCH, log().openVersionResult())
+        assertEquals(1, log.periods().size)
+        log.onVersionCompatibility(VersionCompatibility.MATCH)
+        assertNull(log().openVersionResult())
+    }
+
+    @Test fun openVersionResult_defaultsToMismatch_whenPeriodPredatesTheResultRecord() {
+        store.put("fault_periods", """[{"k":"VERSION_MISMATCH","s":1}]""") // written by 8b, no result key
+        assertEquals(VersionCompatibility.MISMATCH, log().openVersionResult())
+        store.put("version_result", "garbage")
+        assertEquals(VersionCompatibility.MISMATCH, log().openVersionResult())
     }
 
     @Test fun entryCap_neverEvictsAnOpenVersionPeriod() {
@@ -165,8 +186,8 @@ class FaultLogTest {
         log.onVersionCompatibility(VersionCompatibility.MISMATCH) // oldest entry, open
         repeat(FAULT_LOG_MAX_ENTRIES + 20) { log.add(FaultPeriod(FaultKind.NO_WATCH_DATA, now, now + 1)) }
         assertEquals(FAULT_LOG_MAX_ENTRIES, log.periods().size)
+        assertEquals(VersionCompatibility.MISMATCH, log.openVersionResult())
         assertEquals(FaultKind.VERSION_MISMATCH, log.periods().first().kind)
-        assertNull(log.periods().first().endMs)
     }
 
     @Test fun oldLogWithoutTheNewKind_stillLoads_andNewKindCanBeAdded() {

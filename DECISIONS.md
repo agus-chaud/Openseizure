@@ -3,8 +3,7 @@
 Este archivo documenta **por qué** tomamos cada decisión técnica relevante.
 La pregunta "por qué" es más valiosa que el "qué" — el código ya explica el qué.
 
-> Para un data scientist trainee: esto es el log de experimentos, pero para decisiones de ingeniería.
-> Cada entrada es una elección con alternativas consideradas y razones claras.
+> Para un data scientist trainee: esto es el log de experimentos, pero para decisiones de ingeniería. Cada entrada es una elección con alternativas consideradas y razones claras.
 
 ---
 
@@ -22,7 +21,8 @@ valioso), pero quedan marcadas como superadas:
   modelo **`deepEpiCnn_2026_01_24_Run24.pte`** (NO TFLite, NO `cnn_v024.tflite`). Tensor real:
   **`(1, 1, 750)`** (no `(1,750,1)`). Dependencia: `org.pytorch:executorch-android:1.0.1`.
 - Este repo es **módulo único `:wear`**. El módulo `:phone` propio fue **retirado** (lo reemplaza
-  la app OSD).
+  la app OSD). **Actualización (DEC-051):** se reintroduce parcialmente un módulo `:phone` con otro
+  propósito — puente de transporte reloj→OSD, no inferencia.
 
 **Decisiones SUPERADAS por este cambio** (válidas como historia, no como estado actual):
 - **DEC-002** (multi-módulo `:wear` + `:phone`) → hoy módulo único `:wear`.
@@ -1226,6 +1226,11 @@ Mezclarlos confundiría dos responsabilidades.
 adaptándose al formato que `SdDataSourceAw.java` de OSD **ya espera** (no al revés). Esta entrada
 **reemplaza** el contrato binario de DEC-034 y DEC-039.
 
+> ⚠️ **Bloqueante de transporte conocido (DEC-050):** este contrato JSON es correcto (matchea
+> `SdDataSourceAw`), pero hoy los mensajes **no llegan a OSD**: el Wear Data Layer los descarta por
+> *AppKey mismatch* — SeizureGuard y OSD no comparten package name ni certificado de firma. El
+> arreglo está en exploración SDD `watch-osd-message-delivery`. Ver **DEC-050**.
+
 > **Por qué cambió:** OSD parsea `accel_data` como JSON primero (`json.has("samples")`), y su
 > fallback binario lee `int16`, no `float32`. Mandar floats binarios little-endian (DEC-034) NO
 > matcheaba ese parser → datos basura silenciosos. Adaptarse a JSON es lo que hace que OSD funcione.
@@ -1354,6 +1359,770 @@ notificación), `WearDataLayerManager.kt` (envío con Boolean), `AlarmStateManag
 
 ---
 
+## DEC-049: El producto NO guarda historial clínico — el cruce sueño/convulsiones se hace fuera de la app
+
+**Fase:** SDD `context-logging` (exploración) | **Fecha:** Agosto 2026
+
+**El pedido:**
+Además de avisarle al cuidador, poder registrar las variables que el reloj mide (horas y calidad de
+sueño, estrés) asociadas a cada convulsión detectada, para con el tiempo buscar patrones y ayudar a
+reducir la frecuencia.
+
+**Lo que la exploración encontró (los cuatro hechos que decidieron todo):**
+
+1. **El reloj no puede dar sueño ni estrés.** No es una preferencia arquitectónica: Health Connect
+   —donde vive ese dato— **no existe en Wear OS**, solo en el teléfono. Health Services, la API que
+   sí corre en el reloj, expone métricas de fitness en vivo (pulso, distancia, calorías), no fases
+   de sueño ni score de estrés. Agregarle Room al reloj no resolvería nada porque el dato no está ahí.
+2. **La detección es de OSD, un tercero.** Su base local de eventos no declara un `<provider>`
+   exportado, así que ninguna otra app la puede leer sin un cambio upstream. Lo único alcanzable hoy
+   sin tocar OSD es un broadcast implícito (`uk.org.openseizuredetector.dialler.ALARM`), frágil por
+   las restricciones de background de Android 8+.
+3. **La correlación es retrospectiva.** No hace falta capturar nada en tiempo real: con un timestamp
+   del evento alcanza para cruzar después contra datos de sueño ya fechados. Esto baja el requisito
+   de "no perder ningún evento en vivo" a "tener la fecha", y es lo que hace viable la opción barata.
+4. **El dato personal ya es exportable sin construir nada.** La descarga personal de Samsung Health
+   entrega CSVs con sueño, estrés, HRV, pulso, SpO2 y temperatura. El permiso de socio que Samsung
+   exige aplica a *una app que lee el dato en vivo*, **no** al usuario bajándose sus propios datos.
+
+**Decisión:**
+El producto **no incorpora almacenamiento de datos de salud**. El cruce entre convulsiones y
+contexto se hace **fuera de la aplicación**: exportación manual periódica de los eventos de OSD y de
+Samsung Health, unidos por fecha en un análisis offline. Este repo (`:wear`) **no cambia en nada**.
+
+Procedimiento operativo en [`docs/RUNBOOK_EXPORTACION_DATOS.md`](docs/RUNBOOK_EXPORTACION_DATOS.md).
+
+**Por qué esta y no las otras:**
+
+| Alternativa | Por qué se descartó |
+|---|---|
+| Persistencia en el reloj (Room) | El dato de sueño/estrés es inalcanzable desde Wear OS (hecho 1). Además contradice DEC-046 y DEC-030, que definen el reloj como transporte sin memoria a propósito. |
+| App/módulo companion en el teléfono | Reabre el módulo `:phone` retirado, introduce PHI persistente que exige gobernanza que hoy no existe (ver TODO-003), y depende de la señal más débil (el broadcast implícito). Meses de trabajo **antes** del primer dato. Queda disponible si el enfoque elegido demuestra que el dato rinde. |
+| Pedirle a OSD que agregue campos de sueño/estrés a su registro de eventos | Es la opción más limpia a largo plazo —el diario ya es de ellos y le serviría a todos sus usuarios— pero no la controlamos. Vale como conversación upstream en paralelo, no como plan. |
+
+**La razón de fondo (esta es la que importa dentro de seis meses):**
+Hoy hay **cero eventos registrados** — OSD nunca llegó a funcionar con el reloj. Y para que una
+comparación simple sea más que casualidad hacen falta del orden de 20-30 eventos confirmados; para
+mirar dos o tres variables juntas, 30-60. A frecuencias reales de convulsiones nocturnas eso son
+meses o años. **Construir infraestructura de producto para un dataset que todavía no existe es
+invertir en el orden equivocado.** La exportación manual cuesta casi nada y contesta, en unos meses,
+si vale la pena automatizar.
+
+**Riesgo que esta decisión asume explícitamente:**
+OSD detecta ~76% de las convulsiones reportadas y genera falsas alarmas por movimientos repetitivos.
+Contar alarmas crudas como convulsiones corrompe el dato por los dos lados (falsos positivos, y
+falsos negativos que contaminan el grupo de comparación). **La única etiqueta usable es la marca
+manual genuino/falso del Data Sharing de OSD**, que solo existe si se viene registrando desde el
+principio. Está documentado como Fase 1 del runbook.
+
+**Lo que esta decisión NO cierra:**
+El hueco de gobernanza. `CLINICAL_SIGNOFF.md` solo contempla constantes de lógica de detección; no
+tiene categoría para "nueva clase de dato de salud almacenado". Hoy no hace falta porque no se
+almacena nada — pero si algún día se retoma el enfoque companion, ese hueco es bloqueante. Anotado
+como **TODO-003**.
+
+**Archivos afectados:** ninguno del módulo `:wear`. Documentación:
+`docs/RUNBOOK_EXPORTACION_DATOS.md` (nuevo),
+`openspec/changes/context-logging/exploration.md` (la investigación completa con fuentes).
+
+---
+
+## DEC-050: Causa raíz confirmada del fallo de entrega reloj→OSD: AppKey mismatch en el Wear Data Layer
+
+**Fase:** SDD `watch-osd-message-delivery` (exploración) | **Fecha:** Agosto–Septiembre 2026
+
+**Decisión:** Registrar la causa raíz **confirmada** del bloqueante de campo. La Wear Data Layer API
+solo entrega mensajes entre apps que comparten **package name Y certificado de firma** (Google lo
+llama "AppKey" = `packageName` + hash del signing cert). Google Play Services
+(`com.google.android.gms.persistent`) en el teléfono aplica ese filtro **antes** de que corra
+cualquier listener de app. SeizureGuard (`com.seizureguard.wear`, firmado con una debug key propia)
+y OSD (`uk.org.openseizuredetector`, release key de Graham) no comparten ninguno de los dos, así que
+cada mensaje reloj→teléfono se descarta con la línea de log
+`Failed to deliver message to AppKey[<oculto#...>, <hash hex de 40 chars del signing cert>]`.
+
+**Qué reemplaza:** la hipótesis "OSD desactualizado" de la prueba de campo de junio 2026 (ver
+`FIELD_TEST_NOTES.md`), que atribuía el "Data source fault" a que la V5.0.5 instalada no traía el
+`SdDataSourceAw` completo (esa parte vivía en la rama `beta`, fusionada al release en V5.0.8).
+**Esa hipótesis quedó refutada:** con OSD V5.0.8, V5.0.9 y la beta actual —todas con `SdDataSourceAw`
+completo— el fallo es idéntico. Estar en una versión sin el soporte de reloj terminado era un
+problema secundario real, pero no es por lo que la conexión falla.
+
+**Evidencia:**
+
+- **Logcat simultáneo de los dos dispositivos (2026-08-29):** con el logcat del teléfono a la vista,
+  la línea `Failed to deliver message to AppKey[...]` la emite `com.google.android.gms.persistent`
+  (Play Services), no OSD. El mensaje muere en el router de GMS; `SdDataSourceAw` nunca lo ve.
+- **WearSD (`github.com/OpenSeizureDetector/WearSD`), la app de reloj oficial de OSD, funciona por
+  una única razón:** declara `applicationId = uk.org.openseizuredetector` (igual que la app de
+  teléfono) y se firma con la misma key. Usa el mismo patrón runtime (`MessageClient` +
+  `NodeClient.connectedNodes`, sin `WearableListenerService` ni `<capability>` xml) y los mismos
+  paths que SeizureGuard. Lo único distinto es la identidad (package + firma).
+- **El flag `com.google.android.wearable.standalone` queda descartado como causa:** WearSD lo tiene
+  igual que SeizureGuard.
+
+**Qué se descartó como salida:**
+
+| Alternativa | Por qué no |
+|---|---|
+| `DataClient` en vez de `MessageClient` | Mismo scoping por firma. No ayuda. |
+| `CapabilityClient` / descubrimiento por capability | Mismo scoping por firma. No ayuda. |
+| Parchear `SdDataSourceAw` para aceptar un package de terceros | Sobre el Data Layer es imposible: GMS descarta el mensaje antes de la entrega; `MessageClient`/`DataClient` no le dan a OSD forma de recibirlo. |
+| "Shim" en el teléfono bajo `uk.org.openseizuredetector` reinyectando en OSD | OSD lee su data source en proceso, no por IPC. Sin efecto. |
+
+No existe patrón soportado de mensajería Data Layer cross-package.
+
+**Implicación:** cualquier arreglo que siga usando el Wear Data Layer exige que SeizureGuard presente
+el **mismo AppKey que el build de OSD con el que habla** — es decir, mismo `applicationId`
+(`uk.org.openseizuredetector`) y el mismo certificado de firma que la app OSD *instalada*. Como la
+release keystore privada de Graham no es obtenible, eso solo cierra si el teléfono corre una OSD
+compilada y firmada por el propio usuario. La alternativa que **no** depende del Data Layer es BLE:
+SeizureGuard como periférico BLE hablándole a `SdDataSourceBLE` de OSD, igual que BangleSD y
+PineTimeSD (bypassa Play Services y la regla de AppKey por completo).
+
+**Estado:** causa raíz **CONFIRMADA**. El enfoque del fix ya está **ELEGIDO** — ver **DEC-051**
+(Opción F: companion app `:phone` en el teléfono con el mismo AppKey que `:wear`, que reenvía a OSD
+por HTTP al `SdWebServer` embebido). Queda descartada la Opción A que se barajaba acá (SeizureGuard
+adopta `applicationId = uk.org.openseizuredetector`, mantiene `namespace = com.seizureguard.wear`, y
+comparte una signing key con una OSD de teléfono compilada localmente): Graham no la endorsó.
+Exploración y propuesta en `openspec/changes/watch-osd-message-delivery/`; espejo en engram
+`sdd/watch-osd-message-delivery/explore`, detalle en
+`architecture/seizureguard-aw-appkey-delivery-failure`.
+
+**Documentación corregida junto con esta decisión:** `FIELD_TEST_NOTES.md` (bloque de
+actualización), `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` (sección de causa real y paso 1) y
+`docs/RUNBOOK_EXPORTACION_DATOS.md` (mención de paso en Fase 0).
+
+**Archivos afectados:** ninguno del módulo `:wear` (el fix aún no está decidido). Solo documentación.
+
+---
+
+## DEC-051: Enfoque elegido para el fallo de entrega reloj→OSD: companion app en el teléfono (Opción F)
+
+**Fase:** SDD `watch-osd-message-delivery` (propuesta) | **Fecha:** Septiembre 2026
+
+**Decisión:** Adoptar la **Opción F**. En vez de cambiar la identidad del reloj o depender de una
+OSD compilada por el usuario:
+
+- El reloj (`:wear`) mantiene `applicationId = com.seizureguard.wear` y todo su pipeline (sensores,
+  `CircularBuffer`, máquina de estados, guard DEC-047, watchdog DEC-048) sin cambios de lógica.
+- Se agrega un **módulo `:phone`** nuevo al proyecto SeizureGuard, con **el mismo `applicationId` y
+  la misma clave de firma** que `:wear`. Con eso el AppKey del Wear Data Layer coincide (las dos
+  apps son del mismo autor) y los mensajes reloj→`:phone` se entregan.
+- El `:phone` recibe `/osd/accel_data` y `/osd/settings` por `MessageClient` en un foreground
+  service propio, y los reenvía a OSD como HTTP `POST /data` / `POST /settings` a
+  `http://127.0.0.1:8080` (servidor `SdWebServer` embebido en OSD, verificado en la rama beta:
+  NanoHTTPD puerto 8080 → `mSdDataSource.updateFromJSON(...)`).
+- En OSD el usuario selecciona el data source **"Garmin"** (`SdDataSourceGarmin` es el receptor
+  pasivo de ese POST). OSD queda como el **APK oficial de releases** — sin cambios en el código de
+  OSD, sin compilar OSD.
+- El estado de alarma vuelve al reloj vía el `:phone` (mecanismo y latencia máxima los define
+  `sdd-design`; candidato: `:phone` hace `GET /data` a `SdWebServer` y reenvía `/osd/alarm_state` al
+  reloj por `MessageClient`).
+
+**Por qué sobre las alternativas:**
+
+| Opción | Veredicto |
+|---|---|
+| A — el reloj adopta `uk.org.openseizuredetector` + firma compartida con una OSD compilada por el usuario | No endorsada por Graham; obliga a mantener una OSD propia para siempre; choca con la identidad de WearSD. **Descartada como dirección.** |
+| B — reemplazar la app de reloj por WearSD | Pierde el watchdog/DEGRADED (DEC-048) y el guard (DEC-047); igual necesita firma compartida; ~6 h de batería. **Solo se conserva como experimento de validación.** |
+| C — el reloj como periférico BLE | Graham: el SO del reloj Wear OS "probablemente controla el stack de Bluetooth", lo hace difícil. **Despriorizada.** |
+| D — mensajería Data Layer cross-package | Técnicamente imposible; solo serviría un ingreso nuevo del lado de OSD (ej. Android Broadcasts). **Fuera de alcance.** |
+
+**Basado en:** recomendación por mail de Graham Jones (mantenedor de OSD) — patrón "companion app en
+el teléfono, igual que el detector de Garmin". Ver **DEC-050** (causa raíz confirmada) y
+`openspec/changes/watch-osd-message-delivery/` (exploración + propuesta; espejo engram
+`sdd/watch-osd-message-delivery/explore` #1195 y `.../proposal` #1198).
+
+**Decisiones cerradas con el usuario** (entran a spec y diseño):
+
+1. Retorno del estado de alarma reloj←OSD: mecanismo y tope de latencia **los define `sdd-design`**.
+2. Manejo de fallo del `:phone`: **notificación de fallo al cuidador, SIN pantalla de estado**.
+   Headless con aviso claro si deja de recibir del reloj o de reenviar a OSD.
+3. `minSdk` del `:phone`: **API 26** (Android 8) — cubre el Samsung A52, coincide con el piso de OSD.
+4. El código actual del reloj que habla directo a OSD (`WearDataLayerManager` → OSD): **se deja
+   detrás de un flag de compilación**, no se borra.
+5. Experimento de validación (WearSD + OSD beta, `docs/EXPERIMENTO_WEARSD_OSD_BETA.md`): **en
+   paralelo, NO bloqueante**; el usuario lo corre cuando tenga el reloj, antes de `sdd-apply`. Si
+   falla, se frena antes de escribir código.
+
+**Reversión parcial de la decisión del 2026-06-05** (borrado de `:phone` como "código muerto que
+duplicaba la inferencia de OSD"): este `:phone` **no hace inferencia, ni umbral, ni SMS** — es un
+puente de transporte puro, necesario solo porque OSD no puede recibir mensajes Data Layer de una app
+de otro package. Propósito distinto, no la redundancia que se removió.
+
+**Estado:** enfoque **ELEGIDO**. Pendiente: `sdd-spec` + `sdd-design` (en curso), luego `sdd-tasks`
+(PRs encadenados: el cambio supera el presupuesto de 400 líneas). `safety-reviewer` PASS
+**obligatorio** antes de cualquier PR (toca la ruta de la alarma). El experimento de validación
+corre antes de `sdd-apply`.
+
+**Archivos afectados (previstos):** `settings.gradle.kts` y build raíz (re-agregar `:phone`); nuevo
+`phone/` (bridge service, listener MessageClient, forwarder HTTP, watchdog watch→companion,
+notificación de fallo); `wear/src/main/java/com/seizureguard/wear/data/WearDataLayerManager.kt` (el
+peer pasa a ser el companion, detrás de flag);
+`wear/src/main/java/com/seizureguard/wear/service/SeizureMonitorService.kt` (la salud de entrega mide
+reloj→companion); config de firma compartida `:wear`/`:phone`;
+`docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` y `README.md` (instalación de dos APKs, data source = Garmin).
+
+---
+
+## DEC-052: Batch 1 de `watch-osd-message-delivery` — firma compartida `:wear`/`:phone`
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 1 de 9) | **Fecha:** Septiembre 2026
+
+**Decisión:** Primer PR de la cadena (`sdd/watch-osd-delivery-01-signing`, PR #12) que sienta la base
+para que el futuro módulo `:phone` (Batch 2) comparta `applicationId` + certificado de firma con
+`:wear` — condición necesaria para que el AppKey del Wear Data Layer coincida (ver DEC-050, causa
+raíz confirmada, y DEC-051, enfoque elegido).
+
+**Qué se agregó (T1.1–T1.3 de `tasks.md`):**
+- `signing.gradle.kts` (raíz): un único bloque `signingConfigs` que lee `keystore.properties`
+  (gitignoreado) y lo expone vía `rootProject.extra` para que cualquier módulo lo consuma más
+  adelante.
+- `keystore.properties.template`: valores placeholder, sin secretos reales, para que quien clone el
+  repo sepa qué completar.
+- `build.gradle.kts` (raíz): `apply(from = "signing.gradle.kts")` para wirear el archivo nuevo.
+
+**Por qué en un PR separado y sin tocar `wear/build.gradle.kts` todavía:** `tasks.md` divide
+deliberadamente la firma compartida (Batch 1) de su consumo real por módulo (Batch 2 para `:phone`,
+Batch 7 para retargetear `:wear`) para mantener cada PR chico y de bajo riesgo — el presupuesto de
+revisión (`review_budget_lines`) es 400 líneas y el cambio completo se estimó en ~1.910, de ahí la
+cadena de 10 PRs `stacked-to-main`.
+
+**Contexto del override de GATE-0 (importante, no repetir en PRs futuros sin releer esto):**
+`tasks.md` exige un PASS registrado del experimento de hardware real
+(`docs/EXPERIMENTO_WEARSD_OSD_BETA.md`, WearSD + OSD beta en el Galaxy Watch 8 físico) antes de
+arrancar cualquier tarea de código. El usuario no tuvo acceso al reloj (~1 semana) y decidió
+explícitamente asumir GATE-0 como PASS para no bloquear el arranque de `sdd-apply` — una aceptación
+de riesgo informada del dueño del proyecto, no un descuido. Registro completo en engram
+`sdd/watch-osd-message-delivery/gate-0-override`.
+
+Lo no verificado en hardware real sigue siendo específicamente si dos apps SeizureGuard firmadas
+igual pueden intercambiar mensajes Wear Data Layer **en este Galaxy Watch 8** (Graham solo lo probó
+en un Watch 7) — ese riesgo se concentra en Batch 7 / PR9 (retargeting de `:wear`), no en Batch 1.
+El contrato HTTP con OSD (`SdWebServer`/`SdDataSource`) se verificó leyendo el código fuente real de
+la rama beta, no se adivinó, así que tiene más confianza aun sin test en dispositivo. Las tareas
+DV-1..DV-6 de verificación en hardware siguen siendo obligatorias para considerar el feature
+"terminado" — este override no las salta ni las debilita.
+
+**Estado:** Batch 1 mergeado a la cadena vía PR #12. Progreso espejado en engram
+(`sdd/watch-osd-message-delivery/apply-progress`). Sigue Batch 2 (`:phone` module scaffold).
+
+---
+
+## DEC-053: Batches 2–3 de `watch-osd-message-delivery` — scaffold `:phone` y lógica pura del puente
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batches 2, 3a, 3b) | **Fecha:** Septiembre 2026
+
+**Qué se hizo:**
+- **Batch 2 (PR #13):** módulo `:phone` vacío — mismo `applicationId` que `:wear`, `namespace`
+  propio, `minSdk 26`, sin dependencias nuevas. El bloque `signingConfigs` lo declara el propio
+  `phone/build.gradle.kts` leyendo lo que expone `signing.gradle.kts`; Batch 7 (`:wear`) debe
+  replicar ese patrón.
+- **Batch 3a (PR #14):** `OsdPayloadCodec` (JSON + cuerpo `dataObj=` percent-encoded) y
+  `OsdResponseParser` (`PostOutcome`). Cualquier código HTTP distinto de 200 clasifica como
+  `UNREACHABLE`; un 200 con cuerpo desconocido o vacío, como `OSD_PARSE_ERROR`.
+- **Batch 3b (PR #15):** `BridgeHealth` (`BridgeFault` + `evaluate`) y un test de loopback con un
+  `ServerSocket` que verifica los bytes exactos que aceptaría el `NanoHTTPD` de OSD. Los umbrales
+  (30 s / 20 s) son estrictos: exactamente en el límite todavía es `NONE`.
+
+**Contrato verificado contra el código real de OSD (rama beta):** respuestas `OK` / `sendSettings` /
+`ERROR` en `SdDataSource.updateFromJSON`; el marcador de "data source equivocado" es el mensaje
+placeholder de `SdWebServer.java:87`, que vuelve con HTTP 200 cuando la fuente no es "Garmin".
+
+**Decisión de testing:** los tests del codec y del loopback corren con Robolectric
+(`@Config(sdk = [34])`), porque `org.json` en `android.jar` es un stub que lanza "not mocked" en JVM
+puro. El diseño lo permitía; no se agregó ninguna dependencia de runtime.
+
+**Deuda conocida:** el CI (`.github/workflows/ci.yml`) solo corre los tests de `:wear`; los tests de
+`:phone` no tienen red automática. Además el trigger `branches: [main]` no corre en PRs apilados
+sobre otra rama. Pendiente agregar `:phone:testDebugUnitTest` al workflow.
+
+**Estado:** Batches 1–3b mergeados a `main`. Sigue Batch 4 (`OsdHttpForwarder`). El override de
+GATE-0 (DEC-052) sigue vigente; DV-1..DV-6 siguen pendientes.
+
+---
+
+## DEC-054: Batches 4 y 5a de `watch-osd-message-delivery` — forwarder HTTP y servicio del puente
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batches 4 y 5a) | **Fecha:** Septiembre 2026
+
+**Batch 4 (PR #16, mergeado):** `OsdHttpForwarder`. El host es la constante `127.0.0.1` (no se puede
+apuntar a la LAN: el servidor de OSD no tiene autenticación), puerto 8080, timeouts de 4 s, sin
+reintentos, sin cola, sin batching. Las llamadas son **bloqueantes** (no `suspend`): quien las use
+debe llamarlas desde `Dispatchers.IO`. Nunca lanza: un fallo de red da `UNREACHABLE` (POST) o `null`
+(`GET /data`). El parseo del estado de alarma queda para Batch 5b.
+
+**Batch 5a (PRs #17 y #18, abiertos):** el cambio pesaba 670 líneas contra un presupuesto de 400, así
+que se entregó como **dos PRs apilados**: 5a-1 (validación de mensajes + estado de salud) y 5a-2
+(el servicio en primer plano). Decisión tomada con el usuario.
+
+**Hallazgos de la revisión de Batch 3/4 resueltos en 5a:**
+1. **Relojes de salud inicializados en "ahora", no en 0.** Con 0, `evaluate()` reportaba
+   `OSD_UNREACHABLE` / `NO_WATCH_DATA` en el primer tick (falsa alarma al arrancar).
+2. **Latch de fallos.** `BridgeHealth.evaluate()` solo mira el último resultado, así que un
+   `WRONG_DATASOURCE` se borraba con un solo `OK`. El diseño dice "latched immediately" sin definir
+   cuándo se limpia. Se eligió la lectura más segura: `WRONG_DATASOURCE` y `OSD_PARSE_ERROR` se
+   mantienen hasta **2 `OK` consecutivos** (`LATCH_CLEAR_OK_STREAK`; poner 1 para limpiar con uno).
+   `UNREACHABLE` reinicia la racha; `SEND_SETTINGS` es neutro.
+
+**Decisiones de implementación (desviaciones o detalles que el diseño no fijaba):**
+- **DV-1 (falta `BLUETOOTH_CONNECT`):** en API 34+ el servicio NO llama `startForeground`; registra
+  ERROR, muestra una alerta de importancia alta ("el monitoreo NO está funcionando") y se detiene sin
+  reiniciarse. Si `POST_NOTIFICATIONS` también está denegado, esa alerta puede no verse: DV-1 sigue
+  necesitando una prueba en dispositivo real.
+- **Permisos extra:** `FOREGROUND_SERVICE` y `FOREGROUND_SERVICE_CONNECTED_DEVICE`. No estaban en
+  T5.1 pero, con `targetSdk 34`, un servicio `connectedDevice` lanza `SecurityException` sin ellos.
+- **Batería por defecto = 100** si OSD pide los ajustes (`sendSettings`) antes de que el reloj haya
+  mandado los suyos (`DEFAULT_HANDSHAKE_BATTERY`). Evita una falsa alerta de batería baja, pero puede
+  ocultar una batería baja real durante los primeros segundos. **Abierto a revisión.**
+- **Solo los chunks de acelerómetro válidos** reinician el reloj de "sin datos del reloj"; los
+  malformados se descartan y se cuentan, así que una ráfaga de basura termina en `NO_WATCH_DATA`.
+- **Pausa de 250 ms** antes de consultar `/data` solo tras un `OK` de acelerómetro, no tras
+  `SEND_SETTINGS`.
+- El largo exacto del array de acelerómetro (125) y los rangos de `battery` (0..100) y `sample_freq`
+  (1..200) los fijó el agente; validar contra el reloj real.
+
+**Modelo de concurrencia:** el callback de `MessageClient` (hilo principal) solo valida y deja el
+chunk en un slot único "gana el último"; un solo worker lo drena y hace los POST/GET bloqueantes en
+`Dispatchers.IO`. Un OSD lento demora únicamente al worker; hay como máximo un chunk pendiente y los
+reemplazados se cuentan y se loguean (WARN), sin cola ni reintento. Las consultas de estado son
+mutuamente excluyentes. `onDestroy`: quitar listener, liberar WakeLock (con `isHeld`), cerrar canal,
+cancelar scope.
+
+**Verificado contra el código real de OSD (rama beta):** `SdWebServer` llama a `updateFromJSON` en el
+hilo de NanoHTTPD, y `alarmState` se escribe antes de que el POST devuelva. Eso respalda la pausa de
+250 ms. No se encontró nada que contradiga el diseño.
+
+**Sin verificar, no adoptado:** el agente sospechó que declarar otro permiso de instalación (por
+ejemplo `CHANGE_NETWORK_STATE`) permitiría un servicio `connectedDevice` sin `BLUETOOTH_CONNECT` en
+runtime, lo que esquivaría DV-1. No se agregó; conviene confirmarlo en la documentación de Android.
+
+**Deuda:** el CI solo corre los tests de `:wear`, y no se dispara en PRs apilados sobre una rama
+distinta de `main`. Conviene sumar `:phone:testDebugUnitTest` al workflow.
+
+**Estado:** Batches 1–5a mergeados (5a-1 #17 y 5a-2 #18, con CI verde). Sigue 5b (ver DEC-055).
+GATE-0 sigue asumido como PASS (DEC-052); DV-1..DV-6 pendientes.
+
+---
+
+## DEC-055: Batch 5b de `watch-osd-message-delivery` — relay del estado de alarma y notificaciones de falla
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 5b) | **Fecha:** Septiembre 2026
+
+**Qué se hizo (PRs #19 y #20, mergeados; el lote pesaba ~480 líneas, se entregó apilado):**
+- `AlarmStateRelay`: reenvía al reloj el estado de alarma que OSD devuelve en `GET /data`, por
+  `/osd/alarm_state` con `{"alarm_state","alarm_phrase"}`. Manda cuando el estado cambia y como
+  refresco cada 10 s.
+- `BridgeNotifications`: reemplaza a la notificación mínima de 5a (`BridgeStatusNotification`,
+  borrada; se conservan los ids de canal y la alerta de "no se puede iniciar"). Dos canales:
+  `osd_bridge_status` (LOW, ongoing) y `osd_bridge_fault` (HIGH, `CATEGORY_ERROR`, suena y vibra).
+- `OsdBridgeServiceTest` (Robolectric, 7 tests) y `AlarmStateRelayTest` (8). Suite de `:phone`: 65.
+
+**Silencio ante fallo (punto de seguridad de vida):** si el cuerpo de `/data` es nulo, está vacío,
+malformado, o `alarmState` falta, no es número o es negativo, el celular **no manda nada** y nunca
+inventa un código de falla. El detector de ese caso es el watchdog de staleness del reloj, no el
+celular. Un poll fallido después de uno bueno tampoco genera refresco.
+
+**Notificación de falla:** se publica al aparecer o cambiar la falla, se vuelve a publicar cada 60 s
+mientras dure (`setOnlyAlertOnce(false)`, para que suene cada vez) y se cancela sola cuando el puente
+vuelve a `NONE`. Se evalúa en el tick de salud de 10 s, así que el re-post cae entre 60 y 70 s.
+
+**Desviaciones del diseño:**
+1. El refresco de 10 s se evalúa en la cadencia del poll (≤5 s), así que el refresco efectivo es de
+   10–15 s. Sigue muy dentro de la ventana de 40 s del reloj.
+2. El observer se cablea por defecto en `onCreate` con un compuesto anónimo; los tests pueden
+   reemplazar `service.observer`.
+3. `WearAlarmSender.send` bloquea en la corrutina del poll con timeout de 3 s y mantiene `pollMutex`
+   mientras envía.
+4. Robolectric no puede probar el listener real de `MessageClient` (no hay Play Services). El
+   registro del listener queda como ítem de verificación en dispositivo.
+
+**Riesgo abierto (DV-4, no debilitado):** si OSD dejara de analizar pero `GET /data` siguiera
+devolviendo el último `alarmState`, el celular seguiría reenviándolo como refresco. El watchdog del
+reloj vería mensajes recientes y no marcaría la falla. Es la mayor exposición de seguridad de vida de
+esta arquitectura y hay que llevársela al `safety-reviewer` antes de Batch 7 (ver si `/data` trae un
+timestamp o contador que permita detectar un estado congelado).
+
+**Proceso:** al mergear #20 apareció un conflicto en `OsdBridgeService.kt` (ambos PRs tocaron el
+cableado de `onCreate` tras el squash de #19). Se resolvió quedando con la versión de 5b-2, que además
+cablea las notificaciones; los 65 tests pasan sobre el resultado.
+
+**Estado:** Batches 1–5b mergeados. Sigue Batch 6 (`SetupActivity` + `BootReceiver`). GATE-0 sigue
+asumido como PASS (DEC-052); DV-1..DV-6 pendientes.
+
+---
+
+## DEC-056: `safety-reviewer` pre-Batch 7 dio BLOCK; se abre el Batch 5c y se crea el registro de hallazgos
+
+**Fase:** SDD `watch-osd-message-delivery` (checkpoint entre Batch 6 y Batch 7) | **Fecha:** 2026-09-19
+
+**Decisión:** no arrancar el Batch 7 (`:wear`) hasta cumplir las condiciones de desbloqueo del
+`safety-reviewer`. Registro completo, con estado por hallazgo, forma de verificarlo y revisiones
+hechas/pendientes, en **`docs/SAFETY_FINDINGS_WATCH_OSD.md`** (fuente de verdad para revisar si
+quedó arreglado). Detalle del veredicto en engram `sdd/watch-osd-message-delivery/safety-review-pre-batch7`.
+
+**Hallazgos principales (F1–F8):**
+- **F1 (crítico):** el relay del teléfono reenviaba `alarmState` sin mirar la salud del puente ni si
+  OSD seguía analizando; con OSD congelado o en otra fuente de datos el reloj recibe `0` para siempre
+  y nunca marca DEGRADED.
+- **F2 (crítico, verificado):** OSD emite estados 3–7; el reloj hace `else -> vibrateAlarm()` para
+  todo ≥2, así que un FAULT de OSD (p. ej. batería baja del teléfono) vibra como convulsión.
+- **F3–F8:** DEGRADED de un solo pulso; falla invisible si las notificaciones están bloqueadas;
+  listener muerto sin reintento; rangos de datos laxos; flavor `osdDirect`; boot/Doze.
+
+**Decisión de proceso — Batch 5c:** corrección de F1 solo en `:phone`, antes de tocar el reloj.
+Regla "fail-loud": los estados ≥1 se reenvían siempre; el `0` y el refresco solo si el puente está
+sano (`BridgeFault == NONE`) y el timestamp de datos de OSD avanzó dentro de una ventana
+(`OSD_DATA_FRESH_MS`, propuesta 15 s); si no, silencio para que el watchdog del reloj lo detecte.
+Nuevo fault `OSD_DATA_STALE`. Nunca se fabrica un código de falla.
+
+**Pendiente de tu decisión (clínica, no técnica):** política para los estados 3–7 de OSD en el reloj
+(propuesta: 2, 3 y 5 → alarma; 4 y 7 → falla del sistema; 6 → sin vibración) y firma de las
+constantes de detección en `CLINICAL_SIGNOFF.md` (la aprobación previa #1196 no reemplaza la firma).
+
+**Corrección de proceso:** la nota "ya aprobado, no re-levantar" de `tasks.md` T7.3 contradecía la
+regla del skill y se elimina. Los Batches 1–6 se mergearon sin `safety-reviewer` ni RDD por batch; la
+ruta de alarma del teléfono se revisó de forma adversarial por primera vez recién ahora.
+
+**Estado:** Batch 7 BLOQUEADO. Batch 5c en curso. GATE-0 sigue asumido como PASS (DEC-052).
+
+---
+
+## DEC-057: Las fallas del sistema son totalmente silenciosas; solo una emergencia interrumpe
+
+**Fase:** SDD `watch-osd-message-delivery` (política de F2 del `safety-reviewer`) | **Fecha:** 2026-09-19
+
+**Decisión (del usuario):** ninguna falla del sistema produce sonido ni vibración, ni en el celular
+ni en el reloj. La única interacción con el cuidador es una **emergencia** (correr a la cama). El
+cuidador usa **otro celular** distinto del que corre OSD. Se eligió la opción A ("fallas totalmente
+silenciosas") sobre la B ("avisar solo si la falla dura más de N minutos"), que era la recomendada.
+
+**Reemplaza:** la decisión #2 de DEC-051 (falla del `:phone` = notificación al cuidador), el criterio
+de éxito "falla visible en ≤60 s" entendido como alerta, y los hallazgos F3 (vibración persistente
+de DEGRADED) y F4 (que la notificación llegue a una persona) del registro de seguridad.
+
+**Política de estados de OSD en el reloj:**
+
+| Estado | Comportamiento |
+|---|---|
+| 0 OK | Sin acción |
+| 1 WARNING | Sin cambios |
+| 2 ALARM, 3 FALL, 5 MANUAL | Alarma de convulsión |
+| 4 FAULT, 7 NETFAULT, valor desconocido | Falla del sistema: **silenciosa** (indicador visual pasivo + registro) |
+| 6 MUTE | Sin vibración |
+
+**Riesgos aceptados de forma consciente:**
+1. Un sistema caído se ve igual que una noche tranquila. Mitigación prevista, sin interrumpir a
+   nadie: indicador pasivo, registro de cada período de falla y un resumen silencioso a la mañana.
+2. OSD fuerza FAULT por encima de ALARM (`SdServer.java:1274-1281`): con una falla activa (por
+   ejemplo batería baja del teléfono) una convulsión **no genera alarma**. Mitigación de proceso:
+   dejar el teléfono de OSD cargando durante la noche.
+3. MUTE también tapa las alarmas y cancela el SMS mientras esté activo.
+
+**Configuración necesaria fuera de este repo:** en OSD hay que apagar `AudibleFaultWarning` (por
+defecto está activada y suena por el canal de alarma). Debe figurar en las instrucciones de
+`SetupActivity` y en `CAREGIVER_GUIDE.md`.
+
+**Mute con el cuidador en otro celular.** La alarma de OSD suena por `USAGE_ALARM`
+(`SdServer.java:951-1000`), así que atraviesa el modo silencio del timbre (depende del volumen de
+alarma y de la excepción de alarmas de No Molestar). Pero el SMS a un celular distinto no se puede
+controlar desde nuestro código. Vía candidata: correr OSD también en el celular del cuidador con la
+fuente de datos "Network", que consulta `http://<IP>:8080/data` cada 2 s
+(`SdDataSourceNetwork.java:32,309`) y suena por el canal de alarma. **Sin verificar de punta a
+punta:** que ambos estén en la misma red, qué pasa cuando se corta el enlace (avisa NETFAULT), y que
+el servidor web de OSD queda expuesto sin autenticación en la red local. Alternativa sin código:
+configurar en el celular del cuidador No Molestar con el contacto del paciente como prioritario.
+
+**Trabajo derivado (aún sin hacer):** Batch 5d en `:phone` (notificaciones de falla silenciosas,
+registro de fallas, resumen matutino, texto de setup) y ajustes del Batch 7 en `:wear` (DEGRADED solo
+visual, mapeo de estados). Las tareas T7.5/T7.6 de `tasks.md` hay que reescribirlas.
+
+**Estado:** política definida; implementación pendiente. Registro en
+`docs/SAFETY_FINDINGS_WATCH_OSD.md`.
+
+---
+
+## DEC-058: Batch 5d de `watch-osd-message-delivery` — implementación de la política de fallas silenciosas
+
+**Fase:** SDD `watch-osd-message-delivery` (`sdd-apply`, Batch 5d, PRs #24, #25 y #26 mergeados) | **Fecha:** 2026-09-19
+
+**Qué se hizo (solo `:phone`, sin tocar el reloj):**
+- **Notificaciones silenciosas (#24):** canal nuevo `osd_bridge_fault_silent` (importancia baja, sin
+  sonido, vibración ni luces, sin pantalla completa). La falla se publica al aparecer o cambiar, se
+  actualiza si cambia el tipo y se cancela al resolverse; ya no se repite cada 60 s. El canal viejo
+  `osd_bridge_fault` (HIGH) se borra. Los avisos de "no se puede iniciar" (DV-1) y de "reiniciá el
+  puente" (DV-2) usan el mismo canal silencioso.
+- **Registro de fallas y caídas del servicio (#25):** `FaultLog` guarda períodos de falla (tipo,
+  inicio, fin) durante 14 días y hasta 300 entradas. `ServiceLiveness` guarda cada ~60 s una marca de
+  "seguía vivo"; si al arrancar hay un hueco de más de 120 s, con `was_bridging` y sin Stop limpio,
+  registra un período `SERVICE_DOWN`.
+- **Resumen matutino (#26):** notificación silenciosa a las 8:00 (canal `osd_bridge_summary`) con las
+  interrupciones de las últimas 12 h. Usa `AlarmManager.setAndAllowWhileIdle` (inexacto, sin permiso
+  de alarmas exactas) y un receptor que no depende del servicio; se arma desde `SetupActivity` y
+  `BootReceiver`. Si el usuario detuvo el puente, no publica nada.
+- **Setup:** indica apagar "Enable Audible System FaultWarnings" en OSD y dejar el teléfono cargando.
+
+**No cambió:** la detección de fallas, el latch, el relay de alarma (fail-loud de 5c) ni el reloj.
+
+**Límites conocidos (aceptados, ver riesgo A1):** el resumen no llega tras un cierre forzado de la
+app ni con el teléfono apagado; un Stop del usuario no se distingue de olvidarse de iniciar; un
+servicio que reinicia en <120 s no se registra. Sin probar en dispositivo: Doze y el comportamiento de
+la importancia baja en One UI.
+
+**Proceso:** los PRs apilados dieron conflictos al mergear (checkbox de `tasks.md`, y en 5d-3 cuatro
+archivos). Se verificó que `main` fuera idéntico al tip de la rama base en `phone/` y se tomó la
+versión de la rama superior. Suite de `:phone`: 120 tests.
+
+**Estado:** Batches 1–6, 5c y 5d mergeados. Pendiente antes de Batch 7: enmendar spec WCT-8, firmar
+constantes, reescribir `CAREGIVER_GUIDE.md` y la sección 4 de `HARDWARE_RUNBOOK.md`, y un segundo
+`safety-reviewer`. Batch 7 sigue bloqueado.
+
+---
+
+## DEC-059: Firma de las constantes de detección del puente reloj ↔ OSD y enmienda de los specs
+
+**Fase:** SDD `watch-osd-message-delivery` (desbloqueo del Batch 7) | **Fecha:** 2026-09-19
+
+**Decisión (del usuario):** firmar **15 de 16** constantes tal cual se propusieron; quedan escritas en
+`CLINICAL_SIGNOFF.md` (sección "Firmadas"). Firmadas: `WATCHDOG_INTERVAL_MS` 10 s, `DELIVERY_STALE_MS`
+40 s, `ALARM_STATE_STALE_MS` 40 s, histéresis 2, warm-up 60 s, `SAMPLE_STALE_MS` 10 s, techo de "falla
+visible" (60 s enlace, ≈75 s OSD congelado), `ALARM_KEEP_ALIVE_MS` 10 s, `OSD_DATA_FRESH_MS` 15 s,
+`NO_WATCH_DATA_MS` 30 s, `POST_OK_STALE_MS` 20 s y `MAX_POST_FAILURES` 3, `LATCH_CLEAR_OK_STREAK` 2,
+techo del relay 8 s, `sample_freq` exactamente 25 y `DEFAULT_HANDSHAKE_BATTERY` 100.
+
+**Sin firmar:** `techo_latencia_clinica` (no tenía valor propuesto; es una decisión clínica del usuario).
+
+**Nombre de la firma:** el usuario no indicó cómo quería figurar; se registró `agus-chaud` (el usuario
+de Git del proyecto). Puede corregirse en `CLINICAL_SIGNOFF.md`.
+
+**Cuentas de peor caso firmadas** (calculadas, no medidas en hardware): enlace reloj→celular 60 s
+(hoy 120 s); estado de alarma que deja de llegar 60 s; OSD congelado con el celular consultando
+≈75 s; sensor muerto 30 s; primer DEGRADED tras arrancar ≈80 s.
+
+**Pendiente de código (por la firma):** el parser sigue aceptando `sample_freq` de 1 a 200; hay que
+endurecerlo a exactamente 25 (hallazgo F6). Se hará con los demás pendientes de `:phone` (reintento
+del listener F5, acelerómetro plano F6).
+
+**Specs enmendados** (`openspec/changes/watch-osd-message-delivery/specs/`, sin trackear en el repo):
+`watch-companion-transport.md` (tabla de estados 0–7, DEGRADED solo visual, constantes firmadas,
+cambios permitidos en `:wear`) y `phone-companion-bridge.md` (fallas silenciosas, fail-loud del relay,
+resumen matutino).
+
+**Estado del Batch 7:** sigue bloqueado hasta reescribir `CAREGIVER_GUIDE.md` y la sección 4 de
+`HARDWARE_RUNBOOK.md`, resolver el pendiente de código de `:phone` y pasar un segundo `safety-reviewer`.
+
+---
+
+## DEC-060: Batch 5e (endurecimiento del puente) y reescritura de las guías para el flujo de dos apps
+
+**Fase:** SDD `watch-osd-message-delivery` (Batch 5e, PRs #27 y #28 mergeados con CI verde; documentación de cuidadores) | **Fecha:** 2026-09-19
+
+**Batch 5e (solo `:phone`, sin tocar el reloj):**
+- **`sample_freq` exactamente 25** (`SAMPLE_FREQ_HZ`): cualquier otro valor se descarta y no se reenvía a
+  OSD. Aplica la constante firmada en DEC-059. El handshake usa 25 Hz por defecto, y un mensaje de
+  ajustes descartado nunca pisa los ajustes válidos ya guardados, así que OSD no queda sin ajustes ni
+  recibe una frecuencia equivocada. Efecto colateral: la batería informada puede quedar en el valor
+  por defecto (100) o vieja hasta que el reloj mande ajustes válidos.
+- **Chunk congelado:** un chunk de 125 muestras donde todas son idénticas se rechaza (comparación
+  exacta, sin tolerancia). No se reenvía y no cuenta como mensaje válido del reloj, así que el fault
+  silencioso `NO_WATCH_DATA` lo hace visible a los 30 s. **Es una regla nueva que no está en la tabla
+  de constantes firmadas.** Riesgo sin verificar: un sensor muy cuantizado podría producir 125 valores
+  iguales en 5 s y ser rechazado por error; no hay datos de la cuantización real del Watch 8.
+- **Listener de mensajes (F5):** si `addListener` falla se reintenta con backoff de 5 s a 60 s; si pasan
+  más de 60 s sin mensajes válidos del reloj se quita y se vuelve a registrar el listener, como
+  máximo una vez por minuto. No se agregó ninguna alerta ni fault nuevo. Constantes de recuperación
+  (no requieren firma): `LISTENER_RETRY_INITIAL_MS` 5 s, `LISTENER_RETRY_MAX_MS` 60 s,
+  `LISTENER_REREGISTER_AFTER_MS` 60 s, `LISTENER_REREGISTER_MIN_INTERVAL_MS` 60 s. Si el reloj está
+  legítimamente ausente (fuera de la muñeca) el listener se re-registra una vez por minuto: inofensivo
+  pero ruidoso en el log.
+- **Sin verificar:** si Play Services descarta listeners tras una actualización, si quitar y volver a
+  agregar el listener con mensajes en vuelo puede perder alguno, y los modos de falla reales de
+  `addListener`.
+- Tests de `:phone`: 124 en el PR #27 y 128 en el #28 (había 120). El #27 pasó el CI; el #28 está apilado
+  y el CI no corre sobre él hasta retargetearlo a `main`.
+
+**Guías reescritas (2026-09-19):**
+- **`CAREGIVER_GUIDE.md`** (completa): banner de "no probado en el equipo real", las tres piezas, la
+  política de fallas silenciosas dicha sin vueltas, cuándo el sistema no protege, checklist nocturno
+  por dispositivo, cómo configurar el teléfono del cuidador (contacto prioritario y prueba), y cómo leer
+  el resumen matutino. Se conservó el aviso, los primeros auxilios y la sección de falsa alarma.
+- **`HARDWARE_RUNBOOK.md` §4**: flujo de dos apps (firma compartida, configurar OSD, iniciar el puente,
+  verificar datos y retorno de alarma), tabla DV-1..DV-7, chequeos extra y qué hace hoy cada build y qué
+  falta (Batch 7 y 5e). La sección 5 recibió solo una nota: su tag `SdDataSourceAw` y el modo
+  secuencial ya no aplican con la fuente Garmin.
+- Los textos citados de la app (resumen, botones, avisos) se verificaron contra `strings.xml`. El aviso
+  de batería baja de OSD viene activado por defecto (`PhoneBatteryAlarmActive` = true), así que esa
+  advertencia de la guía es correcta; el umbral no se verificó.
+- **La app del reloj no tiene botón de MUTE:** el mute es de OSD, así que la guía habla solo de eso.
+- No se encontró un ajuste para apagar el servidor web de OSD, y la etiqueta exacta "Garmin" de la
+  fuente de datos quedó sin verificar.
+
+**Pendiente de revisión humana:** el texto médico de la guía se conservó sin cambios, pero dice
+"llamá a emergencias si dura más de 3 minutos" y "la mayoría pasan solas en 1–2 minutos"; la referencia
+habitual es 5 minutos. Confirmarlo con el médico tratante antes de imprimirla.
+
+**Documentos que siguen mandando por el camino roto:** `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` (le toca el
+Batch 9, T9.1) y `docs/RUNBOOK_EXPORTACION_DATOS.md` todavía indican activar "Android Wear data source".
+
+**Estado:** Batch 5e mergeado. Batch 7 sigue bloqueado. Falta: firmar `techo_latencia_clinica`, revisar el
+texto médico de la guía y pasar un segundo `safety-reviewer` de re-chequeo.
+
+---
+
+## DEC-061: Segundo `safety-reviewer` (R6) — verificación contra código real, PARCIAL PASS
+
+**Fase:** SDD `watch-osd-message-delivery` (re-chequeo antes del Batch 7) | **Fecha:** 2026-09-28
+
+**Qué se hizo:** a diferencia de R5 (que revisó un plan), este re-chequeo leyó el código ya mergeado
+en `origin/main` y lo comparó línea por línea contra `docs/SAFETY_FINDINGS_WATCH_OSD.md`. Detalle
+completo en la sección 9 de ese registro; espejo en engram `sdd/watch-osd-message-delivery/safety-review-r6`.
+
+**Resultado:** ningún hallazgo de F1-F8 estaba mal documentado. F1, F4, F5 y F6 confirmados arreglados
+en código exactamente como se afirmaba; F2, F3, F7 y F8 confirmados sin implementar, como corresponde.
+Se confirmó con `git diff --stat` que el Batch 7 no dejó ningún cambio filtrado en `wear/`.
+
+**Tres hallazgos documentales, corregidos el mismo día:**
+1. La copia local (sin trackear) de `tasks.md` en la copia de trabajo estaba congelada desde
+   antes del Batch 1, sin las tareas T7.5-T7.7 de la enmienda DEC-057. Riesgo real: cualquier agente
+   que trabajara leyendo por path absoluto en el árbol principal (instrucción usada varias veces en
+   este SDD) vería el plan viejo. Corregida: sobrescrita con el contenido tracked de `origin/main`.
+2. `CAREGIVER_GUIDE.md` afirmaba silencio total en el reloj ante una falla, pero el reloj real
+   (sin el Batch 7) todavía vibra 2 pulsos en DEGRADED. Corregida con una excepción explícita.
+3. `CLINICAL_SIGNOFF.md` y `HARDWARE_RUNBOOK.md` §4.8 seguían marcando como "pendiente" el Batch 5e,
+   ya mergeado. Corregidos.
+
+**Estado:** Batch 7 sigue siendo el próximo paso. Condiciones sin cambios: firmar
+`techo_latencia_clinica` y revisión humana del texto médico de `CAREGIVER_GUIDE.md`.
+
+---
+
+## DEC-062: Firma de `techo_latencia_clinica` (40 s) y aprobación del texto médico de la guía
+
+**Fase:** SDD `watch-osd-message-delivery` (antes del Batch 7) | **Fecha:** 2026-09-30
+
+**Qué se decidió:** el usuario firmó `techo_latencia_clinica` = **40 s**: tiempo máximo aceptable
+entre el inicio de la convulsión y la alarma. No había valor propuesto; se le presentaron dos
+opciones (30 s, estricta y probablemente incumplible; 60 s, realista con margen) y eligió 40 s.
+Además aprobó el texto médico de `CAREGIVER_GUIDE.md` ("llamar a emergencias si dura más de
+3 minutos") como correcto; no se vuelve a pedir su revisión.
+
+**Presupuesto del techo:** paso de análisis de OSD ≤ 5 s + relay de alarma ≤ 8 s (ya firmado) =
+hasta 13 s. Quedan ≈ 27 s para que el modelo reconozca la convulsión dentro de su ventana de 30 s.
+Ese tiempo de reconocimiento **no está medido**; se valida en las pruebas con hardware (DV). Si la
+medición lo supera, se revisa el valor y se vuelve a firmar.
+
+**Consecuencia:** las 16 constantes de detección quedan firmadas. El stride de 5 s queda dentro
+del techo. No cambia código del Batch 7. Nada más bloquea el inicio del Batch 7.
+
+---
+
+## DEC-063: Batch 7 (`:wear`) implementado en 4 PRs apilados; `safety-reviewer` R7 PASS condicional
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 7 | **Fecha:** 2026-09-30
+
+**Qué se hizo:** `sdd-apply` implementó T7.1 a T7.7 en un árbol de trabajo aparte (desde
+`origin/main`), sin push ni PR. Cortes apilados, cada uno bajo 400 líneas:
+- `07a` (T7.1, T7.2 y script de instalación): flavors `companion`/`osdDirect`, `osdDirectRelease`
+  deshabilitada (F7), destino del reloj según el flavor. 198+/14−.
+- `07b-1` (T7.3, T7.4): vigilancia del estado entrante, constantes firmadas 10 s / 40 s / 40 s,
+  tests de peor caso. 216+/20−.
+- `07b-2` (T7.5 a T7.7): política de estados DEC-057 (F2), DEGRADED sin vibración (F3), techos
+  firmados 60 s / ≈75 s aceptados. 234+/50−.
+- `07c` (arreglo H7-1): la pantalla del reloj muestra "⚠ MONITOREO DEGRADADO" y nunca presenta un
+  estado vencido como vigente ni oculta una alarma vigente. 240+/20−.
+
+**Revisión:** `safety-reviewer` R7 (PARTIAL PASS, 2 hallazgos ALTOS) y re-chequeo R7b tras los
+arreglos: **PASS condicional**. Detalle en `docs/SAFETY_FINDINGS_WATCH_OSD.md` sección 10.
+Condición: mergear `07b-2` y `07c` seguidos, sin instalar un build intermedio.
+
+**Cambios no pedidos en las tareas, aceptados:** `MainActivity` usa la misma clasificación que la
+vibración (antes mostraba "ALARMA" para cualquier estado ≥ 2); alias de tareas Gradle
+`testDebugUnitTest`/`lintDebug` para que CI siga corriendo ambos flavors.
+
+**Documentación actualizada:** `CAREGIVER_GUIDE.md` (fallas silenciosas también en el reloj, dónde
+ver DEGRADED, falla de OSD, MUTE), `HARDWARE_RUNBOOK.md` (APK `companion`), `CLINICAL_SIGNOFF.md`
+(política de estados). Estos textos describen el comportamiento **después** de mergear el Batch 7.
+
+**PRs:** #29 (`07a`), #30 (`07b-1`), #31 (`07b-2`), #32 (`07c`, incluye además el arreglo H7-3: el estado mostrado vuelve a OK al iniciar y detener).
+
+**Seguimientos:** H7-4 a H7-7 (sección 10 del registro). Tests: `:wear:testDebugUnitTest` verde en
+ambos flavors (105 tests cada uno), re-corrido por el orquestador en la punta de `07c`.
+
+---
+
+## DEC-064: Mejoras de seguridad del reloj H7-4 a H7-7 (PR 7d) y texto del cartel de MUTE
+
+**Fase:** SDD `watch-osd-message-delivery`, seguimiento del Batch 7 | **Fecha:** 2026-09-30
+
+**Qué se hizo:** en dos ramas apiladas desde `main` (`07d-1` 199+/24−, `07d-2` 307+/15−):
+- H7-5: la vigilancia del enlace usa `elapsedRealtime` (reloj que no se puede ajustar); un cambio de
+  hora del sistema ya no la ciega.
+- H7-4: la frescura del estado de alarma se publica como snapshot atómico; una ALARMA recién llegada
+  se muestra al instante.
+- H7-6: MUTE muestra **"SILENCIADO, no avisa convulsiones"** (texto elegido por el usuario; la
+  propuesta "sin alarmas" se descartó por ambigua, hallazgo R8-F1).
+- H7-7: colores legibles (falla violeta claro, ALARMA rojo claro, todos ≥ 4.5:1 y testeados), números
+  fuera de rango → falla silenciosa (nunca alarma), test de 75 s simulado de verdad, cartel
+  "VERSIÓN DE PRUEBA" en `osdDirect`.
+- R8-F3: la pantalla se actualiza antes de vibrar.
+
+**Revisión:** `safety-reviewer` R8: `07d-1` PASS, `07d-2` PARTIAL PASS resuelto (sección 11 del
+registro). Sin constantes nuevas ni cambios en cuándo vibra el reloj. Tests `:wear` 130/130 en ambos
+flavors, re-corridos por el orquestador. Guía del cuidador actualizada (MUTE, color de falla,
+"hasta 1 minuto y medio", "VERSIÓN DE PRUEBA").
+
+---
+
+## DEC-065: Batch 8 en tres partes; una diferencia de versión reloj/celular se anota y nunca corta la detección
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 8 | **Fecha:** 2026-10-01
+
+**Qué se decidió:** el Batch 8 (compatibilidad de versiones) se divide en 8a (el reloj informa su
+versión, PR #35), 8b (el celular compara y anota) y 8c (aviso silencioso). En 8b:
+- Versión del contrato del celular = 1; resultados `MATCH`, `MISMATCH` y `MISSING`. Un reloj que no
+  manda versión (anterior a la 8a, o incluso al Batch 7, mismo `applicationId`) cuenta como
+  incompatible.
+- La diferencia se anota como período `VERSION_MISMATCH` propio en el registro de fallas. **No** es un
+  `BridgeFault`: si lo fuera, el celular dejaría de mandar OK al reloj y el reloj quedaría en DEGRADED.
+- **Nunca se corta el envío a OSD** por una diferencia de versión. La spec PCB-9 dice "rather than
+  proceeding"; se interpreta como "no ignorarla en silencio", porque cortar el envío garantizaría
+  convulsiones sin detectar. Los parsers estrictos ya rechazan mensajes fuera de contrato.
+
+**También:** el CI ahora corre tests y lint de `:phone` (PR #36). El check nuevo todavía no es
+obligatorio en la regla de `main`. *Actualización 2026-10-01: ya es obligatorio; los checks del reloj y del
+teléfono son requeridos en `main`.*
+
+**Revisión:** `safety-reviewer` R10: 8b-1 PASS, 8b-2 PASS condicionado a R10-F3 en 8c (sección 13).
+
+---
+
+## DEC-066: Batch 8c — una diferencia de versión se muestra en silencio y persiste hasta que coincidan
+
+**Fase:** SDD `watch-osd-message-delivery`, Batch 8c | **Fecha:** 2026-10-01
+
+**Qué se decidió:**
+- La anotación `VERSION_MISMATCH` **sobrevive a reinicios** del celular y solo se cierra cuando el
+  reloj manda una versión que coincide (arregla R10-F3).
+- Mientras esté abierta, el celular muestra una notificación **silenciosa** y fija, "SeizureGuard:
+  update needed" (ID 4105, mismo canal sin sonido que las fallas, DEC-057), con texto distinto para
+  "versiones distintas" y para "el reloj no informa versión" (más suave). No se cancela con "Stop
+  bridge": la incompatibilidad sigue existiendo.
+- El resumen de la mañana agrega una nota aparte; **no cuenta como corte** porque los datos siguieron
+  llegando a OSD. Las noches sin diferencia de versión dan el mismo texto que antes.
+- No se movió la anotación fuera del hilo principal (R10-F2): requería un ejecutor serializado para
+  no invertir el orden MISMATCH/MATCH; hoy es una escritura breve solo en las transiciones.
+
+**Revisión:** `safety-reviewer` R11: 8c-1 PASS, 8c-2/8c-3 PARTIAL PASS con la condición de la guía,
+cumplida (sección 14 del registro). Residual R11-F1 (aviso viejo hasta reiniciar el monitoreo del
+reloj), mitigado en la guía.
+
+**Actualización 2026-10-01 (estado de `main`):** los Batches 1 a 8 están mergeados (reloj #29 a #34;
+versión #35 a #41; CI #36) y la documentación se llevó a `main` alineada con ese código (Batch 9a).
+Las entradas anteriores que dicen "sin mergear", "Batch 7 bloqueado" o "pendiente de código" describen
+el estado de su fecha. Sigue pendiente la verificación en hardware real (DV-1..DV-7).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |
@@ -1362,4 +2131,4 @@ notificación), `WearDataLayerManager.kt` (envío con Boolean), `AlarmStateManag
 | DEC-018 | Umbral de decisión: ¿0.5 o valor calibrado contra OSDB? | 2.4 | **Obsoleta para este repo** — el umbral vive en OSD, no en el reloj |
 | DEC-019 | Frecuencia de inferencia: ¿cada ventana nueva o cada 5s? | 2.3 | **Obsoleta para este repo** — la inferencia es de OSD |
 | DEC-020 | Protocolo de mensajes Wear Data Layer: formato del payload | 3.1 | **Resuelta por DEC-046** — JSON UTF-8 |
-| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | Pendiente (Fase 1.4 opcional) |
+| DEC-021 | Samsung Privileged Health SDK — ¿vale la complejidad extra? | 1.4 | **Resuelta por DEC-049 — no.** El Sensor SDK (lado reloj) expone señales crudas (accel, ECG, PPG), no fases de sueño ni score de estrés. El Data SDK (lado teléfono) sí los tiene pero exige aprobación de socio de Samsung. Ninguno de los dos hace falta: la descarga personal de Samsung Health ya entrega esos datos en CSV sin gate alguno |

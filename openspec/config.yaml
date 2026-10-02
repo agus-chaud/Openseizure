@@ -1,0 +1,60 @@
+schema: spec-driven
+
+context: |
+  Kotlin 2.0.21, AGP 8.5.2, Gradle 8.9, KSP 2.0.21-1.0.28, single Gradle module :wear.
+  Wear OS 4 app (Galaxy Watch 8) = Android Wear data source compatible with SdDataSourceAw,
+  feeding the third-party OpenSeizureDetector (OSD) V5.0 phone app via Wear Data Layer (DEC-046).
+  ML inference (deepEpiCnn Run24 + ExecuTorch), threshold, and alarms/SMS run in OSD, NOT here.
+  No ML runtime, no Room, no persistent DB in this repo.
+  Testing: JUnit4 + Robolectric unit tests under wear/src/test/, CI-enforced (GitHub Actions).
+  No instrumented (androidTest) tests yet. Life-safety software: see safety-reviewer skill.
+
+testing:
+  strict_tdd: false
+  strict_tdd_reason: >
+    Test infrastructure is real and CI-enforced (JUnit4 + Robolectric, ~59 unit tests, GitHub
+    Actions runs :wear:testDebugUnitTest + :wear:lintDebug on every push/PR). However, the
+    project's hard rule "never build after changes" (CLAUDE.md) forbids the agent from invoking
+    Gradle. The agent cannot observe RED before GREEN, so a strict TDD loop cannot be enforced
+    autonomously. Agents must still write/update tests alongside implementation, matching the
+    patterns in wear/src/test/, but pass/fail verification happens via CI or the user in
+    Android Studio — never via an agent-invoked build.
+  test_command: "./gradlew :wear:testDebugUnitTest --no-daemon --stacktrace"
+  test_command_note: "Reference only. NEVER invoked by the agent — CI and the user run this."
+  lint_command: "./gradlew :wear:lintDebug --no-daemon --stacktrace"
+  unit_tests: true
+  integration_tests: false
+  e2e_or_instrumented_tests: false
+  coverage: false
+  formatter: false
+  type_checker: "n/a — Kotlin compiler enforces types at compile time, no separate tool"
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Flag any change touching the alarm path (sensor -> CircularBuffer -> transport -> OSD) for safety-reviewer review
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows (e.g. Wear Data Layer handshake)
+    - Document architecture decisions with rationale; cross-reference DECISIONS.md DEC-XXX entries
+  tasks:
+    - Group by phase, use hierarchical numbering (matches README phase table: 0-D)
+    - Keep tasks completable in one session
+    - A task must never be "run ./gradlew ..." — tasks are "write/update tests + implementation"; running tests is CI/human work
+  apply:
+    guidelines:
+      - Follow existing code patterns in wear/src/main/java/com/seizureguard/wear/
+      - Write or update Robolectric unit tests alongside implementation, matching existing wear/src/test/ structure
+      - NEVER run ./gradlew or any build/test/lint command — the user verifies in Android Studio, CI verifies in GitHub Actions
+    tdd: false
+    test_command: "./gradlew :wear:testDebugUnitTest"
+  verify:
+    test_command: "./gradlew :wear:testDebugUnitTest"
+    build_command: ""
+    coverage_threshold: 0
+    note: "sdd-verify must not execute test_command/build_command itself; rely on CI results or ask the user to confirm."
+  archive:
+    - Warn before merging destructive deltas
+    - Any change touching alarm-path or detection-logic constants requires a safety-reviewer PASS verdict before archive

@@ -19,7 +19,13 @@ SeizureGuard es un proyecto de software **open source** basado en
 - Detecta principalmente convulsiones **tónico-clónicas** con movimiento rítmico característico.
   Convulsiones sin movimiento marcado (ausencias, focales) **pueden no detectarse**.
 - Depende de Bluetooth, batería y de que el reloj esté correctamente colocado en la muñeca.
-- Si el reloj se sale, se queda sin batería o pierde conexión, **el sistema deja de proteger**.
+- Si el reloj se sale de la muñeca, se queda sin batería o pierde conexión, **el sistema deja de proteger**.
+- Además del reloj, el sistema tiene en realidad **dos apps en el teléfono** (una que recibe del
+  reloj y otra, OSD, que decide la alarma). Si cualquiera de las tres piezas se cae, pierde batería
+  o pierde conexión, **el sistema deja de proteger**.
+- Por decisión explícita del usuario, **las fallas del sistema no suenan ni vibran** — solo una
+  convulsión real genera alarma. Un sistema caído se puede ver, de noche, idéntico a una noche
+  tranquila. Ver `CAREGIVER_GUIDE.md` para qué chequear antes de confiar en una noche de monitoreo.
 
 ## Uso bajo tu propia responsabilidad
 

@@ -4,24 +4,38 @@
 
 ---
 
-> ## ⚠️ IMPORTANTE — Arquitectura actualizada (2026-06-05)
+> ## ⚠️ IMPORTANTE — Arquitectura actualizada (última revisión: octubre 2026)
 >
 > Gran parte de este documento describe una arquitectura **vieja** donde **el reloj corría la
 > inferencia con TensorFlow Lite**. **Eso ya no es así.** Lo vigente:
 >
 > - El reloj **NO infiere**. Es solo un sensor inteligente: captura el acelerómetro a 25Hz, lo
 >   convierte a milli-g, y se lo manda a la app **OpenSeizureDetector V5.0** por Bluetooth
->   (Wear Data Layer). Recibe de vuelta el estado de alarma y vibra.
-> - La inferencia corre **en el teléfono, dentro de la app OSD**, con **PyTorch ExecuTorch** y el
->   modelo **`deepEpiCnn_2026_01_24_Run24.pte`** — NO con TFLite ni `cnn_v024.tflite`.
+>   (Wear Data Layer, el canal de mensajería de Wear OS entre reloj y teléfono). Recibe de vuelta el
+>   estado de alarma y vibra solo si es una alarma real (una falla del sistema se muestra en
+>   pantalla, sin vibrar).
+> - La inferencia corre **en el teléfono, dentro de la app OSD**, con **PyTorch ExecuTorch** (el
+>   motor que ejecuta el modelo ya entrenado) y el modelo **`deepEpiCnn_2026_01_24_Run24.pte`** — NO
+>   con TFLite ni `cnn_v024.tflite`.
 > - El tensor real del modelo es **`(1, 1, 750)`** (este doc dice `(1, 750, 1)` en varios lados:
 >   está desactualizado).
-> - Este repo es **un solo módulo (`:wear`)**; no hay app de teléfono propia.
-> - El transporte reloj→OSD es **JSON UTF-8** (`{"samples":[...]}`), no binario. Ver DEC-046.
+> - **Este repo SÍ tiene una segunda app** (novedad de septiembre 2026, no estaba cuando se escribió
+>   este párrafo por primera vez): un módulo `:phone` que actúa como **puente de transporte puro**
+>   entre el reloj y OSD — recibe los datos del reloj y los reenvía por HTTP local a OSD. No hace
+>   inferencia, ni umbral, ni alarma, ni SMS, ni tiene base de datos propia; eso sigue siendo 100%
+>   responsabilidad de OSD. Existe porque el reloj y OSD no pueden hablarse directo por Bluetooth —
+>   son apps de autores distintos y Android no entrega mensajes entre apps así (ver `DECISIONS.md` →
+>   **DEC-050** y **DEC-051**). El reloj (`:wear`) ya se actualizó para este cambio (está en `main`) pero
+>   todavía no se probó con el equipo real — ver `README.md` para el estado real y actualizado del
+>   proyecto completo.
+> - El transporte reloj→puente es **JSON UTF-8** (`{"samples":[...]}`), no binario. Ver DEC-046.
 >
-> Leé las secciones de abajo entendiendo que **todo lo que diga "el reloj infiere" o "TFLite"
-> es historia, no el estado actual.** La parte de captura de sensores (TYPE_ACCELEROMETER,
-> 25Hz, ring buffer, milli-g) **sí sigue vigente** — eso es lo que el reloj realmente hace.
+> Leé las secciones de abajo entendiendo que **todo lo que diga "el reloj infiere", "TFLite" o "un
+> solo módulo" es historia, no el estado actual.** La parte de captura de sensores
+> (TYPE_ACCELEROMETER, 25Hz, ring buffer, milli-g) **sí sigue vigente** — eso es lo que el reloj
+> realmente hace. Para la arquitectura y el estado de avance actuales, la fuente que se mantiene al
+> día es `README.md`; este documento es la explicación pedagógica fase por fase, con esta advertencia
+> como parche de precisión.
 
 ---
 
@@ -44,7 +58,7 @@ Si venís de Python, cada tecnología de este proyecto tiene un equivalente que 
 | **Coroutines (suspend fun)** | Concurrencia sin bloquear el hilo de UI | asyncio — `async/await` de Python |
 | **TFLite 2.14.0** | Runtime de inferencia del CNN en el reloj | `tflite-runtime` o `onnxruntime` en Python |
 | **SensorManager** | API del OS para leer el acelerómetro a 25Hz | `sensor.subscribe(callback, interval_hz=25)` en cualquier librería de IoT |
-| **Room** | Base de datos SQLite con ORM (para el módulo phone) | SQLAlchemy |
+| **Room** | Base de datos SQLite con ORM — *histórico*: era para el `phone` viejo (alarma/SMS/historial), que ya no existe. El `:phone` actual (puente de transporte) no usa Room | SQLAlchemy |
 | **Robolectric** | Tests de Android que corren en JVM sin dispositivo | pytest con mocks del sistema operativo |
 | **KSP** | Generador de código en compilación (para Room) | Como Cython o codegen — traduce annotations a código |
 | **Wear Data Layer** | Canal Bluetooth watch → phone | gRPC o WebSocket entre dos procesos sin internet |

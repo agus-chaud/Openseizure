@@ -168,24 +168,97 @@ class MorningSummaryTest {
         BridgeFault.values().filter { it != BridgeFault.NONE }.forEach { assertNotNull(FaultKind.from(it)) }
     }
 
-    @Test fun versionMismatch_isLeftOutOfTheSummary_untilBatch8c() {
+    // ── Batch 8c: a version mismatch is a note, never an interruption ─────────
+
+    private val note = "Note: the watch and phone apps were on different versions. Update both."
+
+    @Test fun versionMismatch_isNeverAnInterruption_butSetsTheNote() {
         val d = buildSummary(
             listOf(p(FaultKind.VERSION_MISMATCH, start + H, null), p(FaultKind.NO_WATCH_DATA, start + 2 * H, start + 3 * H)),
             start, end,
         )
-        assertEquals(SummaryData(1, 60, listOf(FaultKind.NO_WATCH_DATA to 60L)), d)
-        assertEquals(SummaryData(0, 0, emptyList()), buildSummary(listOf(p(FaultKind.VERSION_MISMATCH, start, null)), start, end))
+        assertEquals(SummaryData(1, 60, listOf(FaultKind.NO_WATCH_DATA to 60L), versionMismatch = true), d)
+        assertEquals(
+            SummaryData(0, 0, emptyList(), versionMismatch = true),
+            buildSummary(listOf(p(FaultKind.VERSION_MISMATCH, start, null)), start, end),
+        )
     }
 
-    @Test fun receiver_withOpenVersionMismatch_saysNoInterruptions_andDoesNotCrash() {
+    @Test fun versionMismatch_onlyCountsWhenThePeriodOverlapsTheWindow() {
+        val before = p(FaultKind.VERSION_MISMATCH, start - 5 * H, start - H) // closed before the window
+        val after = p(FaultKind.VERSION_MISMATCH, end, end + H) // starts at the window end
+        val straddlesStart = p(FaultKind.VERSION_MISMATCH, start - 5 * H, start + MIN)
+        val openSinceDaysAgo = p(FaultKind.VERSION_MISMATCH, start - 72 * H, null)
+        assertEquals(false, buildSummary(listOf(before, after), start, end).versionMismatch)
+        assertEquals(true, buildSummary(listOf(straddlesStart), start, end).versionMismatch)
+        assertEquals(true, buildSummary(listOf(openSinceDaysAgo), start, end).versionMismatch)
+    }
+
+    @Test fun nightsWithoutAMismatch_keepTheirExactPreviousSummaryData() {
+        val periods = listOf(
+            p(FaultKind.NO_WATCH_DATA, start + H, start + 2 * H),
+            p(FaultKind.OSD_DATA_STALE, start + 90 * MIN, start + 3 * H),
+            p(FaultKind.SERVICE_DOWN, start + 5 * H, start + 6 * H),
+        )
+        val d = buildSummary(periods, start, end)
+        assertEquals(false, d.versionMismatch)
+        assertEquals(SummaryData(2, 180, listOf(FaultKind.OSD_DATA_STALE to 90L, FaultKind.NO_WATCH_DATA to 60L, FaultKind.SERVICE_DOWN to 60L)), d)
+        assertEquals(buildSummary(periods, start, end), buildSummary(periods + p(FaultKind.VERSION_MISMATCH, start - 9 * H, start - 8 * H), start, end))
+    }
+
+    @Test fun deadProcess_leavesAnOpenVersionMismatchOpen() {
+        val down = p(FaultKind.SERVICE_DOWN, start + 2 * H, null)
+        val merged = withServiceDown(listOf(p(FaultKind.VERSION_MISMATCH, start - H, null), p(FaultKind.OSD_DATA_STALE, start + H, null)), down)
+        assertEquals(null, merged.single { it.kind == FaultKind.VERSION_MISMATCH }.endMs)
+        assertEquals(start + 2 * H, merged.single { it.kind == FaultKind.OSD_DATA_STALE }.endMs) // unchanged behaviour
+    }
+
+    @Test fun summaryText_withoutAMismatch_isByteIdenticalToBefore() {
+        assertEquals("No interruptions last night.", MorningSummaryReceiver.summaryText(app, SummaryData(0, 0, emptyList())))
+        assertEquals(
+            "Monitoring was interrupted 2 times (total 125 min): OSD not analysing, phone stopped.",
+            MorningSummaryReceiver.summaryText(
+                app, SummaryData(2, 125, listOf(FaultKind.OSD_DATA_STALE to 90L, FaultKind.SERVICE_DOWN to 60L)),
+            ),
+        )
+    }
+
+    @Test fun summaryText_withAMismatch_addsOneNoteLine_afterTheUnchangedBaseText() {
+        assertEquals(
+            "No interruptions last night.\n$note",
+            MorningSummaryReceiver.summaryText(app, SummaryData(0, 0, emptyList(), versionMismatch = true)),
+        )
+        assertEquals(
+            "Monitoring was interrupted 1 time (total 60 min): watch not sending data.\n$note",
+            MorningSummaryReceiver.summaryText(
+                app, SummaryData(1, 60, listOf(FaultKind.NO_WATCH_DATA to 60L), versionMismatch = true),
+            ),
+        )
+    }
+
+    @Test fun receiver_withOpenVersionMismatch_saysNoInterruptions_plusTheNote() {
         BridgePrefs.setWasBridging(app, true)
         val store = MemoryStore()
         val now = 10 * H
         FaultLog(store) { now }.add(p(FaultKind.VERSION_MISMATCH, now - 5 * H, null))
         ServiceLiveness(store, { now - MIN }, { 0L }).touch()
         receiver(store, now).onReceive(app, Intent())
-        assertEquals("No interruptions last night.",
-            shadowOf(nm).getNotification(BridgeNotifications.SUMMARY_NOTIFICATION_ID).extras.getString("android.text"))
+        val n = shadowOf(nm).getNotification(BridgeNotifications.SUMMARY_NOTIFICATION_ID)
+        assertEquals("No interruptions last night.\n$note", n.extras.getString("android.text"))
+        assertTrue(nm.getNotificationChannel("osd_bridge_summary").importance <= NotificationManager.IMPORTANCE_LOW)
+    }
+
+    @Test fun receiver_deadService_withOpenVersionMismatch_reportsBoth() {
+        BridgePrefs.setWasBridging(app, true)
+        val store = MemoryStore()
+        val now = 20 * H
+        FaultLog(store) { now }.add(p(FaultKind.VERSION_MISMATCH, now - 30 * H, null)) // open since before the window
+        ServiceLiveness(store, { now - 3 * H }, { 0L }).touch() // last seen alive 3 h ago, never restarted
+        receiver(store, now).onReceive(app, Intent())
+        assertEquals(
+            "Monitoring was interrupted 1 time (total 180 min): phone stopped.\n$note",
+            shadowOf(nm).getNotification(BridgeNotifications.SUMMARY_NOTIFICATION_ID).extras.getString("android.text"),
+        )
     }
 
     @Test fun faultKind_versionMismatchIsNotABridgeFault() {

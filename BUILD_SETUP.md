@@ -1,7 +1,8 @@
 # BUILD_SETUP — Correr los tests del reloj SIN Android Studio (Windows)
 
 > Receta de 5 pasos para preparar esta máquina y poder correr `./gradlew :wear:test`.
-> Los pasos 1–4 son **una sola vez**. Después, verificar tu código es solo el paso 5.
+> Los pasos 1–4 son **una sola vez**. Después, verificar tu código es solo el paso 5 (y el 6, si tu
+> checkout ya tiene el módulo `:phone` — ver esa sección más abajo).
 
 Analogía: para cocinar necesitás **cocina (Java)**, **ingredientes (Android SDK)**,
 **la receta apuntada (local.properties)** y **el robot de cocina (gradle wrapper)**.
@@ -84,8 +85,34 @@ con todos los tests del reloj en verde (`CircularBuffer`, `WearDataLayerManager`
 
 Para ver el reporte detallado si algo falla:
 ```
-wear\build\reports\tests\testDebugUnitTest\index.html
+wear\build\reports\tests\testCompanionDebugUnitTest\index.html
 ```
+
+---
+
+## Paso 6 — El módulo `:phone` (companion, DEC-051)
+
+> Esta sección describe el módulo `:phone` (la "companion app" que traduce los mensajes del reloj a
+> OSD por HTTP local, ver `docs/EXPLAINER_WEAR_DATA_LAYER.md`), que ya forma parte de `main`. Si tu
+> carpeta del proyecto no tiene una carpeta `phone/` al lado de `wear/`, actualizá tu copia con
+> `main`. El comando de abajo se verificó (`gradlew :phone:tasks --group verification`,
+> 2026-09-28): `:phone:test` existe y corre los tests de todas las variantes del módulo.
+
+No hace falta nada nuevo de infraestructura — mismo Java 17, mismo Android SDK, mismo
+`local.properties` de los Pasos 1–3. Para correr los tests del módulo `:phone`:
+
+```powershell
+.\gradlew.bat :phone:test
+```
+
+**Sobre `keystore.properties` (firma compartida `:wear`/`:phone`, DEC-052):** el repo trae
+`signing.gradle.kts` (raíz) y `keystore.properties.template`. Para simplemente correr tests (como el
+comando de arriba) **no hace falta crear `keystore.properties`** — sin ese archivo, ambos módulos
+caen al debug keystore compartido de la máquina (`~/.android/debug.keystore`), que ya es el mismo
+para los dos. `keystore.properties` solo importa el día que alguien necesite compilar un **release**
+firmado de `:wear` y `:phone` con una clave propia (no la de debug) — ahí sí: copiar
+`keystore.properties.template` a `keystore.properties` (raíz del repo, ya está en `.gitignore`) y
+completar los 4 valores reales.
 
 ---
 
@@ -98,3 +125,4 @@ wear\build\reports\tests\testDebugUnitTest\index.html
 | 3 | local.properties | una vez |
 | 4 | gradle wrapper | una vez |
 | 5 | `gradlew :wear:test` | cada vez que querés verificar |
+| 6 | `gradlew :phone:test` | cada vez que querés verificar |

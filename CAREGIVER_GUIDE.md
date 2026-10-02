@@ -316,5 +316,7 @@ rítmico unos 30 segundos y verificá que **suena la alarma en el teléfono de l
 **el SMS te llega a vos, con tu teléfono en silencio**. Avisá a todos antes de la prueba: el SMS
 sale de verdad. Mejor descubrir un problema un martes a la tarde que un sábado a las 3 de la mañana.
 
+Pasos detallados de todas las pruebas, con hoja de resultados: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+
 Gracias por cuidar. Este sistema existe para darte una mano, pero **la persona más importante de
 todo el sistema sos vos.**

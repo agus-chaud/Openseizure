@@ -352,9 +352,12 @@ map each to the design's "Open Questions")
       Batch 6 (T6.3).
 - [ ] **DV-3** Check whether `mDataFrequencyCheckEnabled` is on by default in the user's OSD prefs
       (tightens the ±1s jitter tolerance if so). Relates to: Batch 4/5 (POST cadence).
-- [ ] **DV-4** Determine whether OSD writes `alarmState` synchronously in `onSdDataReceived` or via
-      a main-thread post, to confirm the 250ms settle delay is sufficient (ceiling stays 8s
-      regardless). Relates to: Batch 5b (T5.3).
+- [ ] **DV-4** Frozen state / wrong source: put OSD on another data source (and, separately, close
+      OSD); the watch must show DEGRADED within the signed ceiling (link 60 s; frozen OSD about 75 s,
+      calculated, not measured), with a silent phone notification and no sound or vibration. Relates
+      to: Batch 5c (safety finding F1). *Renumbered 2026-10-01 to match
+      `docs/SAFETY_FINDINGS_WATCH_OSD.md`; the old DV-4 (whether OSD writes `alarmState`
+      synchronously, to confirm the 250 ms settle delay) is now a sub-measurement of DV-8.*
 - [ ] **DV-5** Measure phone battery cost of the 10s watch-bound keep-alive over 8h; relax to 15s
       (`ALARM_STATE_STALE_MS` 25s) if material. Relates to: Batch 7/8.
 - [ ] **DV-6** One full 8h overnight run (E2E gate from design's Testing Strategy) before trusting
@@ -365,9 +368,23 @@ map each to the design's "Open Questions")
       vibration**; (c) produces no notice or summary. Record time to visible fault and whether
       anything sounded. Key for (a): the listener retry/self-heal (Batch 5e, PR #28) is untested on
       hardware. Relates to: Batch 5e, DEC-057. Detailed steps: `HARDWARE_RUNBOOK.md` §4.7.
+- [ ] **DV-8** Clinical latency (ceiling 40 s, `techo_latencia_clinica` in `CLINICAL_SIGNOFF.md`):
+      imitate a seizure (rhythmic strong shaking, 1-3 per second) and time, from the start of the
+      shaking, (a) strong watch vibration, (b) OSD alarm sound on the patient phone, (c) caregiver
+      SMS. At least 5 runs; (a) and (b) must be at most 40 s in every run, otherwise the value is
+      reviewed and re-signed. Sub-measurement (optional, no code): the gap between the phone alarm
+      and the watch vibration against the 8 s relay design ceiling; the old DV-4 question (does OSD
+      write `alarmState` synchronously, so the 250 ms settle delay suffices) is answered here.
+      Steps: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+- [ ] **DV-9** What the caregiver sees: (a) "MONITOREO DEGRADADO" on the watch about 80 s after
+      starting with the phone bridge stopped; (b) "SILENCIADO, no avisa convulsiones" with OSD MUTE on,
+      and no vibration; (c) "SeizureGuard: update needed" with mismatched watch/phone versions
+      (optional if no mismatched build is available); (d) phone reboot with the bridge (same as
+      DV-2); (e) the silent morning summary at about 8:00. Relates to: Batches 5d, 7, 8, DEC-057.
 
 These are explicitly **not** blocking for individual PRs to merge, but PROP-SC ("clean 8h overnight
-run") and the design's E2E gate mean the feature is not considered validated until DV-6 passes.
+run") and the design's E2E gate mean the feature is not considered validated until DV-1 to DV-9 pass (DV-5 can wait, per
+`docs/SAFETY_FINDINGS_WATCH_OSD.md`), in particular DV-6 and DV-8.
 
 ---
 

@@ -18,7 +18,7 @@ Requirement shorthand used for traceability:
 
 ## GATE-0 — WearSD + OSD-beta hardware validation experiment (BLOCKING, human-executed)
 
-- [ ] **GATE-0.1** Run `docs/EXPERIMENTO_WEARSD_OSD_BETA.md` end to end on real hardware (watch +
+- [ ] **GATE-0.1** (assumed PASS, recorded in DEC-052; not independently re-run) Run `docs/EXPERIMENTO_WEARSD_OSD_BETA.md` end to end on real hardware (watch +
       Garmin-source OSD beta APK). Confirm OSD (unmodified release/beta APK, data source =
       "Garmin") actually accepts and displays data pushed to `SdWebServer:8080` the way the design's
       pinned HTTP contract assumes.
@@ -31,14 +31,14 @@ Requirement shorthand used for traceability:
 
 ## Batch 1 — Shared signing foundation
 
-- [x] **T1.1** Create `signing.gradle.kts` (root) — one `signingConfigs` block reading a gitignored
+- [x] **T1.1** (merged, PR #12) Create `signing.gradle.kts` (root) — one `signingConfigs` block reading a gitignored
       `keystore.properties`, applicable from both `:wear` and `:phone`. New file.
       Satisfies: PCB-1 (shared applicationId+cert so Wear Data Layer AppKey matches), design
       Architecture Decision #1.
-- [x] **T1.2** Add `keystore.properties.template` (placeholder keys, no real secrets) + update
+- [x] **T1.2** (merged, PR #12) Add `keystore.properties.template` (placeholder keys, no real secrets) + update
       `.gitignore` to exclude `keystore.properties`. New/modified.
       Satisfies: PCB-1 (same rationale; prevents committing signing secrets).
-- [x] **T1.3** Wire `signing.gradle.kts` into the root `build.gradle.kts` (or via
+- [x] **T1.3** (merged, PR #12) Wire `signing.gradle.kts` into the root `build.gradle.kts` (or via
       `apply(from = ...)` per-module) so both modules can reference the shared config in later
       batches. Modified.
       Dependencies: T1.1.
@@ -52,18 +52,18 @@ Parallelizable: T1.1/T1.2 in parallel; T1.3 sequential after T1.1.
 
 ## Batch 2 — `:phone` module scaffold
 
-- [x] **T2.1** `settings.gradle.kts`: `include(":phone")`, replace the 2026-06-05 removal comment.
+- [x] **T2.1** (merged, PR #13) `settings.gradle.kts`: `include(":phone")`, replace the 2026-06-05 removal comment.
       Modified.
       Satisfies: PCB-1, PCB-2.
       Dependencies: none (independent of Batch 1, but conventionally lands together).
-- [x] **T2.2** `phone/build.gradle.kts` — minSdk 26, targetSdk 34, `applicationId
+- [x] **T2.2** (merged, PR #13) `phone/build.gradle.kts` — minSdk 26, targetSdk 34, `applicationId
       com.seizureguard.wear`, `namespace com.seizureguard.phone`, reference shared
       `signingConfigs` from T1.1, zero new dependencies (reuse `libs.versions.toml` entries already
       used by `:wear`: core-ktx, play-services-wearable, coroutines, lifecycle; HTTP via
       `HttpURLConnection`, no OkHttp/Retrofit). New file.
       Satisfies: PCB-1, PCB-2, design Architecture Decision #1.
       Dependencies: T1.1, T1.3.
-- [x] **T2.3** `phone/src/main/AndroidManifest.xml` — baseline application manifest (application
+- [x] **T2.3** (merged, PR #13) `phone/src/main/AndroidManifest.xml` — baseline application manifest (application
       class placeholder, `INTERNET` permission, launcher icon/theme). FGS-specific entries
       (`connectedDevice`, `WAKE_LOCK`, `POST_NOTIFICATIONS`, `BLUETOOTH_CONNECT`,
       `RECEIVE_BOOT_COMPLETED`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) are added incrementally in
@@ -71,7 +71,7 @@ Parallelizable: T1.1/T1.2 in parallel; T1.3 sequential after T1.1.
       auditable against the component that declares it. New file.
       Satisfies: PCB-1.
       Dependencies: T2.2.
-- [x] **T2.4** Minimal resource scaffold (`strings.xml`, `themes.xml`, launcher icon reuse from
+- [x] **T2.4** (merged, PR #13) Minimal resource scaffold (`strings.xml`, `themes.xml`, launcher icon reuse from
       `:wear` or a placeholder) so the module builds and installs as an empty app. New.
       Dependencies: T2.3.
 
@@ -81,20 +81,20 @@ Parallelizable: none within this batch (strict gradle/manifest dependency chain)
 
 ## Batch 3a — Pure codec/parser units + tests
 
-- [x] **T3.1** `phone/.../bridge/OsdPayloadCodec.kt` — `rawDataJson`, `settingsJson`, `formBody`
+- [x] **T3.1** (merged, PR #14) `phone/.../bridge/OsdPayloadCodec.kt` — `rawDataJson`, `settingsJson`, `formBody`
       per the pinned OSD HTTP contract (`dataType`/`data` shape, 3 mandatory settings ints,
       `URLEncoder.encode(json, "UTF-8")` form body). New, pure/JVM-testable.
       Satisfies: PCB-4, design "Pinned OSD HTTP contract" table, gotcha #1 (no null guard on
       `/settings` — form-urlencoded body is mandatory).
       Dependencies: T2.2 (module must exist).
-- [x] **T3.2** `phone/src/test/.../OsdPayloadCodecTest.kt` — schema assertions, mandatory-field
+- [x] **T3.2** (merged, PR #14) `phone/src/test/.../OsdPayloadCodecTest.kt` — schema assertions, mandatory-field
       presence, percent-encoding contains no raw CR/LF (gotcha #2). New.
       Dependencies: T3.1.
-- [x] **T3.3** `phone/.../bridge/OsdResponseParser.kt` — `PostOutcome` enum + `classify(httpCode,
+- [x] **T3.3** (merged, PR #14) `phone/.../bridge/OsdResponseParser.kt` — `PostOutcome` enum + `classify(httpCode,
       body)`, incl. `WRONG_DATASOURCE` detection via OSD's untouched placeholder string. New, pure.
       Satisfies: PCB-4, PCB-5, design Interfaces/Contracts.
       Dependencies: T2.2.
-- [x] **T3.4** `phone/src/test/.../OsdResponseParserTest.kt` — OK / SEND_SETTINGS / OSD_PARSE_ERROR
+- [x] **T3.4** (merged, PR #14) `phone/src/test/.../OsdResponseParserTest.kt` — OK / SEND_SETTINGS / OSD_PARSE_ERROR
       / WRONG_DATASOURCE / UNREACHABLE cases. New.
       Dependencies: T3.3.
 
@@ -104,15 +104,15 @@ Parallelizable: {T3.1+T3.2} and {T3.3+T3.4} can run in parallel (independent fil
 
 ## Batch 3b — BridgeHealth + loopback integration test
 
-- [x] **T3.5** `phone/.../bridge/BridgeHealth.kt` — `BridgeFault` enum + `evaluate(...)` boundary
+- [x] **T3.5** (merged, PR #15) `phone/.../bridge/BridgeHealth.kt` — `BridgeFault` enum + `evaluate(...)` boundary
       logic (`NO_WATCH_DATA` >30s, `OSD_UNREACHABLE` ≥3 consecutive failures or >20s since last
       POST OK, latched `OSD_WRONG_DATASOURCE`/`OSD_REJECTS_DATA`). New, pure.
       Satisfies: PCB-7 (failure surfacing thresholds), design Interfaces/Contracts.
       Dependencies: T3.3 (`PostOutcome` type reused).
-- [x] **T3.6** `phone/src/test/.../BridgeHealthTest.kt` — boundary cases for each fault, incl.
+- [x] **T3.6** (merged, PR #15) `phone/src/test/.../BridgeHealthTest.kt` — boundary cases for each fault, incl.
       recovery transition back to `NONE`. New.
       Dependencies: T3.5.
-- [x] **T3.7** Loopback integration test: local `ServerSocket`-based stub server in a JVM test
+- [x] **T3.7** (merged, PR #15) Loopback integration test: local `ServerSocket`-based stub server in a JVM test
       asserting the exact wire bytes OSD's `NanoHTTPD.parseBody()`/`decodeParms` would accept
       (content-type, `dataObj=` prefix, percent-encoding round-trip). New test file.
       Satisfies: design "Testing Strategy" table row "Integration (no OSD)".
@@ -124,13 +124,13 @@ Parallelizable: T3.5/T3.6 sequential; T3.7 can run in parallel with T3.5/T3.6 (o
 
 ## Batch 4 — `OsdHttpForwarder`
 
-- [x] **T4.1** `phone/.../bridge/OsdHttpForwarder.kt` — `HttpURLConnection` POST/GET to
+- [x] **T4.1** (merged, PR #16) `phone/.../bridge/OsdHttpForwarder.kt` — `HttpURLConnection` POST/GET to
       `127.0.0.1:8080` only (never `0.0.0.0`/LAN), 4s connect / 4s read timeout, `Connection: close`,
       no retry/no queue/no batching (one POST per received chunk). New.
       Satisfies: PCB-4, PCB-5, design Architecture Decisions #2–#3, Threat Matrix row 1 (loopback
       binding).
       Dependencies: T3.1, T3.3 (uses codec output + classifies response).
-- [x] **T4.2** `phone/src/test/.../OsdHttpForwarderTest.kt` — timeout behavior, exact loopback
+- [x] **T4.2** (merged, PR #16) `phone/src/test/.../OsdHttpForwarderTest.kt` — timeout behavior, exact loopback
       target, response classification wiring (can reuse the Batch 3b stub server). Modified/New.
       Dependencies: T4.1, T3.7.
 
@@ -140,11 +140,11 @@ Parallelizable: none (sequential within batch).
 
 ## Batch 5a — `OsdBridgeService` core
 
-- [x] **T5.1** Extend `phone/src/main/AndroidManifest.xml` — FGS type `connectedDevice`,
+- [x] **T5.1** (merged, PR #17, #18) Extend `phone/src/main/AndroidManifest.xml` — FGS type `connectedDevice`,
       `BLUETOOTH_CONNECT`, `WAKE_LOCK`, `POST_NOTIFICATIONS`. Modified.
       Satisfies: PCB-8, design Architecture Decision #8.
       Dependencies: T2.3.
-- [x] **T5.2** `phone/.../bridge/OsdBridgeService.kt` — foreground service: `MessageClient` listener
+- [x] **T5.2** (merged, PR #17, #18) `phone/.../bridge/OsdBridgeService.kt` — foreground service: `MessageClient` listener
       for `/osd/accel_data` and `/osd/settings`, `PARTIAL_WAKE_LOCK` (10h timeout, renewed each 10s
       tick), POST loop (pass-through, no batching), event-driven `GET /data` poll (250ms
       post-POST + 5s idle safety poll), health tick, `START_STICKY`. New.
@@ -159,18 +159,18 @@ Parallelizable: none (T5.2 is the integration point for all Batch 3/4 units).
 
 ## Batch 5b — `AlarmStateRelay` + `BridgeNotifications`
 
-- [x] **T5.3** `phone/.../bridge/AlarmStateRelay.kt` — relays alarm state to the watch via
+- [x] **T5.3** (merged, PR #19) `phone/.../bridge/AlarmStateRelay.kt` — relays alarm state to the watch via
       `/osd/alarm_state` (`{"alarm_state","alarm_phrase"}`) on change and as a 10s keep-alive; never
       fabricates an `alarmState` on companion-side failure (silence, not a fake FAULT code). New.
       Satisfies: PCB-6, WCT-3, WCT-4, design Architecture Decisions #4, #6.
       Dependencies: T5.2 (consumes the poll loop's `GET /data` result).
-- [x] **T5.4** `phone/.../bridge/BridgeNotifications.kt` — two channels: `osd_bridge_status`
+- [x] **T5.4** (merged, PR #20) `phone/.../bridge/BridgeNotifications.kt` — two channels: `osd_bridge_status`
       (LOW, ongoing, required by the FGS) and `osd_bridge_fault` (HIGH, ongoing,
       `CATEGORY_ERROR`, sound+vibration, re-posted every 60s while the fault stands). Explicit,
       actionable, non-technical text per fault type. New.
       Satisfies: PCB-7, PROP-SC (visible fault within 60s), design "Notification channels".
       Dependencies: T3.5 (consumes `BridgeFault`), T5.2.
-- [x] **T5.5** `phone/src/test/.../OsdBridgeServiceTest.kt` (Robolectric) — listener wiring, health
+- [x] **T5.5** (merged, PR #20) `phone/src/test/.../OsdBridgeServiceTest.kt` (Robolectric) — listener wiring, health
       tick drives fault/recovery transitions, notification re-post cadence. New.
       Dependencies: T5.2, T5.3, T5.4.
 
@@ -180,14 +180,14 @@ Parallelizable: T5.3 and T5.4 can be developed in parallel (both depend only on 
 
 ## Batch 5c — Relay freshness / fail-loud (safety finding F1)
 
-- [x] **T5c.1** `phone/.../bridge/OsdDataFreshness.kt` + `AlarmStateRelay.kt` — freshness tracker over OSD's
+- [x] **T5c.1** (merged, PR #23) `phone/.../bridge/OsdDataFreshness.kt` + `AlarmStateRelay.kt` — freshness tracker over OSD's
       `dataTimeStr` (last distinct value, injectable clock, `OSD_DATA_FRESH_MS` 15s) and relay asymmetry:
       `alarmState >= 1` always relayed; `0` (change + keep-alive) only if `BridgeFault == NONE` and data fresh,
       else silence. Cites safety-review-pre-batch7 F1. Modified/New.
-- [x] **T5c.2** `BridgeFault.OSD_DATA_STALE` (POST OK but OSD data timestamp stale) in `BridgeHealth`/`BridgeState`
+- [x] **T5c.2** (merged, PR #22) `BridgeFault.OSD_DATA_STALE` (POST OK but OSD data timestamp stale) in `BridgeHealth`/`BridgeState`
       + caregiver notification text in `BridgeNotifications`/`strings.xml`. Cites safety-review-pre-batch7 F1.
       Dependencies: T5c.1.
-- [x] **T5c.3** Frozen-state tests: alarm 1/2/3 relayed under fault + stale data; 0 withheld under fault / frozen
+- [x] **T5c.3** (merged, PR #22, #23) Frozen-state tests: alarm 1/2/3 relayed under fault + stale data; 0 withheld under fault / frozen
       timestamp; 0 resumes on advance; tracker boundaries; `OSD_DATA_STALE` health/state/notification. Cites
       safety-review-pre-batch7 F1. Dependencies: T5c.1, T5c.2.
 
@@ -195,16 +195,16 @@ Parallelizable: T5.3 and T5.4 can be developed in parallel (both depend only on 
 
 ## Batch 6 — `SetupActivity` + `BootReceiver`
 
-- [x] **T6.1** Extend `phone/src/main/AndroidManifest.xml` — `RECEIVE_BOOT_COMPLETED`,
+- [x] **T6.1** (merged, PR #21) Extend `phone/src/main/AndroidManifest.xml` — `RECEIVE_BOOT_COMPLETED`,
       `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, activity/receiver declarations. Modified.
       Satisfies: PCB-8.
       Dependencies: T5.1.
-- [x] **T6.2** `phone/.../SetupActivity.kt` — one-shot setup only (no status/receiving screen):
+- [x] **T6.2** (merged, PR #21) `phone/.../SetupActivity.kt` — one-shot setup only (no status/receiving screen):
       request `POST_NOTIFICATIONS` permission, request battery-optimisation exemption, start/stop
       the bridge service, Garmin-data-source instructions text. New.
       Satisfies: PCB-7 (no status UI, headless), PCB-8, design "Notification channels" closing note.
       Dependencies: T5.2 (starts/stops `OsdBridgeService`), T6.1.
-- [x] **T6.3** `phone/.../boot/BootReceiver.kt` — resumes the bridge service on boot if
+- [x] **T6.3** (merged, PR #21) `phone/.../boot/BootReceiver.kt` — resumes the bridge service on boot if
       `was_bridging` flag is set; on FGS-type boot-eligibility failure, degrade to a high-importance
       "restart the bridge" notification instead of failing silently (Open Question, design). New.
       Satisfies: PCB-8.
@@ -219,14 +219,14 @@ Parallelizable: T6.2 and T6.3 in parallel after T6.1; both need T5.2/T5.4.
 Policy: system faults never produce sound/vibration/heads-up/repeats; only a real alarm (OSD's job)
 interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone` only.
 
-- [x] **T5d.1** Silent fault presentation: new LOW channel `osd_bridge_fault_silent` (no sound/vibration/lights),
+- [x] **T5d.1** (merged, PR #24) Silent fault presentation: new LOW channel `osd_bridge_fault_silent` (no sound/vibration/lights),
       legacy `osd_bridge_fault` deleted, no timer re-post (`faultAction` posts only on new/changed fault),
       `postStartFailure`/`postRestartNeeded` silent too. Plus T5d.4 setup text (delivered together in PR 5d-1).
-- [x] **T5d.2** `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
+- [x] **T5d.2** (merged, PR #25) `FaultLog` (bounded, persisted fault periods from health-tick transitions) + service-down
       detection (last-alive timestamp, gap > threshold with `was_bridging` and no clean stop => `SERVICE_DOWN`).
-- [x] **T5d.3** Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
+- [x] **T5d.3** (merged, PR #26) Silent morning summary: 08:00 inexact `setAndAllowWhileIdle` alarm -> manifest receiver ->
       LOW channel `osd_bridge_summary`; pure `buildSummary`; armed by `SetupActivity` Start and `BootReceiver`.
-- [x] **T5d.4** Setup instructions: turn OFF OSD "Enable Audible System FaultWarnings"; keep phone charging
+- [x] **T5d.4** (merged, PR #24) Setup instructions: turn OFF OSD "Enable Audible System FaultWarnings"; keep phone charging
       overnight; keep Garmin data source / web server instructions.
 
 ---
@@ -235,10 +235,10 @@ interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone`
 
 `:phone` only. T5e.3 constants are recovery timings, not detection constants (no signature required).
 
-- [x] **T5e.1** `sample_freq` must be exactly 25 (`SAMPLE_FREQ_HZ`); any other value is dropped and counted, never forwarded.
-- [x] **T5e.2** Frozen-sensor chunk (all 125 samples identical, no tolerance) rejected in the parser; not a valid watch
+- [x] **T5e.1** (merged, PR #27) `sample_freq` must be exactly 25 (`SAMPLE_FREQ_HZ`); any other value is dropped and counted, never forwarded.
+- [x] **T5e.2** (merged, PR #27) Frozen-sensor chunk (all 125 samples identical, no tolerance) rejected in the parser; not a valid watch
       message, so the silent `NO_WATCH_DATA` fault surfaces it. New rule, not in the signed-constants table.
-- [x] **T5e.3** Listener resilience: capped-backoff retry of a failed `addListener` (5 s -> 60 s) and self-heal
+- [x] **T5e.3** (merged, PR #28) Listener resilience: capped-backoff retry of a failed `addListener` (5 s -> 60 s) and self-heal
       re-registration after 60 s without a valid watch message (throttled to 1/60 s); pure, injectable-clock decisions.
 
 ---
@@ -246,19 +246,19 @@ interrupts. Fault detection, latch and `AlarmStateRelay` are unchanged. `:phone`
 ## Batch 7 — `:wear` retargeting (highest risk — life-safety-adjacent, land after companion is
 provably correct in isolation)
 
-- [ ] **T7.1** `wear/build.gradle.kts` — `transport` product flavor dimension: `companion` (default,
+- [x] **T7.1** (merged, PR #29) `wear/build.gradle.kts` — `transport` product flavor dimension: `companion` (default,
       first-declared) and `osdDirect` (overrides only `applicationId =
       "uk.org.openseizuredetector"` + `buildConfigField OSD_DIRECT_MODE`); reference the shared
       `signingConfigs` from T1.1. No new flavor source sets — both flavors compile the same
       sources. Modified.
       Satisfies: WCT-6, design Architecture Decision #7.
       Dependencies: T1.1, T1.3.
-- [ ] **T7.2** `wear/.../WearDataLayerManager.kt` (or equivalent peer-facing class) — destination
+- [x] **T7.2** (merged, PR #29) `wear/.../WearDataLayerManager.kt` (or equivalent peer-facing class) — destination
       peer of DEC-046 messages changes to the companion node; direct-to-OSD path retained behind
       `OSD_DIRECT_MODE`, not deleted. Modified.
       Satisfies: WCT-1, WCT-2, WCT-6, WCT-8 (no other :wear changes beyond this).
       Dependencies: T7.1.
-- [ ] **T7.3** `wear/.../service/SeizureMonitorService.kt` — add `lastAlarmStateAtMs` field/param,
+- [x] **T7.3** (merged, PR #30) `wear/.../service/SeizureMonitorService.kt` — add `lastAlarmStateAtMs` field/param,
       extend `evaluateHealth(...)` signature, update constants: `WATCHDOG_INTERVAL_MS` 30s→**10s**,
       `DELIVERY_STALE_MS` 60s→**40s**, new `ALARM_STATE_STALE_MS` **40s**; warm-up 60s and
       hysteresis (2 ticks) unchanged. **These constants require a human signature in
@@ -267,18 +267,18 @@ provably correct in isolation)
       end-to-end liveness signal. Modified.
       Satisfies: WCT-3, WCT-4, WCT-5, design Architecture Decision #5.
       Dependencies: T7.2 (needs the companion-facing send/receive path to plug staleness into).
-- [ ] **T7.4** `wear/src/test/.../SeizureMonitorServiceTest.kt` — new `evaluateHealth` cases: inbound
+- [x] **T7.4** (merged, PR #30) `wear/src/test/.../SeizureMonitorServiceTest.kt` — new `evaluateHealth` cases: inbound
       alarm-state staleness, the 60s worst-case arithmetic for outbound (40+20), inbound (10+30+20),
       and sensor (10+20) paths; confirm existing `isSequentialMode` default-false, prior
       `evaluateHealth` cases, and `WakeLock` contract tests still pass unchanged. Modified.
       Satisfies: WCT-5, WCT-8 (existing Robolectric tests must still pass unchanged).
       Dependencies: T7.3.
 
-- [ ] **T7.5** OSD alarm-state policy per DEC-057: 2/3/5 => alarm; 4/7/unknown => silent system fault
+- [x] **T7.5** (merged, PR #31) OSD alarm-state policy per DEC-057: 2/3/5 => alarm; 4/7/unknown => silent system fault
       (visual only, logged); 6 => no vibration; amend spec WCT-8 (safety finding F2).
-- [ ] **T7.6** DEGRADED becomes visual-only (NO vibration) per DEC-057; remove/adjust `vibrateDegraded`
+- [x] **T7.6** (merged, PR #31) DEGRADED becomes visual-only (NO vibration) per DEC-057; remove/adjust `vibrateDegraded`
       behaviour and update T7.4 criteria (supersedes persistent-vibration finding F3).
-- [ ] **T7.7** Correct the 60s worst-case arithmetic (inbound path uses 40s stale, not 30s) or accept a
+- [x] **T7.7** (merged, PR #31) Correct the 60s worst-case arithmetic (inbound path uses 40s stale, not 30s) or accept a
       signed ~65-70s ceiling.
 
 Parallelizable: none (strict sequential chain; this is the highest-risk batch and should be
@@ -288,16 +288,17 @@ reviewed as its own PR).
 
 ## Batch 8 — Version/compatibility handshake
 
-- [ ] **T8.1** `:wear` exposes a transport-contract version (piggyback on `/osd/settings` field, or
+- [x] **T8.1** (merged, PR #35) `:wear` exposes a transport-contract version (piggyback on `/osd/settings` field, or
       a small dedicated field decided at implementation time — design left this open). Modified.
       Satisfies: WCT-7, PCB-9.
       Dependencies: T7.2, T7.3.
-- [ ] **T8.2** `:phone` compares the watch's contract version on connect; mismatch routes through
-      `BridgeNotifications` (fault channel) as a caregiver-visible notification, not silent
-      ignore. Modified.
+- [x] **T8.2** (merged, PR #37, #38, #40, #41) `:phone` compares the watch's contract version on every watch settings message; a
+      mismatch or missing version is recorded as a `VERSION_MISMATCH` fault-log period and shown as a
+      silent passive notification plus a morning-summary note (DEC-057, DEC-065, DEC-066). It persists
+      across restarts until a matching version is seen and never stops forwarding to OSD. Modified.
       Satisfies: PCB-9.
       Dependencies: T8.1, T5.4.
-- [ ] **T8.3** Unit tests for the version-compare logic (match/mismatch/missing-field cases). New.
+- [x] **T8.3** (merged, PR #37) Unit tests for the version-compare logic (match/mismatch/missing-field cases). New.
       Dependencies: T8.2.
 
 Parallelizable: none (T8.1 must land before T8.2/T8.3 can be written against a real field).
@@ -306,19 +307,38 @@ Parallelizable: none (T8.1 must land before T8.2/T8.3 can be written against a r
 
 ## Batch 9 — Docs touch-ups
 
-- [ ] **T9.1** `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` — document the two-APK install flow
+- [x] **T9.1** (merged, PR #44) `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md` — document the two-APK install flow
       (`:wear` + `:phone`), OSD data source = "Garmin", OSD web server must be running. This is new
       content (the two-APK flow did not exist before this change); distinct from the earlier
       doc-drift fix already committed. Modified.
-- [ ] **T9.2** `README.md` — same install-flow note, updated architecture summary reflecting the
+- [x] **T9.2** (merged, PR #44) `README.md` — same install-flow note, updated architecture summary reflecting the
       companion bridge. Modified.
-- [ ] **T9.3** `DECISIONS.md` — touch-up only if implementation details in T7.3/T7.1 diverge from
-      what DEC-050/DEC-051 already state (e.g. exact final constant values or flavor name). Do
-      **not** re-write the approach decision itself — DEC-050 (root cause) and DEC-051 (Option F)
-      are already written and committed; this is a narrow addendum only if needed.
-      Dependencies: T7.3 (to confirm final constants match what's documented).
+- [x] **T9.3** — no divergence found (2026-10-01). `DECISIONS.md` DEC-050/DEC-051 were compared with the
+      merged implementation: `applicationId` `com.seizureguard.wear` for `:wear` (default `companion`) and
+      `:phone`, `:wear` namespace `com.seizureguard.wear`, HTTP to `127.0.0.1:8080`, OSD data source
+      "Garmin". DEC-050/051 state no flavor names or watchdog constants; those live in DEC-059 (signed
+      10 s / 40 s / 40 s) and DEC-063 (flavors `companion`/`osdDirect`), which already match the code.
+      `DECISIONS.md` left untouched.
+      Dependencies: T7.3.
 
 Parallelizable: T9.1/T9.2 in parallel; T9.3 only if a divergence is found during T7.3.
+
+---
+
+## Work done outside the original task list (all merged on `main`)
+
+- [x] **Batch 7c** (PR #32) — watch screen shows DEGRADED and resets stale state (safety findings H7-1, H7-3).
+- [x] **Batch 7d** (PRs #33, #34) — monotonic watchdog clock, atomic alarm-state freshness, MUTE label,
+      readable colours, safe `alarm_state` parsing (H7-4 to H7-7, DEC-064).
+- [x] **Batch 8 split** (DEC-065, DEC-066): 8a (PR #35) watch advertises its contract version (T8.1);
+      8b (PRs #37, #38) version check, `VERSION_MISMATCH` fault-log period, evaluation on every settings
+      message (T8.2, T8.3); 8c (PRs #39, #40, #41) period survives restarts, silent passive notice,
+      morning-summary note (T8.2).
+- [x] **CI phone job** (PR #36) — `:phone` unit tests and lint run on every PR.
+- [x] **Batch 9a docs** (PRs #42, #43, #44) — caregiver guide, hardware runbook, safety register and
+      clinical sign-off; decision log DEC-050 to DEC-066; install flow and architecture docs (T9.1, T9.2).
+- [x] **Batch 9b** (this change) — planning artifacts on `main`, privacy scrub, PCB-9 aligned with
+      DEC-065/DEC-066, T9.3 check.
 
 ---
 
@@ -339,6 +359,12 @@ map each to the design's "Open Questions")
       (`ALARM_STATE_STALE_MS` 25s) if material. Relates to: Batch 7/8.
 - [ ] **DV-6** One full 8h overnight run (E2E gate from design's Testing Strategy) before trusting
       the feature in production use. Relates to: all batches, PROP-SC.
+- [ ] **DV-7** Fault injection, one at a time: (a) kill the companion's message listener, (b) kill
+      OSD, (c) force-stop the companion, (d) Do Not Disturb, (e) notifications denied. Each must end
+      as a visible fault (DEGRADED on the watch, silent phone notification) with **no sound or
+      vibration**; (c) produces no notice or summary. Record time to visible fault and whether
+      anything sounded. Key for (a): the listener retry/self-heal (Batch 5e, PR #28) is untested on
+      hardware. Relates to: Batch 5e, DEC-057. Detailed steps: `HARDWARE_RUNBOOK.md` §4.7.
 
 These are explicitly **not** blocking for individual PRs to merge, but PROP-SC ("clean 8h overnight
 run") and the design's E2E gate mean the feature is not considered validated until DV-6 passes.

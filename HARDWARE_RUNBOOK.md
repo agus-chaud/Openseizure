@@ -141,7 +141,7 @@ C:\Android\platform-tools\adb.exe install -r wear\build\outputs\apk\companion\de
 > ⚠️ **Estado: NADA de esta sección se probó todavía en hardware real.** El sistema completo
 > (reloj + companion + OSD) no fue verificado de punta a punta. El experimento de hardware GATE-0
 > (`docs/EXPERIMENTO_WEARSD_OSD_BETA.md`) **no se corrió**: el dueño del proyecto decidió asumirlo como
-> PASS (DEC-052). Las pruebas DV-1..DV-7 de abajo siguen **pendientes**. Mientras tanto, no dependas de
+> PASS (DEC-052). Las pruebas DV-1..DV-9 de abajo siguen **pendientes**. Mientras tanto, no dependas de
 > esto solo para vigilar a nadie. Lo marcado **(sin verificar)** es una expectativa, no un hecho.
 
 **Cómo funciona (DEC-050, DEC-051):** el reloj no puede hablarle directo a OSD. La Wear Data Layer solo
@@ -251,10 +251,12 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s OsdBridgeService:D 
 
 **Registrar:** segundos entre la sacudida y la vibración, si sonó OSD, si llegó el SMS.
 
-### 4.7 Checklist de verificación (DV-1..DV-7 y otros chequeos)
+### 4.7 Checklist de verificación (DV-1..DV-9 y otros chequeos)
 
-Numeración de DV según `docs/SAFETY_FINDINGS_WATCH_OSD.md` (sección 6). Ojo: `tasks.md` del openspec
-numera distinto DV-4 y no tiene DV-7; se usa el registro de seguridad. Ninguno está hecho.
+> Versión paso a paso, en lenguaje simple y con hoja de resultados: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+
+Numeración de DV según `docs/SAFETY_FINDINGS_WATCH_OSD.md` (sección 6); `tasks.md` del openspec usa la
+misma numeración. Ninguno está hecho.
 
 | ID | Cómo hacerlo | Qué deberías ver | Qué registrar |
 |---|---|---|---|
@@ -265,6 +267,8 @@ numera distinto DV-4 y no tiene DV-7; se usa el registro de seguridad. Ninguno e
 | **DV-5** Batería del keep-alive de 10 s | Noche o 8 h con teléfono al 100% sin cargador (solo para medir), vs. sin el companion. | Consumo razonable. | % de batería del teléfono al inicio y al final. |
 | **DV-6** Noche completa de 8 h | Dormir con todo andando, teléfono cargando. | Sin cortes y resumen matutino "No interruptions last night." | Cortes, falsas alarmas, batería del reloj, resumen. |
 | **DV-7** Inyección de fallas | Una por vez: (a) matar el listener, (b) matar OSD, (c) force-stop del companion, (d) No molestar, (e) notificaciones denegadas. | Cada una debe quedar como falla visible (DEGRADED en el reloj, notificación silenciosa) **sin sonido ni vibración**; (c) no genera aviso ni resumen. | Por cada una, tiempo hasta falla visible y si algo sonó. Dato clave para (a): el reintento del listener (Batch 5e, PR #28) está en `main` pero **sin probar en hardware**. |
+| **DV-8** Latencia clínica (techo 40 s) | Imitar una convulsión (§6) y cronometrar desde el inicio de la sacudida hasta (a) vibración fuerte del reloj, (b) alarma de OSD, (c) SMS. Mínimo 5 corridas. | (a) y (b) en **≤ 40 s en todas las corridas** (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Sub-medición opcional: reloj vs. teléfono, techo de diseño de 8 s del relay. | Segundos de (a), (b) y (c) por corrida. Una corrida > 40 s: el valor se revisa y se vuelve a firmar. |
+| **DV-9** Lo que ve el cuidador | Un chequeo por cada uno: "⚠ MONITOREO DEGRADADO" a ~80 s con el puente detenido; "SILENCIADO, no avisa convulsiones" con MUTE; "SeizureGuard: update needed" con versiones distintas (opcional); reinicio del teléfono (ver DV-2); resumen "SeizureGuard: last night" a ~8:00. | Todo se ve en pantalla o en notificaciones **silenciosas**, sin sonido ni vibración. | Tiempo hasta cada aviso, texto exacto y si algo sonó o vibró. |
 
 Otros chequeos (todos pendientes):
 
@@ -297,7 +301,7 @@ Anotá la versión (commit) de cada APK en cada prueba.
 ### 4.9 Listo cuando...
 
 Podés marcar esta fase como lista solo si: los datos llegan a OSD (4.5), el estado vuelve al reloj
-(4.6) y **todos** los DV-1..DV-7 y los otros chequeos de la tabla están hechos y registrados. Hasta
+(4.6) y **todos** los DV-1..DV-9 y los otros chequeos de la tabla están hechos y registrados. Hasta
 entonces, el flujo sigue **sin verificar**.
 
 ---
@@ -343,6 +347,8 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceGarmin:
 ---
 
 ## 6. Prueba completa (simular una convulsión)
+
+> Para **medir el techo de 40 s** de latencia clínica, seguí DV-8 en `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
 
 ```powershell
 # Mirar los mensajes del reloj Y del teléfono a la vez:

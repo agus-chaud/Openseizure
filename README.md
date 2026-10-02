@@ -133,8 +133,8 @@ mergeados en `main` (Batches 1 a 8 — ver el checklist de Fase E más abajo). E
 "sabores" de build (`transport`): **`companion`** (el normal: le habla al puente) y **`osdDirect`**
 (solo para desarrollo: le habla directo a OSD; muestra un cartel *"VERSIÓN DE PRUEBA"*, y su versión
 de lanzamiento está deshabilitada a propósito). Lo que **no** se hizo todavía es la **verificación
-en el reloj y el teléfono reales** (DV-1..DV-7): hasta entonces, nada de esto está probado de punta a
-punta con el equipo real.
+en el reloj y el teléfono reales** (DV-1..DV-9; guía paso a paso: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`):
+hasta entonces, nada de esto está probado de punta a punta con el equipo real.
 
 **Cómo se instala (dos APKs):** el APK del reloj (`:wear`, sabor `companion`) y el APK del puente
 (`:phone`) tienen que estar firmados con la **misma clave**, y OSD tiene que estar instalado en el
@@ -609,7 +609,7 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 > `sdd/watch-osd-message-delivery/*`. Se entrega en 10 PRs encadenados (`stacked-to-main`).
 > **GATE-0** (experimento WearSD+OSD-beta en hardware real) fue asumido como PASS por decisión
 > explícita del usuario sin correrlo aún — ver DEC-052 y engram `.../gate-0-override`. Las tareas
-> DV-1..DV-7 (verificación en hardware) siguen pendientes y son obligatorias antes de dar el
+> DV-1..DV-9 (verificación en hardware) siguen pendientes y son obligatorias antes de dar el
 > feature por terminado.
 - [x] **Batch 1** Firma compartida `:wear`/`:phone` (`signing.gradle.kts`) — [PR #12](https://github.com/agus-chaud/Openseizure/pull/12) — Agent-Done
 - [x] **Batch 2** Scaffold del módulo `:phone` (manifest, build.gradle, recursos mínimos) — [PR #13](https://github.com/agus-chaud/Openseizure/pull/13) — Agent-Done
@@ -626,7 +626,7 @@ PASS + PR aprobado) y **Field-Done** (validado en hardware con la app OSD real, 
 - [x] **Batch 7d** (correctivo, `:wear`) reloj monotónico y frescura atómica del estado de alarma ([#33](https://github.com/agus-chaud/Openseizure/pull/33)); cartel "SILENCIADO, no avisa convulsiones", colores legibles y lectura segura del estado ([#34](https://github.com/agus-chaud/Openseizure/pull/34)) — Agent-Done
 - [x] **Batch 8** Handshake de versión/compatibilidad: el reloj manda `contract_version` ([#35](https://github.com/agus-chaud/Openseizure/pull/35)); CI corre los tests y el lint de `:wear` y `:phone` en cada PR ([#36](https://github.com/agus-chaud/Openseizure/pull/36)); el teléfono compara versiones ([#37](https://github.com/agus-chaud/Openseizure/pull/37), [#38](https://github.com/agus-chaud/Openseizure/pull/38)); aviso silencioso "SeizureGuard: update needed" y nota en el resumen de la mañana ([#39](https://github.com/agus-chaud/Openseizure/pull/39), [#40](https://github.com/agus-chaud/Openseizure/pull/40), [#41](https://github.com/agus-chaud/Openseizure/pull/41)) — Agent-Done
 - [ ] **Batch 9** Ajustes de documentación — 9a (documentación llevada a `main` y alineada con el código) en revisión; el resto del Batch 9 sigue abierto — Agent-Done
-- [ ] **DV-1..DV-7** Verificación en hardware real (Galaxy Watch 8 + OSD beta) — Field-Done. **Pendiente: todavía no se hizo ninguna.**
+- [ ] **DV-1..DV-9** Verificación en hardware real (Galaxy Watch 8 + OSD beta; guía: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`) — Field-Done. **Pendiente: todavía no se hizo ninguna.**
 
 #### Fase D: Validación de campo (hardware-gated — ver `HARDWARE_RUNBOOK.md`)
 > SOLO un humano con el Watch 8 + la app OSD instalada. El agente prepara el runbook e interpreta.

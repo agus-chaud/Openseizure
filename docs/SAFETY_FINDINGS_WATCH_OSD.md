@@ -132,6 +132,10 @@ cargado.
 | DV-5 | Costo de batería del teléfono con el refresco de 10 s | Batch 7/8 | Puede esperar |
 | DV-6 | Una noche completa de 8 h | Todo | Pendiente |
 | **DV-7 (nuevo)** | Inyección de fallas: matar listener, matar OSD, force-stop del puente, No Molestar, notificaciones denegadas; medir tiempo a la falla visible | F4, F5, F8 | Pendiente |
+| **DV-8** | Latencia clínica: simular una convulsión y medir (con cronómetro, mínimo 5 corridas) el tiempo hasta la vibración fuerte del reloj, la alarma de OSD y el SMS; debe ser ≤ 40 s (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Incluye, como sub-medición, el techo de 8 s del relay | `techo_latencia_clinica` | Pendiente |
+| **DV-9** | Lo que ve el cuidador: "⚠ MONITOREO DEGRADADO" a ~80 s, "SILENCIADO, no avisa convulsiones" con MUTE, "SeizureGuard: update needed" (opcional), reinicio del teléfono con el puente (ver DV-2) y resumen matutino a ~8:00 | A1, DEC-057, Batch 8 | Pendiente |
+
+Pasos simples para hacer todas las DV: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
 
 ---
 

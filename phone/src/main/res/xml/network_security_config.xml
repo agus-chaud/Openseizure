@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    OSD's built-in web server only speaks plain HTTP on 127.0.0.1:8080. Since targetSdk 28 Android
+    blocks cleartext HTTP by default, which made every POST to OSD fail on a real phone (found in the
+    first hardware run, 2026-10-06). Cleartext is allowed ONLY for the loopback address; every other
+    destination keeps the platform default (cleartext blocked).
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

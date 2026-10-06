@@ -2123,6 +2123,25 @@ el estado de su fecha. Sigue pendiente la verificación en hardware real (DV-1..
 
 ---
 
+## DEC-067: HTTP en claro permitido solo hacia el propio teléfono (127.0.0.1)
+
+**Fase:** primera prueba en hardware real | **Fecha:** 2026-10-06
+
+**Qué pasó:** en la primera prueba con el reloj y el teléfono reales, el Companion no podía mandarle
+nada a OSD. Android bloquea por defecto las conexiones HTTP sin cifrar (desde targetSdk 28) y OSD solo
+habla HTTP plano en `127.0.0.1:8080`. El error quedaba escondido como "OSD no responde". Los tests
+corren en la computadora, donde esa política no existe, por eso no lo detectaron.
+
+**Qué se decidió:** se permite HTTP en claro **únicamente** hacia `127.0.0.1` y `localhost` mediante
+`network_security_config`. Cualquier otro destino mantiene el bloqueo por defecto (el servidor de OSD no
+tiene autenticación). Además, el Companion registra el motivo real de cada falla de conexión.
+
+**Consecuencia:** antes de este arreglo el puente no funcionaba en hardware real. Verificado en el
+equipo real después del arreglo (los datos llegan a OSD). `safety-reviewer` R14: PASS (sección 15 del
+registro de seguridad).
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

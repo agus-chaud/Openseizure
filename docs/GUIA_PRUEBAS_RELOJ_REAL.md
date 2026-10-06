@@ -48,6 +48,10 @@ Para entender el flujo también sirve `docs/GUIA_CONECTAR_RELOJ_TELEFONO.md`.
 - [ ] En "SeizureGuard Companion" tocaste **"Start bridge"** (debe aparecer el aviso "Bridge started" y la
       notificación "SeizureGuard bridge running").
 - [ ] En el reloj tocaste **"Iniciar monitoreo"** y dice **"Monitoreo activo"**.
+- [ ] Si reinstalaste "SeizureGuard Companion", tocá **"Start bridge"** de nuevo y después
+      **reiniciá el monitoreo en el reloj** (parar y volver a iniciar). Hasta que el reloj mande sus
+      ajustes, OSD recibe una batería de reloj de 100 por defecto y no te avisaría de una batería
+      baja real.
 - [ ] Esperaste **2 minutos** y la pantalla del reloj **no** dice "⚠ MONITOREO DEGRADADO".
 - [ ] En el teléfono del cuidador, el contacto de la persona está configurado para que el SMS **suene**
       (ver "Tu teléfono" en `CAREGIVER_GUIDE.md`).

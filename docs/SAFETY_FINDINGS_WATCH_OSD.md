@@ -343,3 +343,20 @@ después de encolar el envío a OSD).
 | R11-F3 | INFO | Preexistente: `postStartFailure` en `enterForeground` no está envuelto. | Endurecimiento opcional |
 | R11-F4 | BAJO | Con la notificación del resumen cerrada, la nota puede quedar oculta. | Documentado en la guía (expandirla) |
 | R11-F7 | INFO | R9-F2 (batería -1 rechazada) podría dejar el aviso viejo si el reloj arreglado sigue mandando -1. | Seguimiento (Batch 9) |
+
+---
+
+## 15. Primera prueba en hardware real y `safety-reviewer` R14 (2026-10-06)
+
+**Qué pasó:** en la primera prueba con el equipo real (Galaxy A52 + Galaxy Watch 8, OSD 5.0.9) el
+reloj le mandaba datos al Companion, pero **ningún dato llegaba a OSD**: OSD quedaba en FAULT, sin
+ajustes del reloj y con los datos congelados.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R14-F1 | ALTO (histórico) | El puente teléfono→OSD nunca funcionó en hardware real antes de este arreglo: Android bloquea HTTP en claro por defecto (targetSdk ≥ 28) y `OsdHttpForwarder` lo escondía como UNREACHABLE. Los tests JVM/Robolectric no aplican esa política, por eso R1–R13 no lo vieron. | **ARREGLADO**: `network_security_config` permite HTTP en claro solo a `127.0.0.1` y `localhost`; el motivo de cada falla ahora se registra con `Log.w`. Verificado en el equipo real (OSD `/data` avanza, `alarmState` 0 "OK"). `NetworkSecurityConfigTest` fija manifest + config. **Lección:** toda ruta de red nueva se prueba en el teléfono real antes de darla por buena |
+| R14-F3 | BAJO | Con OSD caído, el registro escribe ~2 líneas cada 5 s. | Seguimiento opcional: registrar solo cuando cambia el motivo |
+| R14-F5 | BAJO | Tras reinstalar el Companion, OSD recibe batería de reloj 100 (valor por defecto firmado) hasta que el reloj reinicia el monitoreo. | Documentado en `docs/GUIA_PRUEBAS_RELOJ_REAL.md`; R9-F2 sigue abierto |
+
+**Veredicto R14: PASS.** El cambio no habilita HTTP en claro hacia ningún destino fuera del propio
+teléfono y no cambia alarmas, vibración, SMS ni estados.

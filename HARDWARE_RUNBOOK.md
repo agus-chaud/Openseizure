@@ -348,18 +348,18 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceGarmin:
 
 ## 6. Prueba completa (simular una convulsión)
 
-> Para **medir el techo de 40 s** de latencia clínica, seguí DV-8 en `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+> Sacudir con la mano **solo llega a AVISO (WARNING)**, no a ALARMA, y **no verifica el techo de 40 s**. Sirve para probar el relay (DV-8a). El techo de 40 s es DV-8b; ver `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
 
 ```powershell
 # Mirar los mensajes del reloj Y del teléfono a la vez:
 C:\Android\platform-tools\adb.exe logcat -s SeizureGuard:D SdDataSourceGarmin:D
 ```
 1. App del reloj andando, app OSD del teléfono andando y recibiendo.
-2. Agitá el reloj con la mano, con un movimiento **rítmico y fuerte** (1 a 3 sacudidas por segundo)
-   durante unos 30 segundos. Eso imita el movimiento de una convulsión.
-3. Tiene que pasar la cadena completa: OSD detecta → le avisa al reloj → **el reloj vibra**
-   (un pulso corto = aviso; vibración fuerte y repetida = alarma) → la app OSD suena y manda un
-   **SMS** (mensaje de texto) al cuidador.
+2. Agitá el reloj con la mano, con un movimiento **rítmico y fuerte** (**4 a 6 sacudidas por segundo**;
+   la banda de OSD es 3 a 8 Hz, menos de eso no dispara) durante unos 30 segundos.
+3. Con la mano llegás hasta AVISO (WARNING): se verifica OSD detecta → le avisa al reloj → **el reloj vibra**
+   (un pulso corto = aviso). La cadena completa hasta alarma fuerte, sonido de OSD y **SMS** (DV-8b)
+   no se puede verificar a mano.
 
 ---
 

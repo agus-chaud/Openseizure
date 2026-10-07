@@ -160,8 +160,10 @@ process-integration boundary applies:
 - [ ] Is `connectedDevice` on the BOOT_COMPLETED-allowed FGS-type list for the phone's Android
       version? If not, boot resume must degrade to a high-importance "restart the bridge"
       notification instead of failing silently. Device-verify.
-- [ ] Is `mDataFrequencyCheckEnabled` on by default in the user's OSD prefs? If yes the ±1 s window
+- [x] Is `mDataFrequencyCheckEnabled` on by default in the user's OSD prefs? If yes the ±1 s window
       is live and jitter tolerance is thinner than assumed.
+      Answer (2026-10-07): yes, on by default. The watch exceeded 25 Hz when another client drove the
+      shared sensor to 50 Hz; fixed by DEC-068 (timestamp decimation), verified on hardware.
 - [ ] Does OSD write `alarmState` synchronously inside `onSdDataReceived`, or via a main-thread
       post? Decides whether the 250 ms settle delay is sufficient or must grow (ceiling unchanged).
 - [ ] Phone battery cost of a 10 s watch-bound keep-alive over 8 h — measure and relax to 15 s

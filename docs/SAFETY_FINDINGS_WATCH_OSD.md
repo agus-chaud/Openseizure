@@ -375,9 +375,11 @@ acelerómetro a 50 Hz; Android entrega esa tasa a todos los listeners del sensor
 | R15-F1 | ALTO | Con el sensor a 50 Hz, los chunks (125 muestras) abarcan 2.5 s. Si el período supera los 30 s, OSD entra en FAULT y descarta los paquetes sin analizarlos (riesgo aceptado A2, pero causado por el reloj). Se vieron dos períodos de ~32 s el 2026-10-06. | **ARREGLADO** (DEC-068): `SampleRateDecimator` conserva solo las muestras de una grilla de 25 Hz por `SensorEvent.timestamp` |
 | R15-F2 | ALTO | Durante los 50 Hz, OSD analizaba un espectro con la frecuencia duplicada (asume 25 Hz), sin que ningún aviso lo indicara. Podía enmascarar una convulsión en la banda 3-8 Hz. | **ARREGLADO** (DEC-068): la cadencia vuelve a ser 25 Hz reales |
 | R15-F3 | BAJO | Decimar sin filtro anti-aliasing: a 50 Hz de entrada el contenido sobre 12.5 Hz puede plegarse. | Aceptado: la energía del movimiento de muñeca ahí es baja y la banda de OSD es 3-8 Hz |
+| R15-F5 | BAJO | Si los timestamps del sensor dejaran de avanzar, el decimador descartaría todo mientras `lastSampleAtMs` sigue fresco (liveness por evento crudo): `SAMPLE_STALE_MS` no lo vería. | Cubierto: sin chunks no hay entregas y `DELIVERY_STALE_MS` (40 s, firmado) pasa el reloj a DEGRADADO |
+| R15-F6 | BAJO | Grilla anclada: justo después de una muestra atrasada, dos muestras conservadas pueden quedar a menos de 30 ms. Afecta a lo sumo una muestra de un chunk en una transición de tasa. | Aceptado: efecto espectral despreciable; a cambio, la tasa a largo plazo es exactamente 25 Hz |
 | R15-F4 | INFO | `lastSampleAtMs` (liveness, `SAMPLE_STALE_MS` 10 s) se sigue actualizando con cada evento crudo; la decimación no afecta la detección de sensor muerto. | Sin acción |
 
 No cambia ninguna constante firmada (25 Hz, `TRANSPORT_CHUNK_SIZE` 125, `SAMPLE_STALE_MS`), ni
 alarmas, vibración, SMS ni estados.
 
-**Veredicto safety-reviewer: pendiente.**
+**Veredicto R15: PASS.** Clasificación: `alarm-path` (acondiciona la señal que llega a OSD). No toca ninguna constante de lógica de detección (umbral, N ventanas, ventana 750, techo de latencia) ni cambia alarmas, vibración, SMS ni estados, así que `CAREGIVER_GUIDE.md` sigue vigente. Riesgo residual: falta repetir la medición en el reloj real con este cambio instalado (esperado: todos los chunks a 5.0 s y ningún "Data arriving too quickly").

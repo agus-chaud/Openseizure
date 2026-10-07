@@ -127,12 +127,12 @@ cargado.
 |---|---|---|---|
 | DV-1 | `startForeground(connectedDevice)` con `BLUETOOTH_CONNECT` denegado: falla ruidosa, sin crash | F4, Batch 5a | Pendiente |
 | DV-2 | `connectedDevice` permitido desde `BOOT_COMPLETED`; camino de degradación | F8, Batch 6 | Pendiente |
-| DV-3 | `mDataFrequencyCheckEnabled` en OSD (tolerancia de jitter) | Batch 4/5 | Pendiente |
+| DV-3 | `mDataFrequencyCheckEnabled` en OSD (tolerancia de jitter) | Batch 4/5 | **Hecha 2026-10-07**: viene activado por defecto; el reloj superaba los 25 Hz (§16), arreglado por DEC-068 y verificado en el reloj real (204/204 paquetes a 5 s) |
 | DV-4 | Estado congelado: OSD en fuente "Phone" o `processData` roto → DEGRADED en el reloj dentro del techo firmado | **F1** | Pendiente (caso concreto ahora definido) |
 | DV-5 | Costo de batería del teléfono con el refresco de 10 s | Batch 7/8 | Puede esperar |
 | DV-6 | Una noche completa de 8 h | Todo | Pendiente |
 | **DV-7 (nuevo)** | Inyección de fallas: matar listener, matar OSD, force-stop del puente, No Molestar, notificaciones denegadas; medir tiempo a la falla visible | F4, F5, F8 | Pendiente |
-| **DV-8** | Latencia clínica: simular una convulsión y medir (con cronómetro, mínimo 5 corridas) el tiempo hasta la vibración fuerte del reloj, la alarma de OSD y el SMS; debe ser ≤ 40 s (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Incluye, como sub-medición, el techo de 8 s del relay | `techo_latencia_clinica` | Pendiente |
+| **DV-8** | Latencia clínica: simular una convulsión y medir (con cronómetro, mínimo 5 corridas) el tiempo hasta la vibración fuerte del reloj, la alarma de OSD y el SMS; debe ser ≤ 40 s (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Incluye, como sub-medición, el techo de 8 s del relay | `techo_latencia_clinica` | Dividida en **DV-8a** (relay: hecha 2026-10-06, WARNING llegó al reloj en 1.7 s) y **DV-8b** (techo de 40 s: pendiente; no se verifica sacudiendo a mano) |
 | **DV-9** | Lo que ve el cuidador: "⚠ MONITOREO DEGRADADO" a ~80 s, "SILENCIADO, no avisa convulsiones" con MUTE, "SeizureGuard: update needed" (opcional), reinicio del teléfono con el puente (ver DV-2) y resumen matutino a ~8:00 | A1, DEC-057, Batch 8 | Pendiente |
 
 Pasos simples para hacer todas las DV: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.

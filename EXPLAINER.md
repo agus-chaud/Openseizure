@@ -527,6 +527,8 @@ Sin esta fase, estás **adivinando**. En una app médica, adivinar no alcanza.
 
 El período de 40,000µs que le pasamos al `SensorManager` es un *hint* al OS, no una garantía. Android puede variarlo según la carga del sistema, el estado del hardware, y la versión del reloj. Si la frecuencia real es 20Hz en lugar de 25Hz, el buffer se llena en 37.5 segundos en lugar de 30. Las ventanas no representan lo que el CNN espera.
 
+> **Actualización 2026-10-07 (DEC-068):** en el Galaxy Watch 8 real pasó lo contrario: el detector de giro de muñeca de Samsung pide el mismo acelerómetro a 50 Hz y Android nos entrega 50 Hz a nosotros también. Desde el PR #49 el reloj se queda solo con una muestra cada 40 ms según la marca de tiempo de cada evento, así que lo que sale hacia OSD son siempre 25 Hz reales.
+
 Además, `TYPE_ACCELEROMETER` debería dar magnitud ≈1000 milli-g en reposo. Pero eso es teoría. ¿Qué pasa en el hardware real del Galaxy Watch 8 a las 3am cuando el CPU está bajo carga del WakeLock?
 
 La única forma de responder estas preguntas es **mirar los datos reales**.

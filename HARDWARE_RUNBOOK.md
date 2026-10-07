@@ -267,7 +267,8 @@ misma numeración. Ninguno está hecho.
 | **DV-5** Batería del keep-alive de 10 s | Noche o 8 h con teléfono al 100% sin cargador (solo para medir), vs. sin el companion. | Consumo razonable. | % de batería del teléfono al inicio y al final. |
 | **DV-6** Noche completa de 8 h | Dormir con todo andando, teléfono cargando. | Sin cortes y resumen matutino "No interruptions last night." | Cortes, falsas alarmas, batería del reloj, resumen. |
 | **DV-7** Inyección de fallas | Una por vez: (a) matar el listener, (b) matar OSD, (c) force-stop del companion, (d) No molestar, (e) notificaciones denegadas. | Cada una debe quedar como falla visible (DEGRADED en el reloj, notificación silenciosa) **sin sonido ni vibración**; (c) no genera aviso ni resumen. | Por cada una, tiempo hasta falla visible y si algo sonó. Dato clave para (a): el reintento del listener (Batch 5e, PR #28) está en `main` pero **sin probar en hardware**. |
-| **DV-8** Latencia clínica (techo 40 s) | Imitar una convulsión (§6) y cronometrar desde el inicio de la sacudida hasta (a) vibración fuerte del reloj, (b) alarma de OSD, (c) SMS. Mínimo 5 corridas. | (a) y (b) en **≤ 40 s en todas las corridas** (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Sub-medición opcional: reloj vs. teléfono, techo de diseño de 8 s del relay. | Segundos de (a), (b) y (c) por corrida. Una corrida > 40 s: el valor se revisa y se vuelve a firmar. |
+| **DV-8a** Relay | Sacudir a 4–6 por segundo hasta que OSD marque WARNING (§6) y medir cuánto tarda en llegar al reloj. No usar "Raise Alarm" de OSD. | El estado de OSD llega al reloj en pocos segundos. | Tiempo desde la decisión de OSD hasta el reloj. |
+| **DV-8b** Latencia clínica (techo 40 s) | Imitar una convulsión con una fuente de movimiento realista (sacudir a mano no alcanza, ver §6) y cronometrar desde el inicio de la sacudida hasta (a) vibración fuerte del reloj, (b) alarma de OSD, (c) SMS. Mínimo 5 corridas. | (a) y (b) en **≤ 40 s en todas las corridas** (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Sub-medición opcional: reloj vs. teléfono, techo de diseño de 8 s del relay. | Segundos de (a), (b) y (c) por corrida. Una corrida > 40 s: el valor se revisa y se vuelve a firmar. |
 | **DV-9** Lo que ve el cuidador | Un chequeo por cada uno: "⚠ MONITOREO DEGRADADO" a ~80 s con el puente detenido; "SILENCIADO, no avisa convulsiones" con MUTE; "SeizureGuard: update needed" con versiones distintas (opcional); reinicio del teléfono (ver DV-2); resumen "SeizureGuard: last night" a ~8:00. | Todo se ve en pantalla o en notificaciones **silenciosas**, sin sonido ni vibración. | Tiempo hasta cada aviso, texto exacto y si algo sonó o vibró. |
 
 Otros chequeos (todos pendientes):
@@ -348,18 +349,18 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s SdDataSourceGarmin:
 
 ## 6. Prueba completa (simular una convulsión)
 
-> Para **medir el techo de 40 s** de latencia clínica, seguí DV-8 en `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+> Sacudir con la mano **solo llega a AVISO (WARNING)**, no a ALARMA, y **no verifica el techo de 40 s**. Sirve para probar el relay (DV-8a). El techo de 40 s es DV-8b; ver `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
 
 ```powershell
 # Mirar los mensajes del reloj Y del teléfono a la vez:
 C:\Android\platform-tools\adb.exe logcat -s SeizureGuard:D SdDataSourceGarmin:D
 ```
 1. App del reloj andando, app OSD del teléfono andando y recibiendo.
-2. Agitá el reloj con la mano, con un movimiento **rítmico y fuerte** (1 a 3 sacudidas por segundo)
-   durante unos 30 segundos. Eso imita el movimiento de una convulsión.
-3. Tiene que pasar la cadena completa: OSD detecta → le avisa al reloj → **el reloj vibra**
-   (un pulso corto = aviso; vibración fuerte y repetida = alarma) → la app OSD suena y manda un
-   **SMS** (mensaje de texto) al cuidador.
+2. Agitá el reloj con la mano, con un movimiento **rítmico y fuerte** (**4 a 6 sacudidas por segundo**;
+   la banda de OSD es 3 a 8 Hz, menos de eso no dispara) durante unos 30 segundos.
+3. Con la mano llegás hasta AVISO (WARNING): se verifica OSD detecta → le avisa al reloj → **el reloj vibra**
+   (un pulso corto = aviso). La cadena completa hasta alarma fuerte, sonido de OSD y **SMS** (DV-8b)
+   no se puede verificar a mano.
 
 ---
 

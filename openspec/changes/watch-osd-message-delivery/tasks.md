@@ -350,7 +350,7 @@ map each to the design's "Open Questions")
 - [ ] **DV-2** Confirm `connectedDevice` is on the BOOT_COMPLETED-allowed FGS-type list for the
       target Android version; if not, verify T6.3's degrade-to-notification path. Relates to:
       Batch 6 (T6.3).
-- [ ] **DV-3** Check whether `mDataFrequencyCheckEnabled` is on by default in the user's OSD prefs
+- [x] **DV-3** Check whether `mDataFrequencyCheckEnabled` is on by default in the user's OSD prefs (2026-10-07: on by default; watch cadence fixed by DEC-068)
       (tightens the ±1s jitter tolerance if so). Relates to: Batch 4/5 (POST cadence).
 - [ ] **DV-4** Frozen state / wrong source: put OSD on another data source (and, separately, close
       OSD); the watch must show DEGRADED within the signed ceiling (link 60 s; frozen OSD about 75 s,

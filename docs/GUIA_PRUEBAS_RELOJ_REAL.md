@@ -89,14 +89,53 @@ nada llega, casi siempre es la firma de las apps (`HARDWARE_RUNBOOK.md` §4.2). 
    `DataFrequencyCheck`; el nombre en pantalla puede variar, **sin verificar**).
 2. Anotá si está activada.
 3. Con el reloj andando 10 minutos, fijate si OSD muestra algún aviso de datos rechazados o fuera de tiempo.
+4. Mientras tanto, **levantá la muñeca / mirá la pantalla del reloj varias veces**, y una de ellas **más de
+   30 segundos**. Desde DEC-068 (PR #49) el reloj mantiene **exactamente 25 Hz** aunque el detector de
+   "levantar la muñeca" de Samsung suba el sensor a 50 Hz.
 
-**Qué tiene que pasar:** el valor es el que esperabas y OSD no rechaza datos.
+**Cómo juzgar si hay FALLA:** mirá `alarmState` en el JSON de `/data` de OSD (o si la pantalla de OSD muestra
+FAULT). **FALLA solo si `alarmState` == 4.** **No** te guíes por el texto de `faultCause`: OSD nunca lo
+borra después de recuperarse, así que un texto viejo (por ejemplo "Data Source Fault" tras reinstalar la app
+del reloj, o "Data arriving too quickly") puede quedar mientras OSD analiza con normalidad.
+
+**Qué tiene que pasar:** el valor es el que esperabas, no aparece "Data arriving too quickly" y `alarmState`
+nunca vale 4. Resultado de campo 2026-10-07: 204/204 paquetes, cada 4,97 a 5,06 s.
 
 **Qué anotar:** valor de la opción; si OSD rechazó o descartó datos.
 
 **Si falla:** si OSD rechaza datos por frecuencia, avisá a quien configuró el sistema.
 
-## DV-8 — Latencia clínica (techo de 40 s)
+## DV-8 — Latencia: relay (DV-8a) y techo clínico de 40 s (DV-8b)
+
+Lo que aprendimos en la primera prueba de campo (2026-10-06/07, Galaxy Watch 8 + Galaxy A52 + OSD 5.0.9):
+
+- La banda de análisis de OSD es de **3 a 8 Hz**. Sacudir 1 a 3 veces por segundo queda **debajo** de la banda
+  y no dispara. Sacudí de forma **rítmica, 4 a 6 veces por segundo**.
+- Sacudir con la mano **solo llegó a AVISO (WARNING), nunca a ALARMA**.
+- El botón "Raise Alarm" de OSD (alarma manual, estado 5) **no sirve** para probar el relay: OSD pisa el
+  estado con el siguiente paquete de datos (unos 5 s) salvo que su "latch" esté activado, y el celular lee el
+  estado justo después de cada envío, así que el reloj nunca lo ve. **No lo uses para DV-8.**
+
+Por eso DV-8 se divide en dos pruebas.
+
+### DV-8a — Relay: el estado de OSD llega al reloj
+
+**Qué probás:** que cualquier estado de detección de OSD (alcanza con AVISO / WARNING) llegue al reloj, y
+cuánto tarda desde que OSD lo decide hasta que el reloj lo muestra. Esperado: unos pocos segundos (en campo
+llegó en 1,7 s).
+
+**Cómo:** sacudí el reloj **4 a 6 veces por segundo** hasta que OSD marque AVISO (WARNING) y cronometrá hasta
+que el reloj lo muestre.
+
+**Qué tiene que pasar:** el reloj refleja el estado de OSD a los pocos segundos (diseño: máximo 8 s).
+
+**Qué anotar:** segundos entre la decisión de OSD y el reloj.
+
+### DV-8b — Latencia clínica (techo de 40 s)
+
+**No se puede verificar sacudiendo con la mano:** no llega a ALARMA. Hace falta una fuente de movimiento que
+imite de verdad una convulsión, o repetir datos grabados. Mientras no exista, anotá DV-8b como **"no
+verificable con sacudida a mano"** (no es PASA).
 
 **Qué probás:** cuánto tarda en sonar la alarma desde que empieza la "convulsión". El techo firmado es
 **40 segundos** (`CLINICAL_SIGNOFF.md`, `techo_latencia_clinica`). Este número **nunca se midió**: es el
@@ -108,8 +147,8 @@ dato más importante de toda la guía.
    tercer aparato el reloj, el teléfono de la persona y el cronómetro juntos.
 3. Pedí que el teléfono del cuidador esté a la vista.
 4. Poné el cronómetro en cero. **Arrancalo en el mismo instante en que empieza la sacudida.**
-5. Sacudí el reloj con movimiento **rítmico y fuerte, 1 a 3 sacudidas por segundo** (igual que en
-   `HARDWARE_RUNBOOK.md` §6). **Seguí sin parar** hasta que suene la alarma del teléfono.
+5. Reproducí el movimiento de convulsión con la fuente que tengas (a mano, **4 a 6 sacudidas por segundo**,
+   como en `HARDWARE_RUNBOOK.md` §6, solo llega a AVISO). **Seguí sin parar** hasta que suene la alarma del teléfono.
 6. Apretá "vuelta" (lap) en el cronómetro en cada uno de estos momentos:
    - **(a)** el reloj vibra **fuerte y repetido** (alarma; un pulso corto solo es "aviso", no cuenta);
    - **(b)** suena la **alarma de OSD** en el teléfono de la persona;
@@ -323,18 +362,19 @@ en **OSD**, no acá (ver `CLINICAL_SIGNOFF.md`).
 
 ## Hoja de resultados
 
-Copiá esta tabla y completala. Una fila por prueba y, en DV-8, **una fila por corrida**.
+Copiá esta tabla y completala. Una fila por prueba y, en DV-8b, **una fila por corrida**.
 Resultado: **PASS** o **FALLA** (o "no probado").
 
 | Prueba | Fecha | Resultado | Tiempos (s) | Notas (qué viste, qué sonó) |
 |---|---|---|---|---|
 | Paso previo (`/data` avanza) | | | | |
 | DV-3 Frecuencia de datos | | | | |
-| DV-8 corrida 1 | | | (a) __ (b) __ (c) __ | |
-| DV-8 corrida 2 | | | (a) __ (b) __ (c) __ | |
-| DV-8 corrida 3 | | | (a) __ (b) __ (c) __ | |
-| DV-8 corrida 4 | | | (a) __ (b) __ (c) __ | |
-| DV-8 corrida 5 | | | (a) __ (b) __ (c) __ | |
+| DV-8a Relay (OSD a reloj) | | | __ s | |
+| DV-8b corrida 1 | | | (a) __ (b) __ (c) __ | |
+| DV-8b corrida 2 | | | (a) __ (b) __ (c) __ | |
+| DV-8b corrida 3 | | | (a) __ (b) __ (c) __ | |
+| DV-8b corrida 4 | | | (a) __ (b) __ (c) __ | |
+| DV-8b corrida 5 | | | (a) __ (b) __ (c) __ | |
 | DV-1 Bluetooth denegado | | | | |
 | DV-4 Estado congelado (parte 1: fuente) | | | | |
 | DV-4 Estado congelado (parte 2: OSD cerrado) | | | | |
@@ -359,4 +399,4 @@ teléfono y versión de Android, versión de OSD.
 
 Copiá y pegá la tabla completa, los tiempos y los textos que viste. Cómo se interpretan y cuándo se marca
 cada fase como lista está en `HARDWARE_RUNBOOK.md`, **sección 8**. Se da por validado el sistema recién
-cuando **DV-1 a DV-9 pasaron** (DV-5 puede esperar) y, en especial, **DV-8 cumple los 40 s**.
+cuando **DV-1 a DV-9 pasaron** (DV-5 puede esperar) y, en especial, **DV-8b cumple los 40 s**.

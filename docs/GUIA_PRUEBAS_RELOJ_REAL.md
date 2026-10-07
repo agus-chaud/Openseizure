@@ -399,4 +399,4 @@ teléfono y versión de Android, versión de OSD.
 
 Copiá y pegá la tabla completa, los tiempos y los textos que viste. Cómo se interpretan y cuándo se marca
 cada fase como lista está en `HARDWARE_RUNBOOK.md`, **sección 8**. Se da por validado el sistema recién
-cuando **DV-1 a DV-9 pasaron** (DV-5 puede esperar) y, en especial, **DV-8 cumple los 40 s**.
+cuando **DV-1 a DV-9 pasaron** (DV-5 puede esperar) y, en especial, **DV-8b cumple los 40 s**.

@@ -22,6 +22,7 @@ import com.seizureguard.wear.R
 import com.seizureguard.wear.data.WearDataLayerManager
 import com.seizureguard.wear.logging.CsvLogger
 import com.seizureguard.wear.ml.CircularBuffer
+import com.seizureguard.wear.ml.SampleRateDecimator
 import com.google.android.gms.wearable.MessageClient
 import kotlin.math.sqrt
 import com.seizureguard.wear.alarm.AlarmStateManager
@@ -198,6 +199,9 @@ class SeizureMonitorService : Service() {
      */
     private var accelerometerSensor: Sensor? = null
 
+    /** DEC-068: fuerza la grilla de 25 Hz por timestamp del sensor (derivada del período firmado). */
+    private val sampleDecimator = SampleRateDecimator(SENSOR_SAMPLING_PERIOD_US * 1_000L)
+
     /**
      * Listener que recibe las muestras del acelerómetro.
      *
@@ -218,7 +222,13 @@ class SeizureMonitorService : Service() {
                 val x = event.values[0]
                 val y = event.values[1]
                 val z = event.values[2]
-                onAccelerometerSample(x, y, z)
+                // Liveness (T8): cada evento crudo cuenta, se conserve o no la muestra.
+                lastSampleAtMs = clockMs()
+                // DEC-068: el sensor es compartido y puede entregar a 50 Hz; solo las muestras
+                // de la grilla de 25 Hz entran al buffer, al contador de chunks y al CSV.
+                if (sampleDecimator.shouldKeep(event.timestamp)) {
+                    onAccelerometerSample(x, y, z)
+                }
             }
         }
 
@@ -561,6 +571,7 @@ class SeizureMonitorService : Service() {
             return
         }
 
+        sampleDecimator.reset()
         val registered = sensorManager?.registerListener(
             sensorEventListener,
             accelerometerSensor,
@@ -624,9 +635,7 @@ class SeizureMonitorService : Service() {
      * @param z Aceleración en el eje Z (m/s²), con gravedad incluida.
      */
     private fun onAccelerometerSample(x: Float, y: Float, z: Float) {
-        // T8: marcar que el sensor está vivo. El watchdog usa esto para detectar
-        // si el acelerómetro dejó de emitir (sensor muerto → DEGRADADO).
-        lastSampleAtMs = clockMs()
+        // lastSampleAtMs (liveness para el watchdog) se actualiza en onSensorChanged, por cada evento crudo.
         // Conversión m/s² → milli-g: 1g = 9.81 m/s² = 1000 milli-g
         val magnitudeMilliG = sqrt(x * x + y * y + z * z) * MS2_TO_MILLIG
         accelerometerBuffer.add(magnitudeMilliG)

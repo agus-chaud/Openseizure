@@ -2142,6 +2142,40 @@ registro de seguridad).
 
 ---
 
+## DEC-068: El reloj fuerza una grilla de 25 Hz por timestamp (decimación)
+
+**Fase:** primera prueba en hardware real | **Fecha:** 2026-10-07
+
+**Qué pasó:** OSD marcaba "Data arriving too quickly" y a veces entraba en FAULT. Medición del
+2026-10-07 (Galaxy Watch 8, 17 min): 208 chunks, 199 de 5.0 s y 9 de menos de 4 s (mínimo 2.5 s). Los
+6 episodios rápidos coincidieron con `SecTiltDetectorImpl` de Samsung registrando el acelerómetro
+LSM6DSV a 20000 µs (50 Hz). El sensor es compartido: Android entrega 50 Hz a todos los listeners
+aunque el nuestro pida 40000 µs, que es solo una sugerencia. Los chunks se arman por cantidad de
+muestras (125), así que a 50 Hz cada chunk abarca 2.5 s. El 2026-10-06 hubo dos períodos de ~32 s a
+50 Hz, más que la persistencia de falla de OSD (30 s): FAULT durante minutos. `SdDataSource` de OSD
+valida que el intervalo entre paquetes sea de 4 a 6 s y descarta sin analizar los paquetes con falla.
+Además, durante los 50 Hz OSD analiza un espectro con la frecuencia duplicada, porque asume 25 Hz.
+
+**Qué se decidió:** decimar en el reloj con una grilla por timestamp (`SampleRateDecimator`,
+`SensorEvent.timestamp`): se conserva una muestra cuando `ts >= próximoInstante - período/4`, con la
+grilla anclada y el período derivado de `SENSOR_SAMPLING_PERIOD_US`. Entrada a 50 Hz: una de cada dos;
+a 25 Hz con jitter: todas; tras un hueco del sensor la grilla se re-sincroniza sin ráfaga.
+
+**Alternativas descartadas:**
+- Pacing en el Companion: esconde el FAULT pero OSD sigue analizando el espectro duplicado y se suma
+  latencia.
+- Desactivar `DataFrequencyCheck` en OSD: quita una protección real y no corrige los datos.
+
+**Consecuencias:**
+- No cambia ninguna constante firmada (25 Hz, `TRANSPORT_CHUNK_SIZE` 125, `SAMPLE_STALE_MS`).
+- Sin filtro anti-aliasing: con entrada a 50 Hz el contenido sobre 12.5 Hz puede plegarse. La energía
+  del movimiento de muñeca ahí es baja y la banda de OSD es 3-8 Hz.
+- Al arrancar (o tras un hueco) la primera muestra se conserva y define la grilla; el primer chunk
+  puede tardar hasta un período más en completarse.
+- La liveness no cambia: `lastSampleAtMs` se actualiza con cada evento crudo del sensor.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

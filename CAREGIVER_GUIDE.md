@@ -57,7 +57,8 @@ Además, **en el reloj de la persona**:
 
 **Nada más debería avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
 (ver más abajo). Vale para el **teléfono** (la app "SeizureGuard Companion") y para el **reloj**:
-una falla no suena ni vibra en ninguno de los dos.
+una falla no suena ni vibra en ninguno de los dos. **Única excepción:** si el teléfono pasa
+**8 horas** sin recibir datos del reloj, vibra una vez, sin sonido (ver "Si el teléfono vibra" más abajo).
 
 > **Dónde se ve una falla en el reloj:** solo en la pantalla, sin ruido ni vibración. Si abrís la
 > app SeizureGuard en el reloj y dice **"⚠ MONITOREO DEGRADADO"** (en ámbar), el sistema no está

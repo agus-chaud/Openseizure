@@ -39,7 +39,7 @@
     <string name="summary_kind_no_data_retry">watch data retry</string>
     <string name="summary_kind_no_data_alert">no-data alert</string>
     <string name="summary_version_note">Note: the watch and phone apps were on different versions. Update both.</string>
-    <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, never with sound or vibration.
+    <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, without sound or vibration. One exception: if no watch data arrives for 8 hours, the phone vibrates once (no sound).
 
 Before starting:
 1. In OSD, set the data source to Garmin and make sure OSD is running with its web server on.

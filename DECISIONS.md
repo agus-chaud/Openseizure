@@ -2347,6 +2347,53 @@ reloj detenida: los listeners del reloj existen solo mientras corre el service d
 
 ---
 
+## DEC-071: La notificación fija del teléfono dice la verdad sobre el flujo de datos
+
+**Fase:** corrección tras el corte de campo del 2026-10-08 (continúa DEC-070) | **Fecha:** 2026-10-11
+
+**Qué pasó:** durante ~3,5 días sin datos del reloj, la notificación fija del puente (id 4101, canal
+`osd_bridge_status`) siguió diciendo "SeizureGuard bridge running — Forwarding watch data to
+OpenSeizureDetector". Se construía una sola vez al arrancar el service y nunca se actualizaba: afirmaba
+algo que nadie estaba observando, justo la notificación que el cuidador ve primero.
+
+**Qué se decidió (del usuario, 2026-10-11):**
+- La notificación fija pasa a depender del estado y se vuelve a publicar **solo cuando cambia** la
+  vista (falla o flujo de datos), en el mismo punto donde `onHealthTick` ya maneja las transiciones.
+  Sin timer. Sigue silenciosa: canal LOW sin cambios, `setOnlyAlertOnce`, `setSilent`, sin sonido ni
+  vibración (DEC-057). No hay constantes firmadas nuevas.
+
+| Estado | Título | Texto |
+|---|---|---|
+| Recién arrancado, sin ningún dato válido todavía | SeizureGuard bridge running | Waiting for watch data |
+| Sin falla y con datos válidos observados | SeizureGuard bridge running | Receiving watch data |
+| `NO_WATCH_DATA` | SeizureGuard: NOT monitoring | No data from the watch since HH:mm. |
+| Otra falla | SeizureGuard: NOT monitoring | el texto `fault_*` de esa falla |
+
+- **"Receiving" solo se afirma con evidencia.** `BridgeState.hasReceivedValidData()` es verdadero
+  recién tras el primer chunk de acelerómetro válido desde que arrancó el service. El `BridgeFault.NONE`
+  inicial (los relojes de salud arrancan en "ahora") no alcanza: por eso el post inicial y los
+  primeros ticks dicen "Waiting for watch data", un texto neutro que no afirma nada.
+- **Hora de "since HH:mm":** reutiliza la marca de último dato válido del `NoDataTracker` de DEC-070
+  (`snapshot().outageStartMs`, hora de pared, local, formato HH:mm). No se agrega persistencia. Si no
+  hubiera marca, dice "since the bridge started".
+- La notificación de falla separada (id 4103) y el aviso de 8 h (DEC-070) no cambian.
+
+**Alternativas descartadas:**
+- Fusionar la notificación de falla con la fija: mezclaría dos canales con importancia distinta
+  (la fija es obligatoria por el FGS) y rompería los tests y la guía actuales de DEC-057/DEC-070.
+- Refrescar el texto con un timer: contradice "nunca en un timer" de DEC-057 y gasta batería; el
+  tick de salud de 10 s ya detecta cada cambio de estado.
+- Dejar el texto fijo y confiar en la notificación de falla: el cuidador mira la fija; dejarla mentir
+  fue exactamente el fallo de campo.
+
+**Consecuencias:**
+- Un cambio de estado se refleja dentro de un tick de salud (10 s); la recuperación vuelve a "Receiving watch data".
+- Con falla, el título es "SeizureGuard: NOT monitoring": el sistema no está protegiendo.
+- Explicado en `CAREGIVER_GUIDE.md`. Pendiente: revisión de seguridad R18 y la sección 19 de `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
+- Sin probar en hardware real.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

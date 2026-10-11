@@ -165,6 +165,28 @@ diagnóstico médico** (solo detecta un patrón de movimiento).
 
 ---
 
+## La notificación fija del teléfono: qué dice y qué significa
+
+En el teléfono de la persona, "SeizureGuard Companion" deja una notificación **fija** (no se puede
+borrar mientras el puente funciona). Es silenciosa: no suena ni vibra. Se actualiza sola, dentro de
+unos 10 segundos de cualquier cambio. **Mirala cada noche antes de dormir.**
+
+| Título | Texto | Qué significa |
+|---|---|---|
+| SeizureGuard bridge running | Receiving watch data | Está llegando información del reloj. Es el único estado en que el sistema protege. |
+| SeizureGuard bridge running | Waiting for watch data | Recién arrancó y todavía no llegó nada del reloj. Si no cambia a "Receiving" en un minuto, tratá el estado como el de abajo. |
+| **SeizureGuard: NOT monitoring** | No data from the watch since 02:15. | Desde esa hora no llega nada del reloj. |
+| **SeizureGuard: NOT monitoring** | (otro texto en inglés) | Hay otra falla, por ejemplo OpenSeizureDetector no recibe los datos. El texto dice qué revisar. |
+
+**"NOT monitoring" significa que el sistema NO está protegiendo.** No habrá alarma ni SMS si hay una
+convulsión. Revisá que el reloj esté puesto, prendido, cerca del teléfono y que diga "Monitoreo
+activo". Si no se arregla, no dependas del sistema esa noche.
+
+Antes se leía acá "Forwarding watch data to OpenSeizureDetector" aunque no llegara nada; eso ya no
+pasa. "Receiving watch data" solo aparece cuando de verdad llegaron datos válidos.
+
+---
+
 ## Si el teléfono vibra: "SeizureGuard: no watch data for 8 hours"
 
 Es la **única falla que vibra**: el teléfono de la persona vibra una vez y deja una notificación fija

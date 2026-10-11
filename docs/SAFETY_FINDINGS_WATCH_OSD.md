@@ -383,3 +383,31 @@ No cambia ninguna constante firmada (25 Hz, `TRANSPORT_CHUNK_SIZE` 125, `SAMPLE_
 alarmas, vibración, SMS ni estados.
 
 **Veredicto R15: PASS.** Clasificación: `alarm-path` (acondiciona la señal que llega a OSD). No toca ninguna constante de lógica de detección (umbral, N ventanas, ventana 750, techo de latencia) ni cambia alarmas, vibración, SMS ni estados, así que `CAREGIVER_GUIDE.md` sigue vigente. Riesgo residual: falta repetir la medición en el reloj real con este cambio instalado (esperado: todos los chunks a 5.0 s y ningún "Data arriving too quickly").
+
+## 17. El monitoreo no se reanudaba tras reiniciar el reloj (2026-10-11)
+
+**Qué pasó:** el 2026-10-08 a las 04:22 el reloj se quedó, muy probablemente, sin batería (motivo de
+arranque `reboot,lpm_auto_reboot`). Al volver a prender, SeizureGuard no arrancó porque el reloj no
+tenía receptor de `BOOT_COMPLETED`. OSD quedó en FAULT unos 3,5 días y solo lo reportó el resumen
+matutino. DEC-069 agrega el reinicio automático; `safety-reviewer` R16 revisó el diff real.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R16-F1 | CRÍTICO | Tras cualquier reinicio del reloj o actualización de la app, el monitoreo quedaba apagado sin aviso hasta que alguien abriera la app. Una convulsión en ese período no se detecta. | **ARREGLADO** (DEC-069): `BootReceiver` (`BOOT_COMPLETED` + `MY_PACKAGE_REPLACED`) reanuda si `was_monitoring` es verdadero |
+| R16-F2 | ALTO | El rechazo del sistema más probable (`startForeground()` de un service `health` con `BODY_SENSORS` en uso) se lanza dentro de `SeizureMonitorService.onCreate()`, no en el receptor. Sin manejo, la app se caería en el arranque y no quedaría ningún aviso. | **ARREGLADO**: el service atrapa el error, publica el aviso silencioso "⚠ El monitoreo NO se reinició", se detiene y devuelve `START_NOT_STICKY` (sin bucle de reinicios) |
+| R16-F3 | ALTO | No está verificado en el reloj real que el sistema acepte el arranque desde el boot (`BODY_SENSORS` es un permiso "en uso"). Si lo rechaza, el aviso es silencioso (DEC-057) y el cuidador puede no verlo. | **ABIERTO**: verificar con DV-10. Mitigación pendiente: arreglo 2 (reintentos y aviso a las 8 h sin datos) |
+| R16-F4 | MEDIO | Con bloqueo de pantalla, `BOOT_COMPLETED` llega recién al desbloquear: hasta entonces no hay protección. | Aceptado y documentado en `CAREGIVER_GUIDE.md` (no se usa `LOCKED_BOOT_COMPLETED`) |
+| R16-F5 | MEDIO | El botón del reloj mostraba "apagado" tras un reinicio aunque el monitoreo estuviera corriendo: el usuario podía creer que no protegía, o al revés. | **ARREGLADO**: la UI lee `SeizureMonitorService.monitoring`, el estado real del service |
+| R16-F6 | BAJO | `stopSelf()` justo después de un `startForeground()` rechazado podría disparar igual el error "did not call startForeground in time" en algunas versiones de Android. El aviso ya está publicado antes y el service no es sticky, así que no hay bucle. | Verificar en DV-10 (`logcat` sin `FATAL EXCEPTION`) |
+| R16-F7 | BAJO | Samsung puede demorar `BOOT_COMPLETED` algunos minutos después del arranque: ese tiempo queda sin protección. | Aceptado: medir en DV-10 los minutos hasta el primer `DATA_RX` |
+| R16-F8 | INFO | El receptor es `exported="true"`, pero `BOOT_COMPLETED` y `MY_PACKAGE_REPLACED` son broadcasts protegidos: otra app no puede enviarlos. En el peor caso, arranca un monitoreo que el usuario ya había pedido. | Sin acción |
+
+No cambia ninguna constante firmada (watchdog, `DELIVERY_STALE_MS`, `NO_WATCH_DATA_MS`, etc.), ni
+alarmas, vibración, SMS ni estados de OSD. El aviso nuevo es silencioso, como pide DEC-057.
+
+**Veredicto R16: PASS.** Clasificación: `alarm-path` (disponibilidad del monitoreo: sin el service
+no hay datos ni alarma). No toca ninguna constante de lógica de detección (umbral, N ventanas,
+ventana 750, techo de latencia). `CAREGIVER_GUIDE.md` está actualizado (reinicio del reloj,
+bloqueo de pantalla, aviso silencioso y la advertencia de que no se probó en el reloj real).
+Riesgo residual: R16-F3 hasta correr DV-10 en el reloj real; mientras tanto, un rechazo del
+sistema deja al reloj sin monitorear con un aviso que no suena.

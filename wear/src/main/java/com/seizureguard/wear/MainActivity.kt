@@ -12,9 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,10 +42,10 @@ import com.seizureguard.wear.service.SeizureMonitorService
  *   La Activity no necesita comunicación continua con él — solo envía
  *   Intents de inicio y stop. Esto simplifica el lifecycle considerablemente.
  *
- * Estado local con remember/mutableStateOf:
- *   El estado ON/OFF vive en la Activity. En Fase 2.x se reemplazará con
- *   un ViewModel que escucha el estado real del Service.
- *   Por ahora es suficiente para el entregable de Fase 1.1.
+ * Estado ON/OFF:
+ *   Se lee de SeizureMonitorService.monitoring (el estado REAL del Service), no de un
+ *   flag local. Así la pantalla dice la verdad también tras un reinicio del reloj o un
+ *   restart sticky, donde el Service arranca sin que nadie toque el botón.
  */
 class MainActivity : ComponentActivity() {
 
@@ -83,7 +80,7 @@ fun SeizureGuardWearApp(
     onStartMonitoring: () -> Unit,
     onStopMonitoring: () -> Unit
 ) {
-    var isMonitoring by remember { mutableStateOf(false) }
+    val isMonitoring by SeizureMonitorService.monitoring.collectAsState()
     val alarmState by SeizureMonitorService.alarmState.collectAsState()
 
     val pipelineHealth by SeizureMonitorService.pipelineHealth.collectAsState()
@@ -161,7 +158,6 @@ fun SeizureGuardWearApp(
                     } else {
                         onStartMonitoring()
                     }
-                    isMonitoring = !isMonitoring
                 },
                 colors = ButtonDefaults.buttonColors(
                     backgroundColor = if (isMonitoring) Color(0xFFB71C1C) else Color(0xFF1B5E20)

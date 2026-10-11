@@ -251,12 +251,13 @@ C:\Android\platform-tools\adb.exe -s <id_telefono> logcat -s OsdBridgeService:D 
 
 **Registrar:** segundos entre la sacudida y la vibración, si sonó OSD, si llegó el SMS.
 
-### 4.7 Checklist de verificación (DV-1..DV-9 y otros chequeos)
+### 4.7 Checklist de verificación (DV-1..DV-10 y otros chequeos)
 
 > Versión paso a paso, en lenguaje simple y con hoja de resultados: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
 
 Numeración de DV según `docs/SAFETY_FINDINGS_WATCH_OSD.md` (sección 6); `tasks.md` del openspec usa la
-misma numeración. Ninguno está hecho.
+misma numeración. DV-10 se agregó con DEC-069 (reinicio del reloj) y todavía no figura en esos dos
+archivos. Ninguno está hecho.
 
 | ID | Cómo hacerlo | Qué deberías ver | Qué registrar |
 |---|---|---|---|
@@ -270,6 +271,7 @@ misma numeración. Ninguno está hecho.
 | **DV-8a** Relay | Sacudir a 4–6 por segundo hasta que OSD marque WARNING (§6) y medir cuánto tarda en llegar al reloj. No usar "Raise Alarm" de OSD. | El estado de OSD llega al reloj en pocos segundos. | Tiempo desde la decisión de OSD hasta el reloj. |
 | **DV-8b** Latencia clínica (techo 40 s) | Imitar una convulsión con una fuente de movimiento realista (sacudir a mano no alcanza, ver §6) y cronometrar desde el inicio de la sacudida hasta (a) vibración fuerte del reloj, (b) alarma de OSD, (c) SMS. Mínimo 5 corridas. | (a) y (b) en **≤ 40 s en todas las corridas** (`techo_latencia_clinica`, `CLINICAL_SIGNOFF.md`). Sub-medición opcional: reloj vs. teléfono, techo de diseño de 8 s del relay. | Segundos de (a), (b) y (c) por corrida. Una corrida > 40 s: el valor se revisa y se vuelve a firmar. |
 | **DV-9** Lo que ve el cuidador | Un chequeo por cada uno: "⚠ MONITOREO DEGRADADO" a ~80 s con el puente detenido; "SILENCIADO, no avisa convulsiones" con MUTE; "SeizureGuard: update needed" con versiones distintas (opcional); reinicio del teléfono (ver DV-2); resumen "SeizureGuard: last night" a ~8:00. | Todo se ve en pantalla o en notificaciones **silenciosas**, sin sonido ni vibración. | Tiempo hasta cada aviso, texto exacto y si algo sonó o vibró. |
+| **DV-10** Reanudar el monitoreo tras reiniciar el reloj (DEC-069) | (a) Iniciar el monitoreo en el reloj, confirmar "Monitoreo activo" y datos en OSD. Reiniciar el reloj con `adb -s <ip:puerto> reboot` y **no tocar nada**. (b) Repetir tras reinstalar/actualizar la app (`adb install -r`) con el monitoreo encendido. (c) Tocar "Detener monitoreo", reiniciar el reloj y esperar. (d) Si el reloj tiene bloqueo de pantalla, repetir (a) y desbloquear. | (a) Sin abrir la app, el service vuelve a correr (`adb shell dumpsys activity services com.seizureguard.wear`), la pantalla dice "Monitoreo activo" y OSD recibe `DATA_RX` en pocos minutos. (b) Igual que (a). (c) El monitoreo **sigue apagado** y no aparece ninguna notificación. (d) Se reanuda después del desbloqueo, no antes. | Minutos desde que el reloj terminó de arrancar hasta el primer `DATA_RX`, y si la pantalla coincide con el estado real. Si **no** se reanuda: mirar `adb logcat -d` filtrando por `BootReceiver`, `SeizureMonitor`, `SecurityException` y `ForegroundServiceStartNotAllowedException`. Cualquiera de las dos excepciones significa que el sistema rechazó el arranque desde el boot (riesgo abierto de DEC-069: `BODY_SENSORS` en uso). Debería aparecer en el reloj la notificación silenciosa "⚠ El monitoreo NO se reinició" ("El reloj se reinició. Abrí SeizureGuard e iniciá el monitoreo."), publicada por el service al fallar `startForeground()`: confirmar que **no** suena ni vibra, que la app **no** se cae ni se reinicia en bucle (`adb logcat` sin `FATAL EXCEPTION`), que al tocarla se abre la app y que "Iniciar monitoreo" funciona. En ese caso no cerrar la prueba: volver a DEC-069. |
 
 Otros chequeos (todos pendientes):
 
@@ -302,7 +304,7 @@ Anotá la versión (commit) de cada APK en cada prueba.
 ### 4.9 Listo cuando...
 
 Podés marcar esta fase como lista solo si: los datos llegan a OSD (4.5), el estado vuelve al reloj
-(4.6) y **todos** los DV-1..DV-9 y los otros chequeos de la tabla están hechos y registrados. Hasta
+(4.6) y **todos** los DV-1..DV-10 y los otros chequeos de la tabla están hechos y registrados. Hasta
 entonces, el flujo sigue **sin verificar**.
 
 ---

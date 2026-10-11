@@ -36,6 +36,13 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+        Reanudar el monitoreo tras un reinicio del reloj o una actualización de la app.
+        Origen: corte de campo 2026-10-08 (el reloj se reinició por batería y el monitoreo
+        quedó apagado ~3,5 días porque nada lo reiniciaba). Ver DEC-069.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Necesario para comunicación con la Companion App -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -76,6 +83,23 @@
             android:name=".service.SeizureMonitorService"
             android:exported="false"
             android:foregroundServiceType="health" />
+
+        <!--
+            BootReceiver (DEC-069): reanuda el monitoreo tras BOOT_COMPLETED o MY_PACKAGE_REPLACED
+            si el usuario lo había dejado encendido. Corte de campo 2026-10-08.
+            exported="true" es necesario para recibir broadcasts del sistema; el receiver
+            ignora cualquier otra acción.
+            LOCKED_BOOT_COMPLETED se omite A PROPÓSITO (direct boot fuera de alcance): si el
+            reloj tiene bloqueo de pantalla, el monitoreo se reanuda tras el primer desbloqueo.
+        -->
+        <receiver
+            android:name=".boot.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!--
             Fase 2.1: Wear Data Layer — recepción de mensajes del teléfono.

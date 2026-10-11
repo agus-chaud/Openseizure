@@ -139,6 +139,14 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
   phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge."
   **Hasta que toques "Start bridge", el sistema NO protege y no suena nada.** Revisá esa
   notificación siempre que el teléfono se haya reiniciado.
+- **El reloj se reinició** (por ejemplo, se quedó sin batería y lo volviste a cargar). Si el
+  monitoreo estaba encendido, **se vuelve a encender solo** cuando el reloj termina de arrancar, sin
+  que toques nada. Si el reloj tiene **bloqueo de pantalla**, se reanuda **recién cuando lo
+  desbloqueás**: hasta entonces no protege. Si lo habías detenido con el botón **"Detener
+  monitoreo"**, sigue detenido después del reinicio. Si el reloj no logra reanudarlo, deja una
+  notificación silenciosa **"⚠ El monitoreo NO se reinició"**: tocala y tocá "Iniciar monitoreo".
+  Este reinicio automático **todavía no se probó en el reloj real**, así que después de cualquier
+  reinicio mirá la pantalla del reloj y comprobá que dice "Monitoreo activo".
 - **Tu teléfono** está en silencio o en No molestar sin la excepción para este contacto.
 - El **reloj** y la aplicación **"SeizureGuard Companion"** del teléfono tienen **versiones
   distintas**: el sistema sigue mandando datos, pero **no está garantizado que se entiendan bien**.

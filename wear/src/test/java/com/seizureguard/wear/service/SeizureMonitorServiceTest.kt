@@ -1386,4 +1386,153 @@ class SeizureMonitorServiceTest {
             controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 4)
         }
     }
+
+    // ─── Truthful toggle: SeizureMonitorService.monitoring ────────────────────
+
+    @Test
+    fun monitoring_followsStartStopAndDestroy() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val controller = Robolectric.buildService(SeizureMonitorService::class.java).create()
+        assertFalse("a freshly created service is not monitoring yet", SeizureMonitorService.monitoring.value)
+
+        controller.get().onStartCommand(SeizureMonitorService.startIntent(context), 0, 1)
+        assertTrue("ACTION_START must show as monitoring", SeizureMonitorService.monitoring.value)
+
+        controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        assertFalse("ACTION_STOP must show as not monitoring", SeizureMonitorService.monitoring.value)
+
+        controller.get().onStartCommand(SeizureMonitorService.startIntent(context), 0, 3)
+        assertTrue(SeizureMonitorService.monitoring.value)
+        controller.destroy()
+        assertFalse("a destroyed service must not show as monitoring", SeizureMonitorService.monitoring.value)
+    }
+
+    @Test
+    fun monitoring_trueAfterStickyRestartWhileWasMonitoring() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        MonitorPrefs.setWasMonitoring(context, true)
+
+        val controller = Robolectric.buildService(SeizureMonitorService::class.java).create()
+        try {
+            controller.get().onStartCommand(null, 0, 1)
+            assertTrue(
+                "after a reboot or sticky restart the toggle must reflect the running service",
+                SeizureMonitorService.monitoring.value
+            )
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    @Test
+    fun monitoringStart_cancelsStaleRestartNeededNotification() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        val nm = context.getSystemService(NotificationManager::class.java)
+        nm.notify(
+            SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID,
+            androidx.core.app.NotificationCompat.Builder(context, SeizureMonitorService.CHANNEL_ID)
+                .setSmallIcon(com.seizureguard.wear.R.mipmap.ic_launcher)
+                .build()
+        )
+        assertNotNull(shadowOf(nm).getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID))
+
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            assertEquals(
+                null,
+                shadowOf(nm).getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID)
+            )
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
+
+    // ─── startForeground refused (boot-started health FGS) ─────────────────────
+
+    private fun refusedService(context: Application, throwable: Exception): SeizureMonitorService {
+        val controller = Robolectric.buildService(SeizureMonitorService::class.java)
+        controller.get().foregroundStarter = { throw throwable }
+        return controller.create().get()
+    }
+
+    @Test
+    fun foregroundRefused_doesNotCrash_postsSilentNotice_andDoesNotMonitor() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val sensors = shadowOf(context.getSystemService(SensorManager::class.java))
+        sensors.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        MonitorPrefs.setWasMonitoring(context, true)
+
+        val service = refusedService(context, SecurityException("BODY_SENSORS not granted while in use"))
+        val result = service.onStartCommand(SeizureMonitorService.startIntent(context), 0, 1)
+
+        assertEquals("must not be restarted blindly by the OS", android.app.Service.START_NOT_STICKY, result)
+        assertTrue("the failed instance stops itself", shadowOf(service).isStoppedBySelf)
+        assertFalse(SeizureMonitorService.monitoring.value)
+        assertTrue("no sensor registered", sensors.listeners.isEmpty())
+        assertEquals("no WakeLock acquired", null, ShadowPowerManager.getLatestWakeLock())
+        assertTrue(
+            "the user still wants monitoring: was_monitoring must not be cleared",
+            MonitorPrefs.wasMonitoring(context)
+        )
+
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val notification = shadowOf(nm).getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID)
+        assertNotNull("a silent notice must tell the user monitoring is not running", notification)
+        assertNotNull("tapping it opens the app", notification.contentIntent)
+        assertEquals(
+            com.seizureguard.wear.MainActivity::class.java.name,
+            shadowOf(notification.contentIntent).savedIntent.component?.className
+        )
+        val channel = nm.getNotificationChannel(notification.channelId)
+        assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
+        assertFalse(channel.shouldVibrate())
+    }
+
+    @Test
+    fun foregroundRefused_stickyRestartDoesNotResume() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val sensors = shadowOf(context.getSystemService(SensorManager::class.java))
+        sensors.addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        MonitorPrefs.setWasMonitoring(context, true)
+
+        val service = refusedService(context, IllegalStateException("ForegroundServiceStartNotAllowed"))
+        val result = service.onStartCommand(null, 0, 1)
+
+        assertEquals(android.app.Service.START_NOT_STICKY, result)
+        assertTrue(sensors.listeners.isEmpty())
+        assertFalse(SeizureMonitorService.monitoring.value)
+        assertTrue(MonitorPrefs.wasMonitoring(context))
+    }
+
+    @Test
+    fun foregroundRefused_thenStartFromTheApp_monitorsNormally() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context.getSystemService(SensorManager::class.java))
+            .addSensor(ShadowSensor.newInstance(Sensor.TYPE_ACCELEROMETER))
+        MonitorPrefs.setWasMonitoring(context, true)
+        refusedService(context, SecurityException("refused")).onStartCommand(null, 0, 1)
+
+        val controller = Robolectric.buildService(
+            SeizureMonitorService::class.java, SeizureMonitorService.startIntent(context)
+        ).create().startCommand(0, 1)
+        try {
+            assertTrue(SeizureMonitorService.monitoring.value)
+            assertEquals(
+                "the stale notice is gone once monitoring runs",
+                null,
+                shadowOf(context.getSystemService(NotificationManager::class.java))
+                    .getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID)
+            )
+        } finally {
+            controller.get().onStartCommand(SeizureMonitorService.stopIntent(context), 0, 2)
+        }
+    }
 }

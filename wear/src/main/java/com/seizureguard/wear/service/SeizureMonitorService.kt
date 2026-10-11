@@ -308,15 +308,41 @@ class SeizureMonitorService : Service() {
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
+    /** Seam: entering the foreground is what the OS refuses at boot; tests make it throw. */
+    internal var foregroundStarter: () -> Unit = {
+        startForeground(NOTIFICATION_ID, buildNotification())
+    }
+
+    /** true when [foregroundStarter] threw in onCreate: this instance must not monitor. */
+    private var foregroundFailed = false
+
     override fun onCreate() {
         super.onCreate()
         // A fresh instance is not monitoring yet (the previous one, if any, is gone).
         _monitoring.value = false
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            foregroundStarter()
+        } catch (e: Exception) {
+            // SecurityException (health FGS prerequisites, e.g. BODY_SENSORS while-in-use) or
+            // ForegroundServiceStartNotAllowedException: thrown here, not by the caller of
+            // startForegroundService(). Never crash at boot: tell the user, silently (DEC-057).
+            // was_monitoring stays untouched: the user still wants monitoring, and starting from
+            // the foreground (MainActivity) must keep working.
+            Log.e(TAG, "startForeground refused; monitoring cannot run in this state", e)
+            foregroundFailed = true
+            RestartNeededNotifier.post(this)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (foregroundFailed) {
+            // No sensors, no WakeLock, no sticky restart: a service that is not in the foreground
+            // must not pretend to monitor. A later start from the app creates a fresh instance.
+            stopSelf()
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_START -> {
                 // T3 — Fase 2: el modo validación se activa SOLO si el Intent lo pide

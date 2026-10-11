@@ -49,8 +49,9 @@ Out of scope: phone changes (fixes 2 and 3), `LOCKED_BOOT_COMPLETED` / direct bo
 - Verification, `./gradlew :phone:testDebugUnitTest :phone:lintDebug :wear:testDebugUnitTest :wear:lintDebug`: BUILD SUCCESSFUL (3m 1s). BootReceiverTest 10/10 in both flavors (companion, osdDirect); SeizureMonitorServiceTest 60/60 in both; wear companion total 151 tests, phone total 190, 0 failures. Lint clean in both flavors and phone.
 - Correction (coordinator): startForeground() throws inside SeizureMonitorService.onCreate(), not in the receiver. Commit `89a6f3a` (fix(wear): surface a refused foreground start instead of crashing): shared `RestartNeededNotifier`; onCreate try/catch -> Log.e, silent notice, `foregroundFailed`, stopSelf(); onStartCommand returns START_NOT_STICKY without monitoring; was_monitoring untouched; seam `foregroundStarter`. 3 new service tests.
 - Re-verification after correction, same command: BUILD SUCCESSFUL (2m). SeizureMonitorServiceTest 63/63 and BootReceiverTest 10/10 in both flavors; wear companion total 154, phone total 190, 0 failures; lint clean.
-- Pending: SAFETY_FINDINGS section 17 (orchestrator, after R16); hardware check DV-10 (BODY_SENSORS while-in-use on boot-started health FGS is unverified).
+- Safety review R16 on the real diff (5 commits, origin/main..HEAD): **PASS**, `alarm-path`, no detection-logic constants, CAREGIVER_GUIDE valid. Findings R16-F1..F8 in `docs/SAFETY_FINDINGS_WATCH_OSD.md` section 17 (commit `docs: record safety review R16 for watch boot autostart`). Open: R16-F3 (boot start unverified on hardware -> DV-10), R16-F6 (stopSelf after refused startForeground -> DV-10 logcat).
+- Pending: user OK before PR; hardware check DV-10.
 - Env note: worktree needed a gitignored `local.properties` (copied from the main checkout) for the Android SDK path.
 
 ## Next step
-T4: safety-reviewer R16 on the real diff, SAFETY_FINDINGS section 17, user OK, PR.
+T4: user OK, then push and open the PR; squash merge after CI checks "Unit tests + lint (:wear)" and "(:phone)".

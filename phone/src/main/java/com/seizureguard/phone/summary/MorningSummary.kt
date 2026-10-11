@@ -36,7 +36,8 @@ private fun union(intervals: List<LongRange>): List<LongRange> {
  * would mislabel the night); it only sets [SummaryData.versionMismatch] when a period overlapped the window.
  */
 fun buildSummary(periods: List<FaultPeriod>, windowStartMs: Long, windowEndMs: Long): SummaryData {
-    val clippedAll = periods.mapNotNull { p ->
+    // No-data escalation events (retries, the 8 h alert) are point records of an outage that is already a period.
+    val clippedAll = periods.filter { !it.kind.isEvent }.mapNotNull { p ->
         val s = maxOf(p.startMs, windowStartMs)
         val e = minOf(p.endMs ?: windowEndMs, windowEndMs)
         if (e > s) p.kind to (s..e) else null

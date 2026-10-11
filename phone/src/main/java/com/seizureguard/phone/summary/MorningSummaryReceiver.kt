@@ -74,6 +74,9 @@ class MorningSummaryReceiver : BroadcastReceiver() {
             FaultKind.OSD_DATA_STALE -> R.string.summary_kind_osd_data_stale
             FaultKind.SERVICE_DOWN -> R.string.summary_kind_service_down
             FaultKind.VERSION_MISMATCH -> R.string.summary_kind_version_mismatch // not an interruption: buildSummary reports it as SummaryData.versionMismatch, never in minutesByKind
+            // Events are filtered out by buildSummary and never reach minutesByKind; labelled for exhaustiveness.
+            FaultKind.NO_DATA_RETRY_WATCH_CONNECTED, FaultKind.NO_DATA_RETRY_WATCH_NOT_CONNECTED -> R.string.summary_kind_no_data_retry
+            FaultKind.NO_DATA_ALERT -> R.string.summary_kind_no_data_alert
         }
     }
 }

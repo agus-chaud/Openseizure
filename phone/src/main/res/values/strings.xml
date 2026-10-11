@@ -16,6 +16,12 @@
     <string name="version_notice_title">SeizureGuard: update needed</string>
     <string name="version_notice_mismatch">SeizureGuard on the watch and on this phone are different versions. Update both to the same version.</string>
     <string name="version_notice_missing">SeizureGuard on the watch looks out of date. Update it to the latest version.</string>
+    <string name="no_data_alert_channel">No watch data alert (vibrates)</string>
+    <string name="no_data_alert_title">SeizureGuard: no watch data for 8 hours</string>
+    <string name="no_data_alert_text">No data from the watch since %1$s. %2$s Retries tried: %3$d.</string>
+    <string name="no_data_alert_cause_not_connected">The watch is not connected to this phone. Check that it is charged, switched on and nearby.</string>
+    <string name="no_data_alert_cause_connected">The watch is connected but SeizureGuard is not sending data. Open SeizureGuard on the watch and tap Start.</string>
+    <string name="no_data_alert_cause_unknown">The connection to the watch could not be checked. Check that the watch is charged, switched on and nearby, and that SeizureGuard is running on it.</string>
     <string name="bridge_summary_channel">Morning summary (silent)</string>
     <string name="summary_title">SeizureGuard: last night</string>
     <string name="summary_none">No interruptions last night.</string>
@@ -30,6 +36,8 @@
     <string name="summary_kind_osd_data_stale">OSD not analysing</string>
     <string name="summary_kind_service_down">phone stopped</string>
     <string name="summary_kind_version_mismatch">watch and phone app versions differ</string>
+    <string name="summary_kind_no_data_retry">watch data retry</string>
+    <string name="summary_kind_no_data_alert">no-data alert</string>
     <string name="summary_version_note">Note: the watch and phone apps were on different versions. Update both.</string>
     <string name="setup_instructions">SeizureGuard sends your watch data to OpenSeizureDetector (OSD). Problems are shown quietly here, never with sound or vibration.
 

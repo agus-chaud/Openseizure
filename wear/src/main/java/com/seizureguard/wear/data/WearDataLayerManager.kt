@@ -136,6 +136,15 @@ class WearDataLayerManager(
     }
 
     /**
+     * Avisa al teléfono que el usuario detuvo el monitoreo a propósito (DEC-070), para que no reintente ni
+     * alerte por la falta de datos. Sin payload. Mejor esfuerzo: si el mensaje se pierde, el teléfono alerta
+     * de todos modos (el fallo siempre va hacia el lado seguro).
+     *
+     * @return true si algún nodo lo aceptó; nunca lanza.
+     */
+    suspend fun sendMonitoringStopped(): Boolean = sendToAllNodes(PATH_MONITORING_STOPPED, ByteArray(0))
+
+    /**
      * Registra un listener para el pedido de settings de OSD (/osd/send_settings con payload "start").
      * Cuando OSD arranca la fuente Android Wear, manda "start"; el reloj debe responder con /osd/settings.
      *
@@ -247,6 +256,10 @@ class WearDataLayerManager(
         const val TRANSPORT_CONTRACT_VERSION = 1
         const val PATH_SETTINGS      = "/osd/settings"       // reloj → OSD: batería + freq
         const val PATH_SEND_SETTINGS = "/osd/send_settings"  // OSD → reloj: pide settings ("start")
+        /** Reloj → teléfono: el usuario detuvo el monitoreo a propósito (DEC-070). Sin payload. */
+        const val PATH_MONITORING_STOPPED = "/osd/monitoring_stopped"
+        /** Teléfono → reloj: reanudar el monitoreo si el usuario lo tenía encendido (DEC-070). Sin payload. */
+        const val PATH_RESUME_MONITORING = "/osd/resume_monitoring"
         /**
          * Returned by [parseAlarmState] for a numeric alarm_state that is not an exact Int
          * (out of range or fractional). Outside every known OSD state, so it classifies as a

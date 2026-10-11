@@ -19,6 +19,8 @@
     <!-- Reinicio del reloj: el monitoreo no pudo reanudarse solo. Notificación silenciosa (DEC-057). -->
     <string name="notification_restart_needed_title">⚠ El monitoreo NO se reinició</string>
     <string name="notification_restart_needed_text">El reloj se reinició. Abrí SeizureGuard e iniciá el monitoreo.</string>
+    <!-- DEC-070: el teléfono pidió reanudar (sin datos del reloj por horas) y el sistema rechazó el arranque. Silenciosa. -->
+    <string name="notification_restart_needed_text_phone_request">El monitoreo estaba detenido y no pudo reanudarse solo. Abrí SeizureGuard e iniciá el monitoreo.</string>
 
     <!-- Fase 1.1 — Botones de la UI principal -->
     <string name="btn_start_monitoring">Iniciar monitoreo</string>

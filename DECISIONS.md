@@ -2176,6 +2176,63 @@ a 25 Hz con jitter: todas; tras un hueco del sensor la grilla se re-sincroniza s
 
 ---
 
+## DEC-069: El reloj reanuda el monitoreo solo tras un reinicio o una actualización de la app
+
+**Fase:** corrección tras el corte de campo del 2026-10-08 | **Fecha:** 2026-10-11
+
+**Qué pasó:** el 2026-10-08 a las 04:22 el Galaxy Watch 8 se apagó, muy probablemente por batería
+(motivo de arranque `reboot,lpm_auto_reboot`) y volvió a encender cerca de las 17:14. La app del reloj
+no tenía ningún receptor de `BOOT_COMPLETED`, así que el monitoreo no se reinició. OSD quedó en FAULT
+unos 3,5 días sin que nadie lo notara. El reloj ya guardaba la intención del usuario
+(`seizure_monitor_prefs` / `was_monitoring`), pero solo la leía tras un reinicio "sticky" del service
+(intent nulo), nunca al arrancar el sistema. Además, el botón de `MainActivity` usaba un estado local
+que mostraba "inactivo" tras cualquier reinicio aunque el monitoreo estuviera corriendo.
+
+**Qué se decidió:**
+- Un `BootReceiver` en `:wear` escucha `BOOT_COMPLETED` y `MY_PACKAGE_REPLACED` (actualizar la app
+  mata el service y el flag sigue en `true`). Si `was_monitoring` es `true`, inicia
+  `SeizureMonitorService` con `ACTION_START` mediante `startForegroundService`. Con el flag en
+  `false` o sin definir (instalación nueva, o el usuario tocó "Detener monitoreo") no hace nada. Se
+  agrega el permiso `RECEIVE_BOOT_COMPLETED`.
+- El flag se movió a un helper (`MonitorPrefs`) con el mismo archivo y la misma clave: sin migración.
+- Si el arranque falla (cualquier excepción), el receptor no se cae: registra el error y publica una
+  notificación **silenciosa** (canal de importancia baja, sin sonido ni vibración, DEC-057) que dice
+  que el monitoreo no se reinició y abre `MainActivity`. Se cancela sola cuando el monitoreo arranca.
+- `SeizureMonitorService.monitoring` (StateFlow en memoria) refleja si el monitoreo corre de verdad;
+  `MainActivity` lo usa para el texto y el botón. Es `true` en `onMonitoringStart` y `false` al
+  detener, al destruir y al crear una instancia nueva.
+- No cambia ninguna constante firmada (`CLINICAL_SIGNOFF.md`).
+
+**Evidencia de la documentación oficial de Android:**
+- `BOOT_COMPLETED` está en la lista de excepciones a las restricciones de inicio de foreground
+  services en segundo plano: https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start
+- Los tipos de foreground service bloqueados desde `BOOT_COMPLETED` en Android 15 no incluyen `health`:
+  https://developer.android.com/about/versions/15/behavior-changes-15
+- Requisitos del tipo `health` (permiso `FOREGROUND_SERVICE_HEALTH` más un permiso de sensores, ya
+  declarados en el manifest): https://developer.android.com/develop/background-work/services/fgs/service-types
+
+**Riesgo abierto (a verificar en el reloj):** no está confirmado que el sistema exija el permiso
+`BODY_SENSORS` "mientras está en uso" a un foreground service de tipo `health` iniciado desde el
+arranque, sin ninguna actividad visible. Si lo exigiera, `startForeground()` lanzaría
+`SecurityException` y el receptor caería en la notificación silenciosa, no en el monitoreo.
+Verificación: DV-10 en `HARDWARE_RUNBOOK.md`.
+
+**Alternativas descartadas:**
+- Solo reinicio manual (que la persona o el cuidador abra la app tras cada reinicio): es lo que causó
+  el corte de 3,5 días.
+- `LOCKED_BOOT_COMPLETED` (direct boot): fuera de alcance. Obligaría a guardar el flag en
+  almacenamiento protegido por dispositivo y a arrancar el service antes del primer desbloqueo. Con
+  bloqueo de pantalla, el monitoreo se reanuda después del primer desbloqueo; sin bloqueo, al
+  terminar el arranque.
+
+**Consecuencias:**
+- Con bloqueo de pantalla, entre el reinicio y el primer desbloqueo el reloj no monitorea. Está
+  explicado en `CAREGIVER_GUIDE.md`.
+- Una actualización de la app con el monitoreo encendido lo reanuda sola.
+- Sin probar en hardware real hasta completar DV-10.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

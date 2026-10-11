@@ -2243,6 +2243,110 @@ Verificación: DV-10 en `HARDWARE_RUNBOOK.md`.
 
 ---
 
+## DEC-070: Tras horas sin datos del reloj, el teléfono reintenta y a las 8 h avisa con vibración
+
+**Fase:** corrección tras el corte de campo del 2026-10-08 (continúa DEC-069) | **Fecha:** 2026-10-11
+
+**Qué pasó:** durante el corte de campo del 2026-10-08 al 2026-10-11 (~3,5 días sin datos del reloj) el
+puente detectó la falla en 30 s (`NO_WATCH_DATA_MS`), pero toda falla es silenciosa (DEC-057) y nadie
+lo notó hasta el resumen de la mañana. Tampoco había forma de que el teléfono despertara una app del
+reloj detenida: los listeners del reloj existen solo mientras corre el service de monitoreo.
+
+**Qué se decidió (del usuario, 2026-10-11):**
+- Cuatro constantes nuevas, firmadas en `CLINICAL_SIGNOFF.md`:
+
+| Constante | Valor | Qué hace |
+|---|---|---|
+| `NO_DATA_RETRY_AFTER_MS` | 3 h | Sin datos válidos por este tiempo, corre el primer reintento |
+| `NO_DATA_RETRY_INTERVAL_MS` | 1 h | Separación entre reintentos (a las 3 h, 4 h y 5 h) |
+| `NO_DATA_MAX_RETRIES` | 3 | Máximo de reintentos por corte; el contador solo se reinicia cuando vuelven datos |
+| `NO_DATA_ALERT_AFTER_MS` | 8 h | Sin datos por este tiempo, una sola alerta con vibración |
+
+- **Reloj de corte persistente.** Hora de pared (`System.currentTimeMillis`), guardada en
+  `bridge_history` junto con reintentos hechos, alerta publicada, "detenido por el usuario" y el
+  resultado del último chequeo de nodos. La marca de último dato válido se escribe como máximo una vez
+  por 60 s (como `ServiceLiveness`); el resto, al cambiar. Un reinicio del proceso o del teléfono **no**
+  reinicia el reloj de corte; el botón "Start bridge" sí (base = ahora, contadores en cero). Sin valor
+  guardado, la base es el arranque del service. Un reloj que retrocede cuenta como 0 s transcurridos.
+  Si la app no corría cuando un reintento venció, los atrasados se hacen igual pero separados por al
+  menos 1 h del anterior (un despertar tardío no gasta los 3 reintentos en 30 s).
+- **Reintento** (en el tick de salud de 10 s, sin timers nuevos): re-registra el listener de mensajes,
+  pregunta qué nodos están conectados y, si hay alguno, manda `/osd/resume_monitoring` (payload vacío)
+  a cada uno. Registra el resultado (reloj conectado / no conectado) en el log de fallas como evento
+  puntual (`NO_DATA_RETRY_WATCH_CONNECTED` / `NO_DATA_RETRY_WATCH_NOT_CONNECTED`) y la alerta como
+  `NO_DATA_ALERT`. Son períodos cerrados de duración cero y el resumen matutino los **excluye**
+  (`FaultKind.isEvent`): el corte ya figura como período `NO_WATCH_DATA`, así que no se cuenta dos veces.
+- **Alerta a las 8 h:** una sola por corte. Canal **nuevo** `osd_bridge_no_data_alert` (importancia alta,
+  sin sonido, vibración con patrón explícito, sin saltear No Molestar), notificación 4106, continua
+  hasta que vuelven los datos, vibra una vez (`setOnlyAlertOnce`), al tocarla abre `SetupActivity`.
+  Texto: desde qué hora (HH:mm local), causa según el último chequeo de nodos y cuántos reintentos se
+  hicieron. Si la alerta estaba publicada y el proceso o el teléfono se reinician, el service la
+  vuelve a mostrar al arrancar (la notificación se pierde con el reinicio); es la misma alerta, pero
+  la notificación nueva vibra otra vez.
+- **Excepción parcial a DEC-057:** solo esta alerta vibra, y sin sonido. Todo el resto de las fallas
+  sigue por el canal silencioso `osd_bridge_fault_silent`, sin cambios.
+- **El reloj avisa cuando el usuario lo detiene a propósito.** Al tocar "Detener monitoreo"
+  (`ACTION_STOP`), antes de cerrar la capa de datos, el reloj manda `/osd/monitoring_stopped` a los
+  nodos conectados (mejor esfuerzo, con tope de 5 s, desde un scope de proceso porque `stopSelf()` cancela
+  el scope del service). **No** lo manda `onDestroy`, un kill del sistema ni un crash. El teléfono lo
+  guarda como "detenido por el usuario": sin reintentos ni alerta hasta que lleguen datos válidos de
+  nuevo, y baja una alerta ya publicada. **Sentido seguro:** si el mensaje se pierde, la alerta
+  se dispara igual (falso aviso en vez de silencio). Un reloj con una versión vieja que no manda el
+  mensaje produce ese mismo falso aviso tras un stop deliberado.
+- **Reanudar desde el teléfono.** `ResumeRequestListenerService` (`WearableListenerService` declarado
+  en el manifest, con `MESSAGE_RECEIVED` y `pathPrefix` `/osd/resume_monitoring`, `exported="true"` como
+  exige Play services) recibe el pedido aunque la app del reloj no esté corriendo. Si `was_monitoring`
+  es `true`, arranca el monitoreo por el mismo camino que `BootReceiver` (DEC-069, helper compartido
+  `resumeMonitoringIfWanted`); con `false` ignora el mensaje. Si el sistema rechaza el arranque,
+  publica el aviso silencioso de "no se reinició" (texto propio) y no se cae. `ACTION_START` sobre un
+  service que ya corre es idempotente (`onMonitoringStart` retorna sin tocar WakeLock ni listeners;
+  test existente `service_doubleActionStart_doesNotAcquireSecondWakeLock`).
+- **No se sube `TRANSPORT_CONTRACT_VERSION` (sigue en 1).** Las dos rutas son aditivas: un teléfono
+  viejo ignora `/osd/monitoring_stopped` (el `when` de `onMessage` no tiene `else`) y un reloj viejo
+  no tiene a nadie escuchando `/osd/resume_monitoring`. Subir la versión dispararía el aviso de
+  "update needed" en todos los pares sin que ninguna ruta sea incompatible. Las rutas están fijadas
+  por tests en ambos módulos.
+
+**Límites de los reintentos (dicho sin vueltas):**
+- Si el reloj está apagado, sin batería, fuera de alcance o no pareado, **ningún reintento puede
+  ayudar**: el resultado "no conectado" queda registrado y la alerta de las 8 h es lo que importa.
+- El reintento solo sirve si el reloj está conectado y la app del reloj murió con el monitoreo
+  encendido.
+- **Arrancar un foreground service desde un `WearableListenerService` en segundo plano no figura entre
+  las excepciones documentadas de Android** (lista:
+  https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start). Puede ser
+  rechazado en algunas versiones; en ese caso el reloj deja la notificación silenciosa. Sin verificar:
+  DV-11 en `HARDWARE_RUNBOOK.md`.
+- La alerta llega al **teléfono que corre el puente**, no a un teléfono aparte del cuidador (DEC-057
+  prevé que el cuidador use otro). Está dicho en `CAREGIVER_GUIDE.md`.
+
+**Riesgos aceptados:**
+- Falsas alertas (el costo de bajar las 8 h): por ejemplo, el reloj cargando fuera de la muñeca con el
+  monitoreo encendido.
+- "Detenido por el usuario" no vence: si alguien detiene el reloj y se olvida de reiniciarlo, el
+  sistema no protege y no avisa hasta que vuelvan datos (es la decisión del usuario; el costo está
+  en `CAREGIVER_GUIDE.md`).
+- La hora de pared puede saltar (cambio manual, NTP): hacia adelante adelanta reintentos o alerta;
+  hacia atrás los demora hasta que lleguen datos. Se acepta: usar el reloj monótono no sobrevive a un
+  reinicio del teléfono.
+- El título dice "8 hours" aunque el corte lleve más (por ejemplo, un teléfono apagado toda la noche
+  que arranca por la mañana); la hora real de inicio va en el texto.
+
+**Alternativas descartadas:**
+- Alertar a las 10 h: más horas sin protección antes de que alguien se entere; las 8 h cubren una
+  noche completa.
+- Alerta con sonido: contradice DEC-057 más de lo necesario; la vibración alcanza para un aviso que no
+  es una emergencia.
+- Avisar por SMS: el SMS está reservado a la emergencia (DEC-057) y mandarlo por una falla despertaría
+  y entrenaría a ignorarlo.
+
+**Consecuencias:**
+- Constantes firmadas en `CLINICAL_SIGNOFF.md` (2026-10-11).
+- Pendiente: revisión de seguridad R17 y la sección 18 de `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
+- Sin probar en hardware real hasta completar DV-11.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

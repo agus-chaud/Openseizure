@@ -84,7 +84,7 @@ class NoDataAlertServiceTest {
     }
 
     @Test fun alert_textSaysSinceWhenCauseAndRetries() {
-        val since = 22 * HOUR + 15 * 60 * 1000L // 22:15 UTC
+        val since = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 22); set(java.util.Calendar.MINUTE, 15) }.timeInMillis // today 22:15 local
         BridgeNotifications.postNoDataAlert(app, since, NodeCheck.NOT_CONNECTED, 3)
         val n = alertNotification()
         assertEquals("SeizureGuard: no watch data for 8 hours", n.extras.getString("android.title"))

@@ -40,11 +40,33 @@ internal class NoDataAlertNotifier(private val context: Context) : NoDataAlertSi
     override fun cancel() = BridgeNotifications.cancelNoDataAlert(context)
 }
 
-/** Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine. */
-internal class BridgeNotifications(private val context: Context) {
+/**
+ * What the ongoing status notification says. [WAITING] = no valid watch data seen yet since the service started
+ * (neutral, claims nothing); [HEALTHY] = no fault AND valid data observed; [FAULT] = [fault] is not NONE.
+ */
+internal data class StatusView(val fault: BridgeFault, val receiving: Boolean)
+
+/** Pure: the status text depends only on the fault and on whether valid watch data was ever observed. */
+internal fun statusView(fault: BridgeFault, hasValidData: Boolean): StatusView =
+    if (fault == BridgeFault.NONE) StatusView(fault, hasValidData) else StatusView(fault, false)
+
+/**
+ * Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine.
+ *
+ * The status notification (id 4101) is re-posted only when its [StatusView] changes, never on a timer (DEC-071).
+ * [hasValidData] says whether a valid watch chunk was seen since the service started (default false: claims nothing);
+ * [outageSinceMs] gives the wall-clock time of the last valid data, or null/<=0 when unknown.
+ */
+internal class BridgeNotifications(
+    private val context: Context,
+    private val hasValidData: () -> Boolean = { false },
+    private val outageSinceMs: () -> Long? = { null },
+) {
     private var shown = BridgeFault.NONE
+    private var statusShown = StatusView(BridgeFault.NONE, false) // matches the initial buildStatus(context)
 
     fun onHealthTick(fault: BridgeFault) {
+        updateStatus(fault)
         when (faultAction(fault, shown)) {
             FaultAction.POST -> {
                 notifySafely(context, FAULT_NOTIFICATION_ID, faultNotification(context, faultTextRes(fault)))
@@ -60,6 +82,14 @@ internal class BridgeNotifications(private val context: Context) {
             }
             FaultAction.NONE -> Unit
         }
+    }
+
+    private fun updateStatus(fault: BridgeFault) {
+        val view = statusView(fault, hasValidData())
+        if (view == statusShown) return
+        val since = if (fault == BridgeFault.NO_WATCH_DATA) runCatching { outageSinceMs() }.getOrNull() else null
+        notifySafely(context, STATUS_NOTIFICATION_ID, buildStatus(context, view, since))
+        statusShown = view
     }
 
     companion object {
@@ -85,7 +115,7 @@ internal class BridgeNotifications(private val context: Context) {
             BridgeFault.OSD_WRONG_DATASOURCE -> R.string.fault_osd_wrong_datasource
             BridgeFault.OSD_REJECTS_DATA -> R.string.fault_osd_rejects_data
             BridgeFault.OSD_DATA_STALE -> R.string.fault_osd_data_stale
-            BridgeFault.NONE -> R.string.bridge_status_text
+            BridgeFault.NONE -> R.string.bridge_status_text // unused for faults; kept for exhaustiveness
         }
 
         /** MISMATCH: both apps differ; MISSING (a watch that advertises no version): the milder "looks out of date". */
@@ -130,7 +160,7 @@ internal class BridgeNotifications(private val context: Context) {
                     setShowBadge(false)
                 }
             )
-            val since = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sinceMs))
+            val since = formatSince(sinceMs)
             val text = context.getString(R.string.no_data_alert_text, since, context.getString(noDataCauseRes(cause)), retriesTried)
             val open = PendingIntent.getActivity(
                 context, 0, Intent(context, SetupActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -168,18 +198,59 @@ internal class BridgeNotifications(private val context: Context) {
             NodeCheck.UNKNOWN -> R.string.no_data_alert_cause_unknown
         }
 
-        fun buildStatus(context: Context): Notification {
+        /**
+         * "HH:mm" when [sinceMs] is on the same local calendar day as [nowMs], else "d MMM HH:mm": after a multi-day
+         * outage a bare time reads as today (DEC-071). [nowMs] is injectable for tests.
+         */
+        fun formatSince(sinceMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+            val locale = Locale.getDefault()
+            val day = SimpleDateFormat("yyyyMMdd", locale)
+            val sameDay = day.format(Date(sinceMs)) == day.format(Date(nowMs))
+            return SimpleDateFormat(if (sameDay) "HH:mm" else "d MMM HH:mm", locale).format(Date(sinceMs))
+        }
+
+        /** Default view = neutral "waiting for watch data": the initial post must not claim data flows. */
+        fun buildStatus(
+            context: Context,
+            view: StatusView = StatusView(BridgeFault.NONE, false),
+            sinceMs: Long? = null,
+        ): Notification {
             nm(context).createNotificationChannel(
                 NotificationChannel(
                     STATUS_CHANNEL_ID, context.getString(R.string.bridge_status_channel),
                     NotificationManager.IMPORTANCE_LOW,
                 )
             )
+            val title: String
+            val text: String
+            when {
+                view.fault == BridgeFault.NONE -> {
+                    title = context.getString(R.string.bridge_status_title)
+                    text = context.getString(if (view.receiving) R.string.bridge_status_text else R.string.bridge_status_waiting_text)
+                }
+                view.fault == BridgeFault.NO_WATCH_DATA -> {
+                    title = context.getString(R.string.bridge_status_not_monitoring_title)
+                    text = if (sinceMs != null && sinceMs > 0L) {
+                        context.getString(
+                            R.string.bridge_status_no_data_since, formatSince(sinceMs),
+                        )
+                    } else {
+                        context.getString(R.string.bridge_status_no_data_since_start)
+                    }
+                }
+                else -> {
+                    title = context.getString(R.string.bridge_status_not_monitoring_title)
+                    text = context.getString(faultTextRes(view.fault))
+                }
+            }
             return NotificationCompat.Builder(context, STATUS_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle(context.getString(R.string.bridge_status_title))
-                .setContentText(context.getString(R.string.bridge_status_text))
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setSilent(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
         }

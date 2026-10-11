@@ -47,6 +47,8 @@ Out of scope: phone changes (fixes 2 and 3), `LOCKED_BOOT_COMPLETED` / direct bo
 - Files (tests): `wear/.../boot/BootReceiverTest.kt` (10 tests, sdk 34), 3 new tests in `SeizureMonitorServiceTest` (60 total).
 - Files (docs): `DECISIONS.md` DEC-069, `HARDWARE_RUNBOOK.md` DV-10, `CAREGIVER_GUIDE.md` (reloj reiniciado bullet).
 - Verification, `./gradlew :phone:testDebugUnitTest :phone:lintDebug :wear:testDebugUnitTest :wear:lintDebug`: BUILD SUCCESSFUL (3m 1s). BootReceiverTest 10/10 in both flavors (companion, osdDirect); SeizureMonitorServiceTest 60/60 in both; wear companion total 151 tests, phone total 190, 0 failures. Lint clean in both flavors and phone.
+- Correction (coordinator): startForeground() throws inside SeizureMonitorService.onCreate(), not in the receiver. Commit `89a6f3a` (fix(wear): surface a refused foreground start instead of crashing): shared `RestartNeededNotifier`; onCreate try/catch -> Log.e, silent notice, `foregroundFailed`, stopSelf(); onStartCommand returns START_NOT_STICKY without monitoring; was_monitoring untouched; seam `foregroundStarter`. 3 new service tests.
+- Re-verification after correction, same command: BUILD SUCCESSFUL (2m). SeizureMonitorServiceTest 63/63 and BootReceiverTest 10/10 in both flavors; wear companion total 154, phone total 190, 0 failures; lint clean.
 - Pending: SAFETY_FINDINGS section 17 (orchestrator, after R16); hardware check DV-10 (BODY_SENSORS while-in-use on boot-started health FGS is unverified).
 - Env note: worktree needed a gitignored `local.properties` (copied from the main checkout) for the Android SDK path.
 

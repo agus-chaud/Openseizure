@@ -2195,9 +2195,19 @@ que mostraba "inactivo" tras cualquier reinicio aunque el monitoreo estuviera co
   `false` o sin definir (instalación nueva, o el usuario tocó "Detener monitoreo") no hace nada. Se
   agrega el permiso `RECEIVE_BOOT_COMPLETED`.
 - El flag se movió a un helper (`MonitorPrefs`) con el mismo archivo y la misma clave: sin migración.
-- Si el arranque falla (cualquier excepción), el receptor no se cae: registra el error y publica una
-  notificación **silenciosa** (canal de importancia baja, sin sonido ni vibración, DEC-057) que dice
-  que el monitoreo no se reinició y abre `MainActivity`. Se cancela sola cuando el monitoreo arranca.
+- Si el arranque falla, el reloj no se cae: registra el error y publica una notificación
+  **silenciosa** (canal de importancia baja, sin sonido ni vibración, DEC-057) que dice que el
+  monitoreo no se reinició y abre `MainActivity`. Se cancela sola cuando el monitoreo arranca. La
+  publica un helper compartido (`RestartNeededNotifier`).
+- **La falla principal ocurre en el service, no en el receptor.** `startForegroundService()` casi
+  nunca lanza; lo que lanza `SecurityException` (requisitos del tipo `health`, por ejemplo
+  `BODY_SENSORS` en uso) o `ForegroundServiceStartNotAllowedException` es `startForeground()` dentro
+  de `SeizureMonitorService.onCreate()`. Por eso el `try/catch` del service es el que importa: ante la
+  falla registra el error, publica el aviso silencioso y se detiene con `stopSelf()`; `onStartCommand`
+  devuelve `START_NOT_STICKY` sin activar sensores ni WakeLock ni reanudar (así no hay crash ni
+  bucle de reinicios). `was_monitoring` **no se borra**: la persona sigue queriendo monitoreo y
+  tocar "Iniciar monitoreo" con la app abierta debe funcionar. El `try/catch` del receptor queda
+  como red de seguridad para un rechazo síncrono.
 - `SeizureMonitorService.monitoring` (StateFlow en memoria) refleja si el monitoreo corre de verdad;
   `MainActivity` lo usa para el texto y el botón. Es `true` en `onMonitoringStart` y `false` al
   detener, al destruir y al crear una instancia nueva.
@@ -2214,7 +2224,7 @@ que mostraba "inactivo" tras cualquier reinicio aunque el monitoreo estuviera co
 **Riesgo abierto (a verificar en el reloj):** no está confirmado que el sistema exija el permiso
 `BODY_SENSORS` "mientras está en uso" a un foreground service de tipo `health` iniciado desde el
 arranque, sin ninguna actividad visible. Si lo exigiera, `startForeground()` lanzaría
-`SecurityException` y el receptor caería en la notificación silenciosa, no en el monitoreo.
+`SecurityException` y el service caería en la notificación silenciosa (sin crash), no en el monitoreo.
 Verificación: DV-10 en `HARDWARE_RUNBOOK.md`.
 
 **Alternativas descartadas:**

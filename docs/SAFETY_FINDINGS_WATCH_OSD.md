@@ -441,3 +441,25 @@ fallas siguen silenciosas.
 protege). No toca umbral, N ventanas, ventana 750 ni techo de latencia. `CAREGIVER_GUIDE.md` está
 actualizado (alerta de 8 h, causas, límites con "No molestar" y teléfono aparte). Riesgo residual:
 R17-F2 hasta correr DV-11; la primera noche de un corte sigue sin protección hasta 8 h.
+
+## 19. Texto honesto en la notificación fija del teléfono (2026-10-11)
+
+**Qué pasó:** durante el corte del 2026-10-08 al 2026-10-11, la notificación fija del Companion siguió
+diciendo "SeizureGuard bridge running — Forwarding watch data to OpenSeizureDetector" sin recibir
+ningún dato. DEC-071 hace que refleje el estado real; `safety-reviewer` R18 revisó el diff real.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R18-F1 | ALTO | La notificación fija afirmaba que los datos llegaban aunque no llegaba nada: quien la mirara creía que el sistema protegía. | **ARREGLADO** (DEC-071): "Receiving watch data" solo después de ver un chunk válido; con falla, "SeizureGuard: NOT monitoring" y la causa |
+| R18-F2 | MEDIO | "since 04:22" tras un corte de varios días parece de hoy. | **ARREGLADO** en esta revisión: si el último dato no es de hoy se muestra la fecha ("8 Oct 04:22"), también en la alerta de 8 h |
+| R18-F3 | BAJO | Al arrancar, antes del primer dato, el estado no tiene falla pero tampoco datos. | Resuelto: texto neutro "Waiting for watch data"; pasa a falla a los 30 s sin datos (`NO_WATCH_DATA_MS`, firmada) |
+| R18-F4 | BAJO | Re-publicar la notificación del foreground service con `notify()` solo está probado en Robolectric. | Verificar en hardware junto con DV-9 (lo que ve el cuidador) |
+| R18-F5 | INFO | El texto "Data Sharing: Not Logged In" es de OSD, no de este repo. | Fuera de alcance |
+
+No cambia ninguna constante firmada, ni alarmas, SMS, estados de OSD ni la alerta de 8 h. La
+notificación sigue en el canal LOW, sin sonido ni vibración, y se actualiza solo cuando cambia el estado.
+
+**Veredicto R18: PASS.** Clasificación: `alarm-path` (lo que la persona ve para saber si está
+protegida). No toca constantes de lógica de detección. `CAREGIVER_GUIDE.md` está actualizado (tabla de
+estados de la notificación fija y "NOT monitoring" = sin protección). Riesgo residual: R18-F4 hasta la
+prueba en hardware.

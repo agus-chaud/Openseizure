@@ -175,7 +175,7 @@ unos 10 segundos de cualquier cambio. **Mirala cada noche antes de dormir.**
 |---|---|---|
 | SeizureGuard bridge running | Receiving watch data | Está llegando información del reloj. Es el único estado en que el sistema protege. |
 | SeizureGuard bridge running | Waiting for watch data | Recién arrancó y todavía no llegó nada del reloj. Si no cambia a "Receiving" en un minuto, tratá el estado como el de abajo. |
-| **SeizureGuard: NOT monitoring** | No data from the watch since 02:15. | Desde esa hora no llega nada del reloj. |
+| **SeizureGuard: NOT monitoring** | No data from the watch since 02:15. | Desde esa hora no llega nada del reloj. Si el último dato no es de hoy, también muestra la fecha (por ejemplo "since 8 Oct 04:22"). |
 | **SeizureGuard: NOT monitoring** | (otro texto en inglés) | Hay otra falla, por ejemplo OpenSeizureDetector no recibe los datos. El texto dice qué revisar. |
 
 **"NOT monitoring" significa que el sistema NO está protegiendo.** No habrá alarma ni SMS si hay una

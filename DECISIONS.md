@@ -2366,7 +2366,7 @@ algo que nadie estaba observando, justo la notificación que el cuidador ve prim
 |---|---|---|
 | Recién arrancado, sin ningún dato válido todavía | SeizureGuard bridge running | Waiting for watch data |
 | Sin falla y con datos válidos observados | SeizureGuard bridge running | Receiving watch data |
-| `NO_WATCH_DATA` | SeizureGuard: NOT monitoring | No data from the watch since HH:mm. |
+| `NO_WATCH_DATA` | SeizureGuard: NOT monitoring | No data from the watch since HH:mm. (con fecha "d MMM HH:mm" si el último dato no es de hoy) |
 | Otra falla | SeizureGuard: NOT monitoring | el texto `fault_*` de esa falla |
 
 - **"Receiving" solo se afirma con evidencia.** `BridgeState.hasReceivedValidData()` es verdadero

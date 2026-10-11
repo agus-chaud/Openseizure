@@ -160,7 +160,7 @@ internal class BridgeNotifications(
                     setShowBadge(false)
                 }
             )
-            val since = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sinceMs))
+            val since = formatSince(sinceMs)
             val text = context.getString(R.string.no_data_alert_text, since, context.getString(noDataCauseRes(cause)), retriesTried)
             val open = PendingIntent.getActivity(
                 context, 0, Intent(context, SetupActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -198,6 +198,17 @@ internal class BridgeNotifications(
             NodeCheck.UNKNOWN -> R.string.no_data_alert_cause_unknown
         }
 
+        /**
+         * "HH:mm" when [sinceMs] is on the same local calendar day as [nowMs], else "d MMM HH:mm": after a multi-day
+         * outage a bare time reads as today (DEC-071). [nowMs] is injectable for tests.
+         */
+        fun formatSince(sinceMs: Long, nowMs: Long = System.currentTimeMillis()): String {
+            val locale = Locale.getDefault()
+            val day = SimpleDateFormat("yyyyMMdd", locale)
+            val sameDay = day.format(Date(sinceMs)) == day.format(Date(nowMs))
+            return SimpleDateFormat(if (sameDay) "HH:mm" else "d MMM HH:mm", locale).format(Date(sinceMs))
+        }
+
         /** Default view = neutral "waiting for watch data": the initial post must not claim data flows. */
         fun buildStatus(
             context: Context,
@@ -221,7 +232,7 @@ internal class BridgeNotifications(
                     title = context.getString(R.string.bridge_status_not_monitoring_title)
                     text = if (sinceMs != null && sinceMs > 0L) {
                         context.getString(
-                            R.string.bridge_status_no_data_since, SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sinceMs)),
+                            R.string.bridge_status_no_data_since, formatSince(sinceMs),
                         )
                     } else {
                         context.getString(R.string.bridge_status_no_data_since_start)

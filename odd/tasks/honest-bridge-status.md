@@ -36,3 +36,6 @@ Out of scope: OSD's own "Data Sharing: Not Logged In" text; merging the separate
 
 ## Next step
 T3: safety-reviewer R18, SAFETY_FINDINGS section 19, user OK, PR.
+
+## Addendum: date in "since" time
+- `BridgeNotifications.formatSince(sinceMs, nowMs)`: same local day -> "HH:mm", else "d MMM HH:mm"; used by the status notification and `postNoDataAlert`. New test for same/previous/several days; `NoDataAlertServiceTest` now uses today's 22:15. Checks (observed): same Gradle command BUILD SUCCESSFUL; phone 254 tests 0 failures; wear 340 tests, 0 failures, 1 skipped.

@@ -62,7 +62,7 @@ class BridgeStatusNotificationTest {
         since = 1_700_000_000_000L
         n.onHealthTick(BridgeFault.NONE)
         n.onHealthTick(BridgeFault.NO_WATCH_DATA)
-        val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(since!!))
+        val hhmm = BridgeNotifications.formatSince(since!!)
         assertEquals("SeizureGuard: NOT monitoring", title(posted()))
         assertEquals("No data from the watch since $hhmm.", text(posted()))
 
@@ -124,5 +124,18 @@ class BridgeStatusNotificationTest {
         assertFalse(state.hasReceivedValidData())
         state.onValidAccel(5L)
         assertTrue(state.hasReceivedValidData())
+    }
+
+    @Test fun formatSince_sameDay_isTimeOnly_otherDays_includeDate() {
+        val cal = java.util.Calendar.getInstance().apply { set(2026, java.util.Calendar.OCTOBER, 11, 9, 30, 0) }
+        val now = cal.timeInMillis
+        fun at(day: Int, h: Int, m: Int) =
+            (cal.clone() as java.util.Calendar).apply { set(2026, java.util.Calendar.OCTOBER, day, h, m, 0) }.timeInMillis
+        assertEquals("04:22", BridgeNotifications.formatSince(at(11, 4, 22), now))
+        val prev = SimpleDateFormat("d MMM HH:mm", Locale.getDefault())
+        assertEquals(prev.format(Date(at(10, 23, 50))), BridgeNotifications.formatSince(at(10, 23, 50), now))
+        assertTrue(BridgeNotifications.formatSince(at(10, 23, 50), now).contains("10"))
+        assertEquals(prev.format(Date(at(8, 4, 22))), BridgeNotifications.formatSince(at(8, 4, 22), now))
+        assertTrue(BridgeNotifications.formatSince(at(8, 4, 22), now).length > 5)
     }
 }

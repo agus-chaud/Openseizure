@@ -16,6 +16,10 @@
     <string name="notification_degraded_title">⚠ MONITOREO DEGRADADO</string>
     <string name="notification_degraded_text">Sin datos o sin conexión al teléfono — revisá el reloj</string>
 
+    <!-- Reinicio del reloj: el monitoreo no pudo reanudarse solo. Notificación silenciosa (DEC-057). -->
+    <string name="notification_restart_needed_title">⚠ El monitoreo NO se reinició</string>
+    <string name="notification_restart_needed_text">El reloj se reinició. Abrí SeizureGuard e iniciá el monitoreo.</string>
+
     <!-- Fase 1.1 — Botones de la UI principal -->
     <string name="btn_start_monitoring">Iniciar monitoreo</string>
     <string name="btn_stop_monitoring">Detener monitoreo</string>

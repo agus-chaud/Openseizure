@@ -310,6 +310,8 @@ class SeizureMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // A fresh instance is not monitoring yet (the previous one, if any, is gone).
+        _monitoring.value = false
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
     }
@@ -364,6 +366,7 @@ class SeizureMonitorService : Service() {
         // Nota Fase 2.1: el alarmStateListener va antes de stopSensorCollection() porque
         // podría llegar un mensaje del teléfono exactamente en el momento del shutdown.
         // Removerlo primero evita que el callback intente usar un Service ya destruido.
+        _monitoring.value = false
         alarmStateListener?.let { dataLayerManager.removeAlarmStateListener(it) }
         sendSettingsListener?.let { dataLayerManager.removeSendSettingsListener(it) }
         stopSensorCollection()
@@ -395,6 +398,7 @@ class SeizureMonitorService : Service() {
             return
         }
         isMonitoringActive = true
+        _monitoring.value = true
         // T8: arrancar el reloj del watchdog. Inicializamos las marcas a "ahora" para que el
         // período de warm-up empiece a contar y no marque DEGRADADO apenas arranca.
         val now = clockMs()
@@ -415,6 +419,8 @@ class SeizureMonitorService : Service() {
         // reinicia con intent=null, onRestartAfterKill() lee este flag para reanudar.
         // Solo ACTION_STOP lo pone en false — un kill del OS NO lo limpia (queremos reanudar).
         setWasMonitoring(true)
+        // Monitoring is running again: a "could not restart" notice from the boot receiver is stale.
+        getSystemService(NotificationManager::class.java).cancel(RESTART_NEEDED_NOTIFICATION_ID)
         acquireWakeLock()
         startSensorCollection()
         // Fase 1.6: iniciar logging a CSV en builds de debug
@@ -469,6 +475,7 @@ class SeizureMonitorService : Service() {
     private fun onMonitoringStop() {
         setWasMonitoring(false)
         isMonitoringActive = false   // T5: permite re-arrancar limpio en el próximo ACTION_START
+        _monitoring.value = false
         // T8: parar el watchdog y volver a estado HEALTHY para el próximo monitoreo.
         watchdogJob?.cancel()
         watchdogJob = null
@@ -517,18 +524,11 @@ class SeizureMonitorService : Service() {
         }
     }
 
-    /** Persiste si el monitoreo está activo, para sobrevivir a un kill del OS (T4). */
-    private fun setWasMonitoring(value: Boolean) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_WAS_MONITORING, value)
-            .apply()
-    }
+    /** Persiste si el monitoreo está activo, para sobrevivir a un kill del OS (T4) o a un reinicio. */
+    private fun setWasMonitoring(value: Boolean) = MonitorPrefs.setWasMonitoring(this, value)
 
     /** true si el monitoreo estaba activo antes de un eventual kill del OS (T4). */
-    private fun wasMonitoring(): Boolean =
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_WAS_MONITORING, false)
+    private fun wasMonitoring(): Boolean = MonitorPrefs.wasMonitoring(this)
 
     // ─── SensorManager ────────────────────────────────────────────────────────
 
@@ -829,18 +829,7 @@ class SeizureMonitorService : Service() {
      *
      * El canal se crea una sola vez; llamarlo de nuevo con el mismo CHANNEL_ID no hace nada.
      */
-    private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = getString(R.string.notification_channel_description)
-            setShowBadge(false)
-        }
-        getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
-    }
+    private fun createNotificationChannel() = ensureNotificationChannel(this)
 
     /**
      * Construye la notificación persistente del monitoreo.
@@ -895,16 +884,42 @@ class SeizureMonitorService : Service() {
     companion object {
         const val CHANNEL_ID      = "seizure_monitor_channel"
         const val NOTIFICATION_ID = 1
+
+        /** Silent watch notification posted when the boot receiver could not restart monitoring. */
+        const val RESTART_NEEDED_NOTIFICATION_ID = 2
+
+        /**
+         * Creates the LOW (silent) monitoring channel. Idempotent. Also used by the boot receiver,
+         * which can run before the service ever created the channel on a fresh install.
+         */
+        fun ensureNotificationChannel(context: Context) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                context.getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = context.getString(R.string.notification_channel_description)
+                setShowBadge(false)
+                // Explicitly silent (DEC-057): LOW already never sounds, this makes it unambiguous.
+                setSound(null, null)
+                enableVibration(false)
+            }
+            context.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
         const val ACTION_START    = "com.seizureguard.wear.START_MONITORING"
         const val ACTION_STOP     = "com.seizureguard.wear.STOP_MONITORING"
 
+        // T4 — La persistencia de "estaba monitoreando" vive en [MonitorPrefs]; la leen
+        // onRestartAfterKill() (restart con intent=null) y el BootReceiver.
+
         /**
-         * T4 — Persistencia mínima para sobrevivir a un kill del OS.
-         * KEY_WAS_MONITORING guarda si el monitoreo estaba activo, para que
-         * onRestartAfterKill() decida reanudar o apagarse tras un restart con intent=null.
+         * true mientras el monitoreo está realmente corriendo en este proceso. La UI lo colecta
+         * para que el botón nunca mienta (también tras un reinicio del reloj o un restart sticky).
+         * Es estado en memoria: un proceso nuevo arranca en false hasta que el service reanuda.
          */
-        const val PREFS_NAME         = "seizure_monitor_prefs"
-        const val KEY_WAS_MONITORING = "was_monitoring"
+        private val _monitoring = MutableStateFlow(false)
+        val monitoring: StateFlow<Boolean> = _monitoring.asStateFlow()
 
         /**
          * Fase 2.2 — Estado actual del monitoreo observable desde la UI.

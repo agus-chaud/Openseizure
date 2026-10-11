@@ -75,7 +75,12 @@ class BridgeState(startMs: Long, private val freshness: OsdDataFreshness? = null
     private var dropped = 0L
     private var cachedSettings: WatchSettings? = null
 
-    @Synchronized fun onValidAccel(nowMs: Long) { lastWatchMsgAtMs = nowMs }
+    private var sawValidAccel = false
+
+    @Synchronized fun onValidAccel(nowMs: Long) { lastWatchMsgAtMs = nowMs; sawValidAccel = true }
+
+    /** True once a valid accel chunk arrived since this state was created (the status notification may then say so). */
+    @Synchronized fun hasReceivedValidData(): Boolean = sawValidAccel
     @Synchronized fun lastWatchMessageAtMs(): Long = lastWatchMsgAtMs
     @Synchronized fun onMalformed() { malformed++ }
     @Synchronized fun onDropped() { dropped++ }

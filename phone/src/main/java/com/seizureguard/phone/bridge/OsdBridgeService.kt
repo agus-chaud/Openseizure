@@ -106,7 +106,11 @@ class OsdBridgeService : Service() {
             WearAlarmSender(this)::send, { SystemClock.elapsedRealtime() },
             { state.fault(SystemClock.elapsedRealtime()) }, freshness, // live fault, not the 10 s-old tick value
         )
-        val notifications = BridgeNotifications(this)
+        val notifications = BridgeNotifications(
+            this,
+            hasValidData = { state.hasReceivedValidData() },
+            outageSinceMs = { NoDataTracking.of(this).snapshot().outageStartMs },
+        )
         val (faultLog, liveness) = BridgeHistory.of(this)
         val versionRecorder = VersionMismatchRecorder(faultLog, notice = VersionNoticeNotifier(this))
         // An open version period survives restarts (R10-F3): put its silent notice back, or clear a stale one.

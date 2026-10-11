@@ -80,8 +80,25 @@ sin alarma.
 | `DEFAULT_HANDSHAKE_BATTERY` | (nueva) **100** | celular (mergeado) | Batería que se le informa a OSD si pide ajustes antes de que el reloj mande los suyos. Puede ocultar una batería baja unos segundos. | Dejar 100 | ✅ FIRMADA 2026-09-19 |
 | `techo_latencia_clinica` (de la tabla de arriba) | (a definir) → **40 s** | — | Tiempo máximo aceptable entre el inicio de la convulsión y la alarma. Lo define OSD (ventana de 30 s con paso de 5 s) más el relay. | Decisión clínica del usuario (se le presentaron 30 s y 60 s; eligió 40 s) | ✅ FIRMADA 2026-09-30 |
 
+### Escalamiento por falta de datos del reloj (DEC-070)
+
+Cuando el puente lleva horas sin datos válidos del reloj, reintenta recuperarlo y después avisa. Estas
+cuatro constantes definen **cuánto tiempo puede pasar sin protección antes de que el sistema actúe y
+antes de que alguien se entere**. Bajarlas avisa antes pero produce más falsos "sin datos" (por
+ejemplo, con el reloj cargando fuera de la muñeca con el monitoreo encendido); subirlas deja más horas
+sin protección sin avisar. Es una excepción parcial a DEC-057: **solo** esta alerta vibra, sin sonido.
+Los reintentos no pueden ayudar si el reloj está apagado, sin batería o fuera de alcance.
+
+| Constante | Valor | Dónde | Qué controla / tradeoff | Estado |
+|---|---|---|---|---|
+| `NO_DATA_RETRY_AFTER_MS` | **3 h** | celular | Sin datos válidos por este tiempo corre el primer reintento (re-registrar el listener y pedirle al reloj que reanude). Menos = recupera antes pero gasta reintentos en cortes breves. | ✅ FIRMADA 2026-10-11 |
+| `NO_DATA_RETRY_INTERVAL_MS` | **1 h** | celular | Separación entre reintentos (a las 3 h, 4 h y 5 h). | ✅ FIRMADA 2026-10-11 |
+| `NO_DATA_MAX_RETRIES` | **3** | celular | Reintentos por corte; el contador solo se reinicia cuando vuelven datos válidos. | ✅ FIRMADA 2026-10-11 |
+| `NO_DATA_ALERT_AFTER_MS` | **8 h** | celular | Sin datos por este tiempo, una sola alerta con vibración (sin sonido, sin saltear No Molestar). Menos = aviso más temprano pero más falsas alertas. Más = más horas sin protección sin avisar. | ✅ FIRMADA 2026-10-11 |
+
 **No requieren firma** (solo afectan el registro y el resumen, no la detección ni la alarma; se
-listan por transparencia): `SERVICE_DOWN_THRESHOLD_MS` 120 s, `ALIVE_WRITE_INTERVAL_MS` 60 s,
+listan por transparencia): `NO_DATA_WRITE_INTERVAL_MS` 60 s (cada cuánto se guarda la marca de último
+dato válido), `SERVICE_DOWN_THRESHOLD_MS` 120 s, `ALIVE_WRITE_INTERVAL_MS` 60 s,
 retención del registro 14 días, resumen a las 8:00 sobre una ventana de 12 h, timeouts HTTP de 4 s
 y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo fija el contrato).
 
@@ -107,3 +124,7 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 | Rango de `sample_freq` aceptado | exactamente 25 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. **Endurecido en código** (Batch 5e, PR #27, mergeado 2026-09-19): un valor distinto de 25 se descarta y no llega a OSD. Detalle en la tabla de arriba. |
 | `DEFAULT_HANDSHAKE_BATTERY` | 100 | agus-chaud (usuario del proyecto) | 2026-09-19 | Firmada tal cual se propuso. Celular, ya mergeado. Detalle en la tabla de arriba. |
 | `techo_latencia_clinica` | 40 s | agus-chaud (usuario del proyecto) | 2026-09-30 | Decisión clínica del usuario, sin valor propuesto previo. Presupuesto: paso de análisis de OSD ≤ 5 s + relay ≤ 8 s = hasta 13 s, lo que deja ≈ 27 s para que el modelo reconozca la convulsión dentro de su ventana de 30 s. Ese tiempo de reconocimiento **no está medido**: se valida en las pruebas con hardware (DV). Si no se cumple, se revisa y se vuelve a firmar. El stride de 5 s queda dentro del techo. |
+| `NO_DATA_RETRY_AFTER_MS` | 3 h | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario tras el corte de campo del 2026-10-08 al 2026-10-11 (~3,5 días sin datos y sin que nadie lo notara). Celular, DEC-070. Tradeoff: menos tiempo recupera antes pero gasta reintentos en cortes breves. |
+| `NO_DATA_RETRY_INTERVAL_MS` | 1 h (reintentos a las 3 h, 4 h y 5 h) | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. |
+| `NO_DATA_MAX_RETRIES` | 3 | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. Los reintentos no ayudan si el reloj está apagado, sin batería o fuera de alcance; sin probar en hardware (DV-11). |
+| `NO_DATA_ALERT_AFTER_MS` | 8 h | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. Excepción parcial a DEC-057: solo esta alerta vibra, sin sonido. Tradeoff: bajarlo avisa antes pero da más falsos "sin datos" (por ejemplo, reloj cargando fuera de la muñeca con el monitoreo encendido); subirlo deja más horas sin protección sin avisar. Se descartó 10 h. |

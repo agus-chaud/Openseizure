@@ -12,18 +12,19 @@ import com.seizureguard.wear.R
 /**
  * Silent "monitoring did not restart" notice (DEC-057: faults never sound or vibrate). Tapping it
  * opens [MainActivity], where the user can start monitoring from the foreground. Used by the boot
- * receiver (start refused) and by the service itself (startForeground refused, which is where the
- * system actually throws for a boot-started health foreground service).
+ * receiver and the phone's resume request (start refused) and by the service itself (startForeground
+ * refused, which is where the system actually throws for a boot-started health foreground service).
  */
 object RestartNeededNotifier {
     private const val TAG = "RestartNeededNotifier"
 
-    fun post(context: Context) {
+    /** @param textRes wording of the notice; the default says the watch rebooted, so other paths pass their own. */
+    fun post(context: Context, textRes: Int = R.string.notification_restart_needed_text) {
         try {
             SeizureMonitorService.ensureNotificationChannel(context)
             val notification = NotificationCompat.Builder(context, SeizureMonitorService.CHANNEL_ID)
                 .setContentTitle(context.getString(R.string.notification_restart_needed_title))
-                .setContentText(context.getString(R.string.notification_restart_needed_text))
+                .setContentText(context.getString(textRes))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)

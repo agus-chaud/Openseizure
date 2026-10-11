@@ -411,3 +411,33 @@ ventana 750, techo de latencia). `CAREGIVER_GUIDE.md` está actualizado (reinici
 bloqueo de pantalla, aviso silencioso y la advertencia de que no se probó en el reloj real).
 Riesgo residual: R16-F3 hasta correr DV-10 en el reloj real; mientras tanto, un rechazo del
 sistema deja al reloj sin monitorear con un aviso que no suena.
+
+## 18. Reintentos y aviso tras horas sin datos del reloj (2026-10-11)
+
+**Qué pasó:** en el corte del 2026-10-08 al 2026-10-11 el puente detectó la falta de datos a los 30 s,
+pero todas las fallas son silenciosas (DEC-057) y nadie se enteró en ~3,5 días. DEC-070 agrega
+reintentos automáticos (3 h, 4 h y 5 h) y una alerta con vibración a las 8 h, con constantes firmadas
+por el usuario el 2026-10-11. `safety-reviewer` R17 revisó el diff real.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R17-F1 | CRÍTICO | Un sistema caído por días era indistinguible de una noche tranquila. | **ARREGLADO** (DEC-070): alerta única con vibración a las 8 h sin datos válidos, con la hora del último dato y la causa probable |
+| R17-F2 | ALTO | El reloj no podía recuperarse si la app moría sin reinicio del reloj. | **MITIGADO**: reintentos a las 3/4/5 h (re-registrar el listener y pedir `/osd/resume_monitoring`); el reloj reanuda solo si `was_monitoring`. Arrancar el service desde un `WearableListenerService` en segundo plano no es una excepción documentada: verificar en DV-11 |
+| R17-F3 | ALTO | La pantalla del teléfono y la guía decían que las fallas "nunca" vibran: texto falso con DEC-070. | **ARREGLADO** en esta revisión (`setup_instructions` y `CAREGIVER_GUIDE.md`) |
+| R17-F4 | ALTO | Si el puente del teléfono está muerto (proceso caído sin reinicio), no corre el tick y no hay alerta de 8 h. | Aceptado: lo cubren `ServiceLiveness` y el resumen matutino; la alerta vive dentro del puente |
+| R17-F5 | MEDIO | La alerta llega solo al teléfono que corre el puente, no a un teléfono aparte del cuidador (DEC-057), y no atraviesa "No molestar" ni vibra con el teléfono en silencio total. | Aceptado y documentado en `CAREGIVER_GUIDE.md` |
+| R17-F6 | MEDIO | "Detenido por el usuario" no vence: si alguien detiene el reloj por error, no hay reintentos ni alerta hasta que vuelvan datos. | Aceptado: es lo pedido por el usuario; documentado en la guía |
+| R17-F7 | BAJO | Si el mensaje de stop se pierde, o llega un chunk atrasado después del stop, el teléfono alerta a las 8 h aunque el stop fue a propósito. | Aceptado: falla hacia el lado seguro (falsa alerta, nunca silencio) |
+| R17-F8 | BAJO | El reloj de pared del teléfono: un salto hacia adelante adelanta la alerta; uno hacia atrás la demora. | Aceptado: necesario para sobrevivir reinicios del proceso y del teléfono |
+| R17-F9 | BAJO | Tras tener el teléfono apagado más de 8 h, la alerta puede salir en el primer tick, antes de que el reloj reconecte. | Aceptado: es verdad que no hubo monitoreo; se cancela sola al llegar datos |
+| R17-F10 | INFO | El `WearableListenerService` es `exported="true"` (lo exige Play services) y filtra solo `/osd/resume_monitoring`; en el peor caso reanuda un monitoreo que el usuario había dejado encendido. | Sin acción |
+
+No cambia ninguna constante firmada existente. Las cuatro nuevas (`NO_DATA_RETRY_AFTER_MS` 3 h,
+`NO_DATA_RETRY_INTERVAL_MS` 1 h, `NO_DATA_MAX_RETRIES` 3, `NO_DATA_ALERT_AFTER_MS` 8 h) están firmadas
+en `CLINICAL_SIGNOFF.md`. No cambia alarmas de convulsión, SMS ni estados de OSD; todas las demás
+fallas siguen silenciosas.
+
+**Veredicto R17: PASS.** Clasificación: `alarm-path` (disponibilidad del monitoreo y aviso de que no
+protege). No toca umbral, N ventanas, ventana 750 ni techo de latencia. `CAREGIVER_GUIDE.md` está
+actualizado (alerta de 8 h, causas, límites con "No molestar" y teléfono aparte). Riesgo residual:
+R17-F2 hasta correr DV-11; la primera noche de un corte sigue sin protección hasta 8 h.

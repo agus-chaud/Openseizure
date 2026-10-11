@@ -200,4 +200,21 @@ class FaultLogTest {
         log.onVersionCompatibility(VersionCompatibility.MISSING)
         assertEquals(3, log().periods().size)
     }
+
+    @Test fun noDataEvents_arePersistedAsClosedPoints_andNeverTouchTheOpenPeriod() {
+        val log = log()
+        log.onFault(BridgeFault.NO_WATCH_DATA) // open outage period
+        now = 9_000
+        log.add(FaultPeriod(FaultKind.NO_DATA_RETRY_WATCH_CONNECTED, now, now))
+        log.add(FaultPeriod(FaultKind.NO_DATA_ALERT, now, now))
+        log.onFault(BridgeFault.NO_WATCH_DATA) // same fault: still the one open period
+        val reloaded = log().periods()
+        assertEquals(3, reloaded.size)
+        assertEquals(listOf(FaultKind.NO_WATCH_DATA), reloaded.filter { it.endMs == null }.map { it.kind })
+        assertEquals(listOf(true, true), reloaded.filter { it.endMs != null }.map { it.kind.isEvent })
+        assertEquals(listOf(false), reloaded.filter { it.endMs == null }.map { it.kind.isEvent })
+        now = 12_000
+        log.onFault(BridgeFault.NONE) // closes only the outage
+        assertTrue(log().periods().all { it.endMs != null })
+    }
 }

@@ -57,7 +57,8 @@ Además, **en el reloj de la persona**:
 
 **Nada más debería avisar.** Ni las fallas, ni los problemas, ni los cortes. Esto es a propósito
 (ver más abajo). Vale para el **teléfono** (la app "SeizureGuard Companion") y para el **reloj**:
-una falla no suena ni vibra en ninguno de los dos.
+una falla no suena ni vibra en ninguno de los dos. **Única excepción:** si el teléfono pasa
+**8 horas** sin recibir datos del reloj, vibra una vez, sin sonido (ver "Si el teléfono vibra" más abajo).
 
 > **Dónde se ve una falla en el reloj:** solo en la pantalla, sin ruido ni vibración. Si abrís la
 > app SeizureGuard en el reloj y dice **"⚠ MONITOREO DEGRADADO"** (en ámbar), el sistema no está
@@ -109,6 +110,10 @@ alarmas y te agotan, avisale a quien configuró el sistema: se puede ajustar la 
 del reloj, etc.), **no suena ni vibra nada**, ni en el teléfono ni en el reloj. Lo único que debe
 interrumpirte es una emergencia real. Así se evita despertarte por problemas técnicos.
 
+**Una única excepción:** si el teléfono pasa **8 horas seguidas sin recibir datos del reloj**, vibra
+una vez y deja una notificación (sin sonido). Ver "Si el teléfono vibra: SeizureGuard: no watch data
+for 8 hours", más abajo.
+
 **La consecuencia, dicha sin vueltas: un sistema roto se ve igual que una noche tranquila.**
 Si algo se cae, nadie se entera en el momento. Por eso hacen falta **dos hábitos**:
 
@@ -128,7 +133,8 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
   cero** o en modo **No molestar** que tapa la alarma.
 - **Batería baja en el teléfono de la persona:** OpenSeizureDetector pasa a "falla" y, con una
   falla activa, **una convulsión puede NO generar alarma**. Por eso el teléfono duerme **cargando**.
-- El **reloj** está **fuera de la muñeca**, sin batería, o **sin conexión** con el teléfono.
+- El **reloj** está **fuera de la muñeca**, sin batería, o **sin conexión** con el teléfono. Si pasan
+  **8 horas** sin datos, el teléfono avisa con una vibración (ver más abajo); antes de eso no avisa.
 - El modo **MUTE** (silencio) de OpenSeizureDetector está activo: **tapa las alarmas y cancela el
   SMS** mientras dure.
 - Al iniciar la aplicación del teléfono se **negó un permiso** (Bluetooth): no arranca, y **tampoco
@@ -156,6 +162,44 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
 
 Además: **no llama solo a una ambulancia** (te avisa a vos y vos decidís) y **no es un
 diagnóstico médico** (solo detecta un patrón de movimiento).
+
+---
+
+## Si el teléfono vibra: "SeizureGuard: no watch data for 8 hours"
+
+Es la **única falla que vibra**: el teléfono de la persona vibra una vez y deja una notificación fija
+cuando pasaron **8 horas sin recibir datos del reloj**. En ese tiempo el sistema no estuvo protegiendo.
+
+- **No suena** y **no atraviesa "No molestar"**: con "No molestar" activado puede no vibrar ni
+  asomarse. La notificación queda en la bandeja igual.
+- Queda puesta hasta que el reloj vuelve a mandar datos, y se borra sola.
+- Dice desde qué hora no llegan datos ("No data from the watch since 02:15") y cuántos reintentos
+  automáticos se hicieron ("Retries tried: 3").
+- Tocarla abre la aplicación "SeizureGuard Companion".
+
+| Dice | Qué significa | Qué hacer |
+|---|---|---|
+| "The watch is not connected to this phone. Check that it is charged, switched on and nearby." | El teléfono no ve al reloj: sin batería, apagado, lejos, o Bluetooth del teléfono apagado. | Cargar o prender el reloj, acercarlo y revisar el Bluetooth del teléfono. Después mirar que el reloj diga "Monitoreo activo"; si no, tocar "Iniciar monitoreo". |
+| "The watch is connected but SeizureGuard is not sending data. Open SeizureGuard on the watch and tap Start." | El reloj está conectado pero la aplicación del reloj no está monitoreando. | Abrir SeizureGuard en el reloj y tocar "Iniciar monitoreo". |
+| "The connection to the watch could not be checked. ..." | El teléfono no pudo averiguar el estado del reloj. | Hacer las dos cosas de arriba: revisar que el reloj esté prendido y cerca, y que diga "Monitoreo activo". |
+
+**Qué hace el sistema solo antes del aviso:** a las 3, 4 y 5 horas sin datos reintenta (vuelve a
+escuchar al reloj y, si el reloj está conectado, le pide que reanude el monitoreo). Eso **no sirve si
+el reloj está apagado, sin batería o lejos**, y **todavía no se probó en el reloj real**: Android puede
+negarse a arrancar la aplicación del reloj en segundo plano. Si se niega, el reloj deja una
+notificación silenciosa "⚠ El monitoreo NO se reinició".
+
+**Para no recibir este aviso a propósito:** si querés apagar el monitoreo del reloj, usá el botón
+**"Detener monitoreo"** del reloj. El reloj le avisa al teléfono y el teléfono no reintenta ni alerta.
+Pero ojo: **si lo detenés y te olvidás de volver a iniciarlo, el sistema no protege y no avisa**, hasta
+que el reloj vuelva a mandar datos. Si el aviso al teléfono se pierde, el teléfono alerta igual a las 8 h.
+
+**Puede avisar sin peligro real**, por ejemplo con el reloj cargando fuera de la muñeca. Es el precio de
+avisar a las 8 horas y no más tarde.
+
+**Límite importante:** este aviso aparece **en el teléfono que corre "SeizureGuard Companion"** (el de
+la persona). **No llega a un teléfono aparte del cuidador**: si vos usás otro teléfono, no te enterás
+por esta vía. Mirá el teléfono de la persona a la mañana, junto con el resumen de la noche.
 
 ---
 

@@ -17,7 +17,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.seizureguard.phone.R
 import com.seizureguard.phone.bridge.BridgeHistory
+import com.seizureguard.phone.bridge.BridgeNotifications
 import com.seizureguard.phone.bridge.BridgePrefs
+import com.seizureguard.phone.bridge.NoDataTracking
 import com.seizureguard.phone.bridge.OsdBridgeService
 import com.seizureguard.phone.summary.MorningSummaryReceiver
 
@@ -71,6 +73,9 @@ class SetupActivity : Activity() {
 
     private fun launchService() {
         BridgePrefs.setWasBridging(this, true)
+        // A deliberate Start: the no-data outage clock restarts from now and an old alert goes away (DEC-070).
+        NoDataTracking.of(this).onUserStart()
+        BridgeNotifications.cancelNoDataAlert(this)
         MorningSummaryReceiver.arm(this)
         OsdBridgeService.start(this)
         toast(R.string.setup_started)
@@ -79,6 +84,7 @@ class SetupActivity : Activity() {
     private fun stopBridge() {
         BridgePrefs.setWasBridging(this, false)
         BridgeHistory.onCleanStop(this)
+        BridgeNotifications.cancelNoDataAlert(this) // a stopped bridge cannot recover by itself: do not leave the alert behind
         stopService(Intent(this, OsdBridgeService::class.java))
         toast(R.string.setup_stopped)
     }

@@ -104,16 +104,29 @@
         <!--
             Fase 2.1: Wear Data Layer — recepción de mensajes del teléfono.
 
-            El WearableListenerService es el punto de entrada oficial de Wear OS
-            para recibir mensajes Data Layer cuando la app no está en foreground.
-            En esta fase, el listener vive dentro de WearDataLayerManager via
-            MessageClient.addListener() — funciona mientras el Service está activo.
+            Los listeners de alarm_state y send_settings viven dentro de WearDataLayerManager via
+            MessageClient.addListener(): funcionan solo mientras el Service de monitoreo está activo.
 
-            Si en el futuro se necesita recibir mensajes con la app en background
-            (fuera del ForegroundService), se debe agregar un WearableListenerService
-            declarado acá con el intent-filter com.google.android.gms.wearable.BIND_LISTENER.
-            Ver TODO en TODOS.md (Fase 4.4: edge case watch fuera de muñeca).
+            DEC-070: el teléfono puede pedir "/osd/resume_monitoring" cuando lleva horas sin recibir datos.
+            Con la app muerta eso solo lo puede recibir un WearableListenerService declarado acá, que
+            Play services enlaza por el intent-filter MESSAGE_RECEIVED con un pathPrefix específico (el
+            resto del tráfico /osd/* NO lo despierta). exported="true" lo exige la documentación de
+            Play services (lo enlaza GMS, un proceso de otro paquete); sin datos sensibles que exponer:
+            solo reanuda si el usuario había dejado el monitoreo encendido (was_monitoring).
+            Arrancar un foreground service desde acá NO es una excepción documentada de Android:
+            mejor esfuerzo, a verificar en hardware (DV-11).
         -->
+        <service
+            android:name=".data.ResumeRequestListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/osd/resume_monitoring" />
+            </intent-filter>
+        </service>
 
     </application>
 

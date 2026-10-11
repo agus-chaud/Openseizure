@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Fase 1.1 — Foreground Service de monitoreo nocturno.
@@ -313,6 +314,25 @@ class SeizureMonitorService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
     }
 
+    /**
+     * Seam (DEC-070): tells the phone the user stopped monitoring on purpose. The default sends
+     * `/osd/monitoring_stopped` from [stopMessageScope], NOT from [serviceScope]: `stopSelf()` ends the stop path
+     * with `onDestroy()`, which cancels [serviceScope] and would kill the send. Bounded by [STOP_MESSAGE_TIMEOUT_MS]
+     * and never throws; a lost message fails safe (the phone alerts as it would for a crash).
+     */
+    internal var monitoringStoppedNotifier: () -> Unit = {
+        val manager = WearDataLayerManager(applicationContext)
+        stopMessageScope.launch {
+            val delivered = try {
+                withTimeoutOrNull(STOP_MESSAGE_TIMEOUT_MS) { manager.sendMonitoringStopped() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Fallo enviando monitoring_stopped", e)
+                null
+            }
+            Log.i(TAG, "monitoring_stopped enviado al teléfono: ${delivered ?: "sin confirmar (timeout o error)"}")
+        }
+    }
+
     /** true when [foregroundStarter] threw in onCreate: this instance must not monitor. */
     private var foregroundFailed = false
 
@@ -500,6 +520,13 @@ class SeizureMonitorService : Service() {
      */
     private fun onMonitoringStop() {
         setWasMonitoring(false)
+        // DEC-070: tell the phone this stop is deliberate so it does not retry or alert. Best effort, after the flag
+        // is cleared, before any teardown, and only on this path (never on onDestroy, a kill or a crash).
+        try {
+            monitoringStoppedNotifier()
+        } catch (e: Exception) {
+            Log.e(TAG, "No se pudo avisar al teléfono del stop (el teléfono alertará igual)", e)
+        }
         isMonitoringActive = false   // T5: permite re-arrancar limpio en el próximo ACTION_START
         _monitoring.value = false
         // T8: parar el watchdog y volver a estado HEALTHY para el próximo monitoreo.
@@ -908,6 +935,12 @@ class SeizureMonitorService : Service() {
     // ─── Constantes ───────────────────────────────────────────────────────────
 
     companion object {
+        /** Deadline for the best-effort stop message (node lookup + send). */
+        const val STOP_MESSAGE_TIMEOUT_MS = 5_000L
+
+        /** Process-lifetime scope for the stop message: it must outlive the service that just called stopSelf(). */
+        private val stopMessageScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
         const val CHANNEL_ID      = "seizure_monitor_channel"
         const val NOTIFICATION_ID = 1
 

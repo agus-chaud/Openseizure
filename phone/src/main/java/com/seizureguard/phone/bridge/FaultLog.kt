@@ -11,7 +11,18 @@ enum class FaultKind {
     NO_WATCH_DATA, OSD_UNREACHABLE, OSD_WRONG_DATASOURCE, OSD_REJECTS_DATA, OSD_DATA_STALE, SERVICE_DOWN,
 
     /** Watch and companion transport-contract versions differ (Batch 8b). Not a [BridgeFault]: see [FaultLog.onVersionCompatibility]. */
-    VERSION_MISMATCH;
+    VERSION_MISMATCH,
+
+    /**
+     * Point events of the no-data escalation (DEC-070), stored as closed zero-length periods (start == end). Each
+     * retry records whether a watch was connected; the alert is recorded once. They are traceability only: the
+     * outage itself is already a [NO_WATCH_DATA] period, so counting them would double count it.
+     */
+    NO_DATA_RETRY_WATCH_CONNECTED, NO_DATA_RETRY_WATCH_NOT_CONNECTED, NO_DATA_ALERT;
+
+    /** True for the no-data escalation events: never an interruption, never summed in the morning summary. */
+    val isEvent: Boolean
+        get() = this == NO_DATA_RETRY_WATCH_CONNECTED || this == NO_DATA_RETRY_WATCH_NOT_CONNECTED || this == NO_DATA_ALERT
 
     companion object {
         fun from(fault: BridgeFault): FaultKind? = if (fault == BridgeFault.NONE) null else valueOf(fault.name)

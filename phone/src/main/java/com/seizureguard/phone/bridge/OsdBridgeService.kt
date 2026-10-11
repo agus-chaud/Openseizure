@@ -68,6 +68,7 @@ class OsdBridgeService : Service() {
 
     internal var observer: BridgeObserver = BridgeObserver.NONE
     internal var forwarder = OsdHttpForwarder() // seam: tests point it at a loopback stub
+    internal lateinit var escalation: NoDataEscalator // seam: long-outage retry and 8 h alert (DEC-070)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val accelSlot = LatestSlot<DoubleArray>()
     internal val settingsSlot = LatestSlot<WatchSettings>()
@@ -94,6 +95,10 @@ class OsdBridgeService : Service() {
         state = BridgeState(SystemClock.elapsedRealtime(), freshness)
         lastPollAtMs = SystemClock.elapsedRealtime()
         observer = defaultObserver()
+        escalation = NoDataEscalator(
+            NoDataTracking.of(this), WearWatchLink(this), NoDataAlertNotifier(this),
+            BridgeHistory.of(this).first, relisten = this::reregisterMessageListener,
+        )
     }
 
     private fun defaultObserver(): BridgeObserver {
@@ -127,6 +132,7 @@ class OsdBridgeService : Service() {
         runCatching { BridgeHistory.onServiceStart(this) }.onFailure { Log.e(TAG, "Could not record service start", it) }
         acquireWakeLock()
         registerMessageListener()
+        runCatching { escalation.onServiceStart() }.onFailure { Log.e(TAG, "Could not start the no-data tracking", it) }
         scope.launch { safeLoop("worker") { runWorker() } }
         scope.launch { safeLoop("idlePoll") { runIdlePoll() } }
         scope.launch { safeLoop("healthTick") { runHealthTick() } }
@@ -223,6 +229,11 @@ class OsdBridgeService : Service() {
                     Log.w(TAG, "Replaced an unsent chunk (total=${state.droppedCount()})")
                 }
                 wake.trySend(Unit)
+                // After the chunk is queued for OSD: bookkeeping may reset the escalation but never delays forwarding.
+                runCatching { escalation.onValidData() }.onFailure { Log.e(TAG, "No-data reset failed", it) }
+            }
+            PATH_MONITORING_STOPPED -> {
+                runCatching { escalation.onStoppedByUser() }.onFailure { Log.e(TAG, "Could not record the user stop", it) }
             }
             PATH_SETTINGS -> {
                 val s = WatchMessageParser.parseSettings(event.data)
@@ -304,12 +315,28 @@ class OsdBridgeService : Service() {
             if (fault != lastFault) Log.w(TAG, "Bridge fault: $lastFault -> $fault")
             lastFault = fault
             observer.onHealthTick(fault)
+            escalationTick()
             val now = SystemClock.elapsedRealtime()
             if (shouldReregisterListener(now, state.lastWatchMessageAtMs(), lastReregisterAtMs)) {
                 lastReregisterAtMs = now
                 Log.w(TAG, "No valid watch message for over ${LISTENER_REREGISTER_AFTER_MS}ms: re-registering listener")
                 reregisterMessageListener()
             }
+        }
+    }
+
+    /**
+     * One step of the long-outage escalation (retry or 8 h alert, DEC-070). Node discovery and sends block (up to a
+     * few seconds each), so the step runs on IO; it happens at most 4 times per outage. A failure here is logged and
+     * never stops the health tick.
+     */
+    internal suspend fun escalationTick() {
+        try {
+            withContext(Dispatchers.IO) { escalation.onTick() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "No-data escalation step failed", e)
         }
     }
 
@@ -333,6 +360,12 @@ class OsdBridgeService : Service() {
         private const val TAG = "OsdBridgeService"
         const val PATH_ACCEL = "/osd/accel_data"
         const val PATH_SETTINGS = "/osd/settings"
+
+        /** Watch -> phone: the user stopped monitoring on purpose (must equal the watch's `PATH_MONITORING_STOPPED`). */
+        const val PATH_MONITORING_STOPPED = "/osd/monitoring_stopped"
+
+        /** Phone -> watch: restart monitoring if the user had it on (must equal the watch's `PATH_RESUME_MONITORING`). */
+        const val PATH_RESUME_MONITORING = "/osd/resume_monitoring"
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, OsdBridgeService::class.java))

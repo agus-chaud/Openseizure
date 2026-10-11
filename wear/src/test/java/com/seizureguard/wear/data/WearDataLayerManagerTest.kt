@@ -210,6 +210,19 @@ class WearDataLayerManagerTest {
         )
     }
 
+    @Test
+    fun `no-data escalation paths match the phone bridge (DEC-070)`() {
+        // OsdBridgeService declares the same literals; if one side is renamed the feature goes silent.
+        assertEquals("/osd/monitoring_stopped", WearDataLayerManager.PATH_MONITORING_STOPPED)
+        assertEquals("/osd/resume_monitoring", WearDataLayerManager.PATH_RESUME_MONITORING)
+    }
+
+    @Test
+    fun `the additive paths did not change the transport contract version`() {
+        // Old peers ignore unknown paths, so DEC-070 needs no bump (a bump would raise a false version notice).
+        assertEquals(1, WearDataLayerManager.TRANSPORT_CONTRACT_VERSION)
+    }
+
     // --- transport flavor (T7.1 / T7.2) ---------------------------------------
 
     @Test

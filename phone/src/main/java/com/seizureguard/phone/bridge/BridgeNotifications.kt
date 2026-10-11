@@ -10,6 +10,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.seizureguard.phone.R
 import com.seizureguard.phone.setup.SetupActivity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class FaultAction { NONE, POST, CLEAR }
 
@@ -27,6 +30,14 @@ fun faultAction(fault: BridgeFault, shown: BridgeFault): FaultAction = when {
 internal class VersionNoticeNotifier(private val context: Context) : VersionNoticeSink {
     override fun show(result: VersionCompatibility) = BridgeNotifications.postVersionNotice(context, result)
     override fun clear() = BridgeNotifications.clearVersionNotice(context)
+}
+
+/** Shows the 8 h "no watch data" alert (DEC-070) through [BridgeNotifications]. */
+internal class NoDataAlertNotifier(private val context: Context) : NoDataAlertSink {
+    override fun post(sinceMs: Long, cause: NodeCheck, retriesTried: Int) =
+        BridgeNotifications.postNoDataAlert(context, sinceMs, cause, retriesTried)
+
+    override fun cancel() = BridgeNotifications.cancelNoDataAlert(context)
 }
 
 /** Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine. */
@@ -61,6 +72,11 @@ internal class BridgeNotifications(private val context: Context) {
         const val SUMMARY_CHANNEL_ID = "osd_bridge_summary"
         const val SUMMARY_NOTIFICATION_ID = 4104
         const val VERSION_NOTIFICATION_ID = 4105
+        const val NO_DATA_ALERT_CHANNEL_ID = "osd_bridge_no_data_alert"
+        const val NO_DATA_ALERT_NOTIFICATION_ID = 4106
+
+        /** Explicit pattern (ms: wait, buzz, pause, buzz, pause, buzz) so the alert is felt, not just flagged. */
+        val NO_DATA_ALERT_VIBRATION = longArrayOf(0, 600, 300, 600, 300, 600)
         private const val TAG = "BridgeNotifications"
 
         fun faultTextRes(fault: BridgeFault): Int = when (fault) {
@@ -93,6 +109,63 @@ internal class BridgeNotifications(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Could not clear version notification", e)
             }
+        }
+
+        /**
+         * The one fault that vibrates (partial exception to DEC-057, DEC-070): no data from the watch for
+         * [NO_DATA_ALERT_AFTER_MS]. Own channel, so every other fault stays on the silent channel. Vibration yes,
+         * sound no, Do Not Disturb not bypassed. Ongoing until data returns; [setOnlyAlertOnce] keeps updates quiet.
+         */
+        fun postNoDataAlert(context: Context, sinceMs: Long, cause: NodeCheck, retriesTried: Int) {
+            nm(context).createNotificationChannel(
+                NotificationChannel(
+                    NO_DATA_ALERT_CHANNEL_ID, context.getString(R.string.no_data_alert_channel),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    setSound(null, null)
+                    enableVibration(true)
+                    vibrationPattern = NO_DATA_ALERT_VIBRATION
+                    enableLights(false)
+                    setBypassDnd(false)
+                    setShowBadge(false)
+                }
+            )
+            val since = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sinceMs))
+            val text = context.getString(R.string.no_data_alert_text, since, context.getString(noDataCauseRes(cause)), retriesTried)
+            val open = PendingIntent.getActivity(
+                context, 0, Intent(context, SetupActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
+            )
+            notifySafely(
+                context, NO_DATA_ALERT_NOTIFICATION_ID,
+                NotificationCompat.Builder(context, NO_DATA_ALERT_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_notify_error)
+                    .setContentTitle(context.getString(R.string.no_data_alert_title))
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setCategory(NotificationCompat.CATEGORY_ERROR)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setVibrate(NO_DATA_ALERT_VIBRATION) // channel setting rules on API 26+, kept for clarity
+                    .setSound(null)
+                    .setOnlyAlertOnce(true)
+                    .setOngoing(true)
+                    .setAutoCancel(false)
+                    .setContentIntent(open)
+                    .build(),
+            )
+        }
+
+        fun cancelNoDataAlert(context: Context) {
+            try {
+                nm(context).cancel(NO_DATA_ALERT_NOTIFICATION_ID)
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not clear the no-data alert", e)
+            }
+        }
+
+        fun noDataCauseRes(cause: NodeCheck): Int = when (cause) {
+            NodeCheck.NOT_CONNECTED -> R.string.no_data_alert_cause_not_connected
+            NodeCheck.CONNECTED -> R.string.no_data_alert_cause_connected
+            NodeCheck.UNKNOWN -> R.string.no_data_alert_cause_unknown
         }
 
         fun buildStatus(context: Context): Notification {

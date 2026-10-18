@@ -22,4 +22,21 @@ object MonitorPrefs {
             .putBoolean(KEY_WAS_MONITORING, value)
             .apply()
     }
+
+    /**
+     * Epoch ms until which a MANUAL stop holds (DEC-072): the next 22:00 after the stop. While it is in the future a
+     * boot or app update inside the night window does not restart monitoring; the 22:00 alarm clears it, and any
+     * start (manual or scheduled) clears it. 0 = no manual stop pending.
+     */
+    fun manualStopUntilMs(context: Context): Long =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getLong(KEY_MANUAL_STOP_UNTIL_MS, 0L)
+
+    fun setManualStopUntilMs(context: Context, untilMs: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_MANUAL_STOP_UNTIL_MS, untilMs)
+            .apply()
+    }
+
+    const val KEY_MANUAL_STOP_UNTIL_MS = "manual_stop_until_ms"
 }

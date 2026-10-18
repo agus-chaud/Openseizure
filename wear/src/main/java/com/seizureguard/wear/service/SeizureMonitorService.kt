@@ -21,6 +21,10 @@ import com.seizureguard.wear.MainActivity
 import com.seizureguard.wear.R
 import com.seizureguard.wear.data.WearDataLayerManager
 import com.seizureguard.wear.logging.CsvLogger
+import com.seizureguard.wear.schedule.MonitoringPausedMessage
+import com.seizureguard.wear.schedule.MonitoringSchedule
+import java.time.Instant
+import java.time.ZoneId
 import com.seizureguard.wear.ml.CircularBuffer
 import com.seizureguard.wear.ml.SampleRateDecimator
 import com.google.android.gms.wearable.MessageClient
@@ -307,6 +311,9 @@ class SeizureMonitorService : Service() {
      */
     internal var clockMs: () -> Long = { SystemClock.elapsedRealtime() }
 
+    /** Wall clock for the DEC-072 schedule only (the manual-stop hold ends at a local 22:00); [clockMs] is monotonic. */
+    internal var wallClock: () -> Instant = { Instant.now() }
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     /** Seam: entering the foreground is what the OS refuses at boot; tests make it throw. */
@@ -331,6 +338,14 @@ class SeizureMonitorService : Service() {
             }
             Log.i(TAG, "monitoring_stopped enviado al teléfono: ${delivered ?: "sin confirmar (timeout o error)"}")
         }
+    }
+
+    /**
+     * Seam (DEC-072): tells the phone the stop is the SCHEDULED daytime pause, with the next automatic start (epoch
+     * ms) as payload. Same delivery guarantees as [monitoringStoppedNotifier]: process scope, bounded, never throws.
+     */
+    internal var monitoringPausedNotifier: (Long) -> Unit = { nextStartMs ->
+        MonitoringPausedMessage.send(applicationContext, nextStartMs)
     }
 
     /** true when [foregroundStarter] threw in onCreate: this instance must not monitor. */
@@ -373,7 +388,9 @@ class SeizureMonitorService : Service() {
                     intent.getBooleanExtra(EXTRA_VALIDATION_MODE, false)
                 onMonitoringStart()
             }
-            ACTION_STOP  -> onMonitoringStop()
+            ACTION_STOP  -> onMonitoringStop(
+                pauseUntilMs = intent.getLongExtra(EXTRA_PAUSE_UNTIL_MS, 0L).takeIf { it > 0L }
+            )
             // intent=null (o sin action): el OS reinició el Service por START_STICKY
             // tras matarlo. No hay action que inspeccionar — decidimos según si
             // estábamos monitoreando antes del kill. Ver onRestartAfterKill().
@@ -465,6 +482,8 @@ class SeizureMonitorService : Service() {
         // reinicia con intent=null, onRestartAfterKill() lee este flag para reanudar.
         // Solo ACTION_STOP lo pone en false — un kill del OS NO lo limpia (queremos reanudar).
         setWasMonitoring(true)
+        // DEC-072: any start (manual, scheduled, boot, sticky restart) ends a "stopped manually until 22:00" hold.
+        MonitorPrefs.setManualStopUntilMs(this, 0L)
         // Monitoring is running again: a "could not restart" notice from the boot receiver is stale.
         getSystemService(NotificationManager::class.java).cancel(RESTART_NEEDED_NOTIFICATION_ID)
         acquireWakeLock()
@@ -518,14 +537,31 @@ class SeizureMonitorService : Service() {
      * que marca "el usuario quiso parar". Así, si el OS reinicia el Service después de
      * un stop explícito, onRestartAfterKill() NO reanuda (no había nada que reanudar).
      */
-    private fun onMonitoringStop() {
+    private fun onMonitoringStop(pauseUntilMs: Long? = null) {
         setWasMonitoring(false)
-        // DEC-070: tell the phone this stop is deliberate so it does not retry or alert. Best effort, after the flag
-        // is cleared, before any teardown, and only on this path (never on onDestroy, a kill or a crash).
-        try {
-            monitoringStoppedNotifier()
-        } catch (e: Exception) {
-            Log.e(TAG, "No se pudo avisar al teléfono del stop (el teléfono alertará igual)", e)
+        if (pauseUntilMs != null) {
+            // DEC-072: the 10:00 scheduled stop. NOT a deliberate user stop: tell the phone it is a daytime pause
+            // that ends at [pauseUntilMs]. No manual-stop hold: the next 22:00 starts monitoring again.
+            try {
+                monitoringPausedNotifier(pauseUntilMs)
+            } catch (e: Exception) {
+                Log.e(TAG, "No se pudo avisar al teléfono de la pausa (el teléfono se comporta como antes)", e)
+            }
+        } else {
+            // DEC-072: a manual stop holds until the next 22:00 (boot or update inside the window must not undo it).
+            try {
+                val next = MonitoringSchedule.nextStart(wallClock(), ZoneId.systemDefault())
+                MonitorPrefs.setManualStopUntilMs(this, next.toEpochMilli())
+            } catch (e: Exception) {
+                Log.e(TAG, "No se pudo guardar la parada manual hasta las 22:00", e)
+            }
+            // DEC-070: tell the phone this stop is deliberate so it does not retry or alert. Best effort, after the
+            // flag is cleared, before any teardown, and only on this path (never on onDestroy, a kill or a crash).
+            try {
+                monitoringStoppedNotifier()
+            } catch (e: Exception) {
+                Log.e(TAG, "No se pudo avisar al teléfono del stop (el teléfono alertará igual)", e)
+            }
         }
         isMonitoringActive = false   // T5: permite re-arrancar limpio en el próximo ACTION_START
         _monitoring.value = false
@@ -947,6 +983,9 @@ class SeizureMonitorService : Service() {
         /** Silent watch notification posted when the boot receiver could not restart monitoring. */
         const val RESTART_NEEDED_NOTIFICATION_ID = 2
 
+        /** Silent watch notice (DEC-072): the exact-alarm permission is missing, the schedule may run late. */
+        const val SCHEDULE_INEXACT_NOTIFICATION_ID = 3
+
         /**
          * Creates the LOW (silent) monitoring channel. Idempotent. Also used by the boot receiver,
          * which can run before the service ever created the channel on a fresh install.
@@ -968,6 +1007,9 @@ class SeizureMonitorService : Service() {
         }
         const val ACTION_START    = "com.seizureguard.wear.START_MONITORING"
         const val ACTION_STOP     = "com.seizureguard.wear.STOP_MONITORING"
+
+        /** Long extra on ACTION_STOP (DEC-072): present only for the scheduled 10:00 stop; the next start, epoch ms. */
+        const val EXTRA_PAUSE_UNTIL_MS = "com.seizureguard.wear.PAUSE_UNTIL_MS"
 
         // T4 — La persistencia de "estaba monitoreando" vive en [MonitorPrefs]; la leen
         // onRestartAfterKill() (restart con intent=null) y el BootReceiver.
@@ -1201,10 +1243,14 @@ class SeizureMonitorService : Service() {
                 putExtra(EXTRA_VALIDATION_MODE, validationMode)
             }
 
-        /** Crea el Intent para detener el monitoreo. */
-        fun stopIntent(context: android.content.Context) =
+        /**
+         * Crea el Intent para detener el monitoreo. Con [pauseUntilMs] es la parada programada de las 10:00 (DEC-072):
+         * avisa al teléfono "pausa hasta ese instante" en vez de "parada deliberada".
+         */
+        fun stopIntent(context: android.content.Context, pauseUntilMs: Long? = null) =
             Intent(context, SeizureMonitorService::class.java).apply {
                 action = ACTION_STOP
+                if (pauseUntilMs != null) putExtra(EXTRA_PAUSE_UNTIL_MS, pauseUntilMs)
             }
     }
 }

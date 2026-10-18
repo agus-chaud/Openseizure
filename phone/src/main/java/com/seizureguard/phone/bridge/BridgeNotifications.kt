@@ -44,11 +44,17 @@ internal class NoDataAlertNotifier(private val context: Context) : NoDataAlertSi
  * What the ongoing status notification says. [WAITING] = no valid watch data seen yet since the service started
  * (neutral, claims nothing); [HEALTHY] = no fault AND valid data observed; [FAULT] = [fault] is not NONE.
  */
-internal data class StatusView(val fault: BridgeFault, val receiving: Boolean)
+internal data class StatusView(val fault: BridgeFault, val receiving: Boolean, val pausedUntilMs: Long = 0L)
 
-/** Pure: the status text depends only on the fault and on whether valid watch data was ever observed. */
-internal fun statusView(fault: BridgeFault, hasValidData: Boolean): StatusView =
-    if (fault == BridgeFault.NONE) StatusView(fault, hasValidData) else StatusView(fault, false)
+/**
+ * Pure: the status text depends on the fault, on whether valid watch data was ever observed and, during the scheduled
+ * daytime pause (DEC-072, [pausedUntilMs] > 0), on nothing else: a pause never reads as "NOT monitoring".
+ */
+internal fun statusView(fault: BridgeFault, hasValidData: Boolean, pausedUntilMs: Long = 0L): StatusView = when {
+    pausedUntilMs > 0L -> StatusView(BridgeFault.NONE, false, pausedUntilMs)
+    fault == BridgeFault.NONE -> StatusView(fault, hasValidData)
+    else -> StatusView(fault, false)
+}
 
 /**
  * Status (LOW, required by the FGS) and fault (silent, passive) notifications. Health ticks come from one coroutine.
@@ -61,12 +67,17 @@ internal class BridgeNotifications(
     private val context: Context,
     private val hasValidData: () -> Boolean = { false },
     private val outageSinceMs: () -> Long? = { null },
+    private val pausedUntilMs: () -> Long = { 0L },
 ) {
     private var shown = BridgeFault.NONE
     private var statusShown = StatusView(BridgeFault.NONE, false) // matches the initial buildStatus(context)
 
-    fun onHealthTick(fault: BridgeFault) {
-        updateStatus(fault)
+    fun onHealthTick(rawFault: BridgeFault) {
+        // During the scheduled daytime pause the watch is expected to be silent (DEC-072): no fault is shown, whatever
+        // the cause (and an OSD that is unreachable while paused has nothing to report: no data is expected).
+        val pausedUntil = runCatching { pausedUntilMs() }.getOrDefault(0L)
+        val fault = if (pausedUntil > 0L) BridgeFault.NONE else rawFault
+        updateStatus(fault, pausedUntil)
         when (faultAction(fault, shown)) {
             FaultAction.POST -> {
                 notifySafely(context, FAULT_NOTIFICATION_ID, faultNotification(context, faultTextRes(fault)))
@@ -84,8 +95,8 @@ internal class BridgeNotifications(
         }
     }
 
-    private fun updateStatus(fault: BridgeFault) {
-        val view = statusView(fault, hasValidData())
+    private fun updateStatus(fault: BridgeFault, pausedUntil: Long) {
+        val view = statusView(fault, hasValidData(), pausedUntil)
         if (view == statusShown) return
         val since = if (fault == BridgeFault.NO_WATCH_DATA) runCatching { outageSinceMs() }.getOrNull() else null
         notifySafely(context, STATUS_NOTIFICATION_ID, buildStatus(context, view, since))
@@ -209,6 +220,10 @@ internal class BridgeNotifications(
             return SimpleDateFormat(if (sameDay) "HH:mm" else "d MMM HH:mm", locale).format(Date(sinceMs))
         }
 
+        /** Local "HH:mm" of [epochMs]: the scheduled resume time shown during the daytime pause (DEC-072). */
+        fun formatClock(epochMs: Long): String =
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(epochMs))
+
         /** Default view = neutral "waiting for watch data": the initial post must not claim data flows. */
         fun buildStatus(
             context: Context,
@@ -224,6 +239,10 @@ internal class BridgeNotifications(
             val title: String
             val text: String
             when {
+                view.pausedUntilMs > 0L -> {
+                    title = context.getString(R.string.bridge_status_paused_title)
+                    text = context.getString(R.string.bridge_status_paused_text, formatClock(view.pausedUntilMs))
+                }
                 view.fault == BridgeFault.NONE -> {
                     title = context.getString(R.string.bridge_status_title)
                     text = context.getString(if (view.receiving) R.string.bridge_status_text else R.string.bridge_status_waiting_text)

@@ -218,8 +218,9 @@ class WearDataLayerManagerTest {
     }
 
     @Test
-    fun `the additive paths did not change the transport contract version`() {
-        // Old peers ignore unknown paths, so DEC-070 needs no bump (a bump would raise a false version notice).
+    fun `the scheduled-pause path matches the phone bridge and is additive (DEC-072)`() {
+        assertEquals("/osd/monitoring_paused", WearDataLayerManager.PATH_MONITORING_PAUSED)
+        // Old peers ignore unknown paths, so the contract version stays 1 (same reasoning as DEC-070).
         assertEquals(1, WearDataLayerManager.TRANSPORT_CONTRACT_VERSION)
     }
 

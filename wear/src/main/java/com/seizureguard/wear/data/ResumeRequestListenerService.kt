@@ -7,6 +7,8 @@ import com.google.android.gms.wearable.WearableListenerService
 import com.seizureguard.wear.R
 import com.seizureguard.wear.boot.defaultMonitoringStarter
 import com.seizureguard.wear.boot.resumeMonitoringIfWanted
+import com.seizureguard.wear.schedule.MonitoringPausedMessage
+import com.seizureguard.wear.schedule.MonitoringSchedule
 
 /**
  * Entry point for the phone's `/osd/resume_monitoring` request (DEC-070). The phone sends it when the bridge has had
@@ -22,6 +24,9 @@ import com.seizureguard.wear.boot.resumeMonitoringIfWanted
 class ResumeRequestListenerService : WearableListenerService() {
 
     internal var starter: (Context) -> Unit = defaultMonitoringStarter
+    internal var pausedNotifier: (Context, Long) -> Unit = MonitoringPausedMessage::send
+    internal var clock: () -> java.time.Instant = { java.time.Instant.now() }
+    internal var zone: () -> java.time.ZoneId = { java.time.ZoneId.systemDefault() }
 
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != WearDataLayerManager.PATH_RESUME_MONITORING) {
@@ -30,10 +35,17 @@ class ResumeRequestListenerService : WearableListenerService() {
         }
         Log.i(TAG, "Phone asked to resume monitoring")
         try {
-            resumeMonitoringIfWanted(
+            val started = resumeMonitoringIfWanted(
                 this, "phone resume request", starter,
                 noticeTextRes = R.string.notification_restart_needed_text_phone_request,
+                clock = clock, zone = zone,
             )
+            val now = clock()
+            if (!started && !MonitoringSchedule.isInNightWindow(now, zone())) {
+                // Daytime and not monitoring on purpose: re-announce the scheduled pause so the phone stops
+                // escalating (covers a pause message lost at boot) (DEC-072).
+                pausedNotifier(this, MonitoringSchedule.nextStart(now, zone()).toEpochMilli())
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Resume request failed unexpectedly", e)
         }

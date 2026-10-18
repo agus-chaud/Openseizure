@@ -43,6 +43,16 @@
     -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+        DEC-072: alarmas exactas diarias (inicio 22:00, parada 10:00). USE_EXACT_ALARM (API 33+) se otorga
+        automáticamente y el usuario no puede revocarla; esta app es de uso personal (sideload), no se publica en
+        Play, donde la política restringe ese permiso a apps de alarma/calendario. SCHEDULE_EXACT_ALARM cubre
+        API 31-32 (el Galaxy Watch 8 es API 34; minSdk 30 no necesita ninguno). Si faltara, el horario se degrada a
+        alarmas inexactas con un aviso silencioso (MonitoringScheduler).
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+
     <!-- Necesario para comunicación con la Companion App -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -98,6 +108,28 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            DEC-072: alarmas de inicio (22:00) y parada (10:00). exported="false": solo los PendingIntent propios
+            llegan acá, así otra app no puede parar el monitoreo mandando la acción de parada.
+        -->
+        <receiver
+            android:name=".schedule.ScheduleAlarmReceiver"
+            android:exported="false" />
+
+        <!--
+            DEC-072: re-arma las alarmas tras un cambio de hora, de zona horaria o del permiso de alarmas
+            exactas. Son broadcasts del sistema; solo re-arma, así que un emisor externo no logra nada.
+        -->
+        <receiver
+            android:name=".schedule.ScheduleRearmReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
 

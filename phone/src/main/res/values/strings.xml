@@ -5,6 +5,9 @@
     <string name="bridge_status_title">SeizureGuard bridge running</string>
     <string name="bridge_status_text">Receiving watch data</string>
     <string name="bridge_status_waiting_text">Waiting for watch data</string>
+    <!-- DEC-072: scheduled daytime pause (the watch monitors 22:00-10:00). Silent, expected. -->
+    <string name="bridge_status_paused_title">SeizureGuard: paused for the day</string>
+    <string name="bridge_status_paused_text">Monitoring resumes automatically at %1$s.</string>
     <string name="bridge_status_not_monitoring_title">SeizureGuard: NOT monitoring</string>
     <string name="bridge_status_no_data_since">No data from the watch since %1$s.</string>
     <string name="bridge_status_no_data_since_start">No data from the watch since the bridge started.</string>

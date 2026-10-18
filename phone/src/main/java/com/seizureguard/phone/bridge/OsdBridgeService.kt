@@ -110,6 +110,7 @@ class OsdBridgeService : Service() {
             this,
             hasValidData = { state.hasReceivedValidData() },
             outageSinceMs = { NoDataTracking.of(this).snapshot().outageStartMs },
+            pausedUntilMs = { escalation.activePauseUntilMs() },
         )
         val (faultLog, liveness) = BridgeHistory.of(this)
         val versionRecorder = VersionMismatchRecorder(faultLog, notice = VersionNoticeNotifier(this))
@@ -120,7 +121,8 @@ class OsdBridgeService : Service() {
             override fun onWatchSettings(settings: WatchSettings) { versionRecorder.onWatchSettings(settings) }
             override fun onHealthTick(fault: BridgeFault) {
                 notifications.onHealthTick(fault)
-                faultLog.onFault(fault)
+                // A scheduled daytime pause is expected, not an outage: keep it out of the fault history (DEC-072).
+                faultLog.onFault(if (escalation.activePauseUntilMs() > 0L) BridgeFault.NONE else fault)
                 liveness.touch()
             }
         }
@@ -238,6 +240,16 @@ class OsdBridgeService : Service() {
             }
             PATH_MONITORING_STOPPED -> {
                 runCatching { escalation.onStoppedByUser() }.onFailure { Log.e(TAG, "Could not record the user stop", it) }
+            }
+            PATH_MONITORING_PAUSED -> {
+                // Scheduled daytime pause (DEC-072). A malformed payload is dropped: the escalation stays as it is.
+                val until = WatchMessageParser.parsePausedUntil(event.data)
+                if (until == null) {
+                    state.onMalformed()
+                    Log.w(TAG, "Dropped malformed monitoring_paused message (total=${state.malformedCount()})")
+                    return
+                }
+                runCatching { escalation.onScheduledPause(until) }.onFailure { Log.e(TAG, "Could not record the pause", it) }
             }
             PATH_SETTINGS -> {
                 val s = WatchMessageParser.parseSettings(event.data)
@@ -367,6 +379,9 @@ class OsdBridgeService : Service() {
 
         /** Watch -> phone: the user stopped monitoring on purpose (must equal the watch's `PATH_MONITORING_STOPPED`). */
         const val PATH_MONITORING_STOPPED = "/osd/monitoring_stopped"
+
+        /** Watch -> phone: the scheduled daytime pause began; payload = next start, epoch ms (DEC-072). Must equal the watch's `PATH_MONITORING_PAUSED`. */
+        const val PATH_MONITORING_PAUSED = "/osd/monitoring_paused"
 
         /** Phone -> watch: restart monitoring if the user had it on (must equal the watch's `PATH_RESUME_MONITORING`). */
         const val PATH_RESUME_MONITORING = "/osd/resume_monitoring"

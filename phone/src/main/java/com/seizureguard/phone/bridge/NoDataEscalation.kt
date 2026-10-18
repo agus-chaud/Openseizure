@@ -24,6 +24,13 @@ const val NO_DATA_MAX_RETRIES = 3
  */
 const val NO_DATA_ALERT_AFTER_MS = 8L * 60 * 60 * 1000
 
+/**
+ * Longest scheduled daytime pause the phone accepts from `/osd/monitoring_paused` (DEC-072). The real pause is 12 h
+ * (10:00 to 22:00, 13 h across a DST change); a payload further out than this is treated as corrupt and ignored, so a
+ * bad message can never silence the escalation for days. A safety guard, not a clinical threshold.
+ */
+const val MAX_SCHEDULED_PAUSE_MS = 16L * 60 * 60 * 1000
+
 /** Record-keeping only (not clinical): how often the last-valid-data stamp is written to disk. */
 const val NO_DATA_WRITE_INTERVAL_MS = 60_000L
 
@@ -39,6 +46,9 @@ enum class NoDataAction { NONE, RETRY, ALERT }
  *    never closer than [NO_DATA_RETRY_INTERVAL_MS] to the previous one ([lastRetryAtMs]), so a late wake-up cannot
  *    burn the whole budget in three ticks. A retry may still run after the alert was posted.
  *  - A clock that went backwards ([nowMs] before [outageStartMs]) counts as zero elapsed time.
+ *  - [pausedUntilMs] (DEC-072): the watch announced the scheduled daytime pause. Before that instant -> NONE. After
+ *    it, the outage clock starts at the pause end (never earlier than [outageStartMs]), so a watch that does not
+ *    resume at 22:00 gets its retries at +3 h and the alert at +8 h counted from 22:00, with the signed constants.
  */
 fun noDataAction(
     nowMs: Long,
@@ -47,9 +57,12 @@ fun noDataAction(
     alertPosted: Boolean,
     stoppedByUser: Boolean,
     lastRetryAtMs: Long? = null,
+    pausedUntilMs: Long = 0L,
 ): NoDataAction {
     if (stoppedByUser) return NoDataAction.NONE
-    val elapsed = (nowMs - outageStartMs).coerceAtLeast(0L)
+    if (pausedUntilMs > 0L && nowMs < pausedUntilMs) return NoDataAction.NONE
+    val baseline = if (pausedUntilMs > 0L) maxOf(outageStartMs, pausedUntilMs) else outageStartMs
+    val elapsed = (nowMs - baseline).coerceAtLeast(0L)
     if (!alertPosted && elapsed >= NO_DATA_ALERT_AFTER_MS) return NoDataAction.ALERT
     if (retriesDone < NO_DATA_MAX_RETRIES && elapsed >= NO_DATA_RETRY_AFTER_MS + retriesDone * NO_DATA_RETRY_INTERVAL_MS) {
         val sinceLast = lastRetryAtMs?.let { nowMs - it }
@@ -64,12 +77,15 @@ fun noDataAction(
 enum class NodeCheck { CONNECTED, NOT_CONNECTED, UNKNOWN }
 
 data class OutageState(
+    /** Start of the outage clock: the last valid data, or the end of a scheduled pause if that is later. */
     val outageStartMs: Long,
     val retriesDone: Int,
     val lastRetryAtMs: Long?,
     val alertPosted: Boolean,
     val stoppedByUser: Boolean,
     val lastNodeCheck: NodeCheck,
+    /** End of the announced scheduled pause (epoch ms), 0 when none. Informational: [outageStartMs] already uses it. */
+    val pausedUntilMs: Long = 0L,
 )
 
 /**
@@ -91,6 +107,7 @@ class NoDataTracker(
     private var alertPosted = false
     private var stoppedByUser = false
     private var lastNodeCheck = NodeCheck.UNKNOWN
+    private var pausedUntilMs = 0L
     private var lastWriteMono = Long.MIN_VALUE
 
     /** Service start: with no persisted stamp the baseline is "now"; an existing one is kept (the outage goes on). */
@@ -107,6 +124,7 @@ class NoDataTracker(
     @Synchronized
     fun onUserStart() {
         load()
+        pausedUntilMs = 0L
         lastValidMs = wallClockMs()
         clearEscalation()
         persistAll()
@@ -120,7 +138,7 @@ class NoDataTracker(
     fun onValidData(): Boolean {
         load()
         lastValidMs = wallClockMs()
-        val escalated = retriesDone > 0 || lastRetryAtMs != null || alertPosted || stoppedByUser
+        val escalated = retriesDone > 0 || lastRetryAtMs != null || alertPosted || stoppedByUser || pausedUntilMs > 0L
         if (escalated) {
             clearEscalation()
             persistAll()
@@ -143,10 +161,33 @@ class NoDataTracker(
         persistAll()
     }
 
+    /**
+     * The watch announced the scheduled daytime pause (DEC-072), ending at [untilMs]. Ignored (returns false) unless
+     * [untilMs] is in the future and within [MAX_SCHEDULED_PAUSE_MS]. Counters reset and any posted alert is void: the
+     * outage clock restarts at [untilMs]. Valid data ends the pause early (the watch was started by hand).
+     */
+    @Synchronized
+    fun onScheduledPause(untilMs: Long): Boolean {
+        load()
+        val now = wallClockMs()
+        if (untilMs <= now || untilMs - now > MAX_SCHEDULED_PAUSE_MS) return false
+        clearEscalation()
+        pausedUntilMs = untilMs
+        persistAll()
+        return true
+    }
+
+    /** End of the pause when one is in force right now, else 0. */
+    @Synchronized
+    fun activePauseUntilMs(): Long {
+        load()
+        return if (pausedUntilMs > wallClockMs()) pausedUntilMs else 0L
+    }
+
     @Synchronized
     fun decide(): NoDataAction {
         load()
-        return noDataAction(wallClockMs(), lastValidMs, retriesDone, alertPosted, stoppedByUser, lastRetryAtMs)
+        return noDataAction(wallClockMs(), lastValidMs, retriesDone, alertPosted, stoppedByUser, lastRetryAtMs, pausedUntilMs)
     }
 
     @Synchronized
@@ -175,7 +216,10 @@ class NoDataTracker(
     @Synchronized
     fun snapshot(): OutageState {
         load()
-        return OutageState(lastValidMs, retriesDone, lastRetryAtMs, alertPosted, stoppedByUser, lastNodeCheck)
+        return OutageState(
+            if (pausedUntilMs > 0L) maxOf(lastValidMs, pausedUntilMs) else lastValidMs, retriesDone, lastRetryAtMs, alertPosted, stoppedByUser, lastNodeCheck,
+            pausedUntilMs,
+        )
     }
 
     private fun clearEscalation() {
@@ -184,6 +228,7 @@ class NoDataTracker(
         alertPosted = false
         stoppedByUser = false
         lastNodeCheck = NodeCheck.UNKNOWN
+        pausedUntilMs = 0L
     }
 
     private fun load() {
@@ -195,6 +240,7 @@ class NoDataTracker(
         alertPosted = store.get(KEY_ALERT) == "1"
         stoppedByUser = store.get(KEY_STOPPED) == "1"
         lastNodeCheck = NodeCheck.values().firstOrNull { it.name == store.get(KEY_NODE_CHECK) } ?: NodeCheck.UNKNOWN
+        pausedUntilMs = (store.get(KEY_PAUSED_UNTIL)?.toLongOrNull() ?: 0L).coerceAtLeast(0L)
     }
 
     private fun persistAll() {
@@ -204,6 +250,7 @@ class NoDataTracker(
         store.put(KEY_ALERT, if (alertPosted) "1" else "0")
         store.put(KEY_STOPPED, if (stoppedByUser) "1" else "0")
         store.put(KEY_NODE_CHECK, lastNodeCheck.name)
+        store.put(KEY_PAUSED_UNTIL, pausedUntilMs.toString())
         lastWriteMono = monotonicMs()
     }
 
@@ -214,6 +261,7 @@ class NoDataTracker(
         const val KEY_ALERT = "nd_alert_posted"
         const val KEY_STOPPED = "nd_stopped_by_user"
         const val KEY_NODE_CHECK = "nd_node_check"
+        const val KEY_PAUSED_UNTIL = "nd_paused_until_ms"
     }
 }
 
@@ -287,6 +335,22 @@ class NoDataEscalator(
         alert.cancel()
         Log.i(TAG, "Watch reported a deliberate stop: no retries or alert until data returns")
     }
+
+    /**
+     * `/osd/monitoring_paused` (DEC-072): the watch stopped on schedule and will start again at [untilMs]. Silent: the
+     * pause is expected, nothing is retried or alerted until then, and a posted alert is taken down.
+     */
+    fun onScheduledPause(untilMs: Long) {
+        if (tracker.onScheduledPause(untilMs)) {
+            alert.cancel()
+            Log.i(TAG, "Watch announced the scheduled pause until $untilMs: no retries or alert until then")
+        } else {
+            Log.w(TAG, "Ignored a scheduled-pause message with an unusable end time ($untilMs)")
+        }
+    }
+
+    /** End of the scheduled pause in force now (epoch ms), or 0: drives the paused status text. */
+    fun activePauseUntilMs(): Long = runCatching { tracker.activePauseUntilMs() }.getOrDefault(0L)
 
     fun onTick() {
         when (tracker.decide()) {

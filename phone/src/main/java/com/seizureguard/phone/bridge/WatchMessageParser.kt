@@ -45,6 +45,17 @@ object WatchMessageParser {
         WatchSettings(battery, freq, version)
     }
 
+    /**
+     * `/osd/monitoring_paused` payload (DEC-072): the next scheduled start as epoch ms, plain decimal UTF-8
+     * (no JSON). Returns null for anything that is not a positive whole number of at most 15 digits. Never throws.
+     */
+    fun parsePausedUntil(bytes: ByteArray?): Long? {
+        if (bytes == null || bytes.isEmpty() || bytes.size > 15) return null
+        val text = String(bytes, Charsets.UTF_8)
+        if (!text.all { it in '0'..'9' }) return null
+        return text.toLongOrNull()?.takeIf { it > 0L }
+    }
+
     private fun wholeNumber(v: Any?): Int? {
         val d = (v as? Number)?.toDouble() ?: return null
         return if (!d.isNaN() && !d.isInfinite() && d == Math.floor(d) && Math.abs(d) < Int.MAX_VALUE) d.toInt() else null

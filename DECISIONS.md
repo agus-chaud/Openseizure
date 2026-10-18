@@ -2403,7 +2403,7 @@ algo que nadie estaba observando, justo la notificación que el cuidador ve prim
   de 14:41 a 16:08, `alarmState=2`) serían falsas alarmas y, con el SMS al cuidador configurado, falsos SMS.
 - El reloj se quedó sin batería dos veces (2026-10-08 y ~2026-10-11/16, `lpm_auto_reboot`). Monitorear 24 h
   lo agota.
-- Datos: la hora de despertar promedia las 9:42 en días sin parto (Candu-health Q3). La ventana termina a
+- Datos: la hora de despertar promedia las 9:42 en días sin entrega (Candu-health Q3). La ventana termina a
   las **10:00** (elección del usuario), no a las 9:00.
 
 **Qué se decidió:**

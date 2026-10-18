@@ -133,6 +133,8 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
   cero** o en modo **No molestar** que tapa la alarma.
 - **Batería baja en el teléfono de la persona:** OpenSeizureDetector pasa a "falla" y, con una
   falla activa, **una convulsión puede NO generar alarma**. Por eso el teléfono duerme **cargando**.
+- **De 10:00 a 22:00** el reloj está en pausa a propósito: **no hay protección de día**, salvo que toques
+  "Iniciar monitoreo" (por ejemplo, para una siesta). Ver la sección "Protección solo de 22:00 a 10:00".
 - El **reloj** está **fuera de la muñeca**, sin batería, o **sin conexión** con el teléfono. Si pasan
   **8 horas** sin datos, el teléfono avisa con una vibración (ver más abajo); antes de eso no avisa.
 - El modo **MUTE** (silencio) de OpenSeizureDetector está activo: **tapa las alarmas y cancela el
@@ -145,9 +147,9 @@ Estas situaciones dejan al sistema sin funcionar, **y no avisan**:
   phone restarted and the bridge could not start by itself. Tap here, then tap Start bridge."
   **Hasta que toques "Start bridge", el sistema NO protege y no suena nada.** Revisá esa
   notificación siempre que el teléfono se haya reiniciado.
-- **El reloj se reinició** (por ejemplo, se quedó sin batería y lo volviste a cargar). Si el
-  monitoreo estaba encendido, **se vuelve a encender solo** cuando el reloj termina de arrancar, sin
-  que toques nada. Si el reloj tiene **bloqueo de pantalla**, se reanuda **recién cuando lo
+- **El reloj se reinició** (por ejemplo, se quedó sin batería y lo volviste a cargar). Si es
+  entre las **22:00 y las 10:00**, **se vuelve a encender solo** cuando el reloj termina de arrancar, sin
+  que toques nada (de día no: queda en pausa hasta las 22:00). Si el reloj tiene **bloqueo de pantalla**, se reanuda **recién cuando lo
   desbloqueás**: hasta entonces no protege. Si lo habías detenido con el botón **"Detener
   monitoreo"**, sigue detenido después del reinicio. Si el reloj no logra reanudarlo, deja una
   notificación silenciosa **"⚠ El monitoreo NO se reinició"**: tocala y tocá "Iniciar monitoreo".
@@ -175,6 +177,7 @@ unos 10 segundos de cualquier cambio. **Mirala cada noche antes de dormir.**
 |---|---|---|
 | SeizureGuard bridge running | Receiving watch data | Está llegando información del reloj. Es el único estado en que el sistema protege. |
 | SeizureGuard bridge running | Waiting for watch data | Recién arrancó y todavía no llegó nada del reloj. Si no cambia a "Receiving" en un minuto, tratá el estado como el de abajo. |
+| SeizureGuard: paused for the day | Monitoring resumes automatically at 22:00. | Es la pausa diaria programada del reloj (de 10:00 a 22:00). Es lo esperado: **de día no hay protección**. No es una falla. |
 | **SeizureGuard: NOT monitoring** | No data from the watch since 02:15. | Desde esa hora no llega nada del reloj. Si el último dato no es de hoy, también muestra la fecha (por ejemplo "since 8 Oct 04:22"). |
 | **SeizureGuard: NOT monitoring** | (otro texto en inglés) | Hay otra falla, por ejemplo OpenSeizureDetector no recibe los datos. El texto dice qué revisar. |
 
@@ -222,6 +225,38 @@ avisar a las 8 horas y no más tarde.
 **Límite importante:** este aviso aparece **en el teléfono que corre "SeizureGuard Companion"** (el de
 la persona). **No llega a un teléfono aparte del cuidador**: si vos usás otro teléfono, no te enterás
 por esta vía. Mirá el teléfono de la persona a la mañana, junto con el resumen de la noche.
+
+---
+
+## Protección solo de 22:00 a 10:00: de día NO hay protección
+
+El reloj **empieza a monitorear solo a las 22:00 y se detiene solo a las 10:00**. No tenés que tocar nada.
+Esto se hizo para evitar falsas alarmas de día y para que la batería del reloj dure.
+
+- **De 10:00 a 22:00 el sistema NO protege.** Si la persona se acuesta a hacer una **siesta**, abrí la app del
+  reloj y tocá **"Iniciar monitoreo"**. Queda prendido hasta las 10:00 de la mañana siguiente (o hasta que lo
+  detengas con "Detener monitoreo").
+- **Si detenés el monitoreo de noche** con "Detener monitoreo", queda detenido hasta las 22:00 del día
+  siguiente; ahí vuelve a arrancar solo.
+- **En el reloj** se lee una línea: "Monitoreo automático de 22:00 a 10:00", o **"En pausa hasta las 22:00"**
+  cuando está en pausa.
+- **En OpenSeizureDetector** vas a ver **"FALLA" durante todo el día. Es lo esperado**, no hace falta hacer nada.
+- **En el teléfono de la persona**, de día, la notificación fija dice **"SeizureGuard: paused for the day"** y,
+  abajo, **"Monitoring resumes automatically at 22:00."** No suena ni vibra. **No** es la falla "NOT monitoring".
+- **A las 22:00 mirá el reloj** (o la notificación del teléfono) y comprobá que dice **"Monitoreo activo"** y
+  que el teléfono vuelve a "Receiving watch data". Es la nueva forma de hacer la revisión de antes de dormir.
+
+**Si a las 22:00 el reloj NO arranca solo** (por ejemplo, está apagado o el sistema lo rechazó), el teléfono
+sigue el aviso de siempre, contado desde las 22:00: a las **01:00** reintenta pedirle al reloj que arranque y a
+las **06:00** vibra con "SeizureGuard: no watch data for 8 hours". Hasta la 01:00 la noche puede estar **sin
+protección y sin aviso**. Por eso conviene revisar a las 22:00.
+
+**Instalá siempre el reloj y el teléfono con la misma versión.** Si el reloj tiene esta versión y el teléfono
+una anterior, el teléfono creerá que cada día hay un corte y vibrará todos los días a las 18:00 por error.
+
+**Mensaje del reloj "Horario automático impreciso":** es una notificación silenciosa. Dice que el reloj no pudo
+usar el permiso de alarmas exactas y que el inicio de las 22:00 puede llegar tarde. Revisá a las 22:00 que
+esté "Monitoreo activo"; si no, tocá "Iniciar monitoreo".
 
 ---
 

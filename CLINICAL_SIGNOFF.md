@@ -104,6 +104,24 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 
 ---
 
+### Horario de monitoreo automático (DEC-072)
+
+El reloj monitorea solo de **22:00 a 10:00** (hora local) y se pausa de día. Estas dos horas definen **cuándo
+el sistema protege y cuándo no**. Adelantar el inicio o atrasar la parada protege más horas pero gasta más
+batería y vuelve a producir falsas alarmas diurnas (y, con el SMS configurado, falsos SMS al cuidador). Atrasar
+el inicio o adelantar la parada deja horas de sueño sin protección. **De 10:00 a 22:00 no hay protección**,
+salvo que alguien inicie el monitoreo a mano; una convulsión diurna o durante una siesta no se detecta.
+
+| Constante | Valor | Dónde | Qué controla / tradeoff | Estado |
+|---|---|---|---|---|
+| `MONITOR_START` | **22:00** | reloj | Hora local en que el monitoreo arranca solo cada noche. Antes = más horas protegidas pero más batería; después = el comienzo del sueño queda sin protección. | ✅ FIRMADA 2026-10-18 |
+| `MONITOR_STOP` | **10:00** | reloj | Hora local en que el monitoreo se detiene solo cada mañana. La hora de despertar promedia las 9:42 (Candu-health Q3), por eso no las 9:00. Antes = menos batería pero se pierde el final del sueño; después = más falsas alarmas diurnas. | ✅ FIRMADA 2026-10-18 |
+
+**No requiere firma** (guarda de seguridad, no umbral clínico): `MAX_SCHEDULED_PAUSE_MS` 16 h, el máximo que el
+teléfono acepta para el fin de una pausa programada (la real es de 12 h; 13 h con cambio de horario).
+
+---
+
 ## Firmadas
 
 | Constante | Valor firmado | Firmado por | Fecha | Justificación |
@@ -128,3 +146,5 @@ y 3 s, período de consulta 5 s y pausa de 250 ms, `ACCEL_CHUNK_SAMPLES` 125 (lo
 | `NO_DATA_RETRY_INTERVAL_MS` | 1 h (reintentos a las 3 h, 4 h y 5 h) | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. |
 | `NO_DATA_MAX_RETRIES` | 3 | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. Los reintentos no ayudan si el reloj está apagado, sin batería o fuera de alcance; sin probar en hardware (DV-11). |
 | `NO_DATA_ALERT_AFTER_MS` | 8 h | agus-chaud (usuario del proyecto) | 2026-10-11 | Decisión del usuario. Celular, DEC-070. Excepción parcial a DEC-057: solo esta alerta vibra, sin sonido. Tradeoff: bajarlo avisa antes pero da más falsos "sin datos" (por ejemplo, reloj cargando fuera de la muñeca con el monitoreo encendido); subirlo deja más horas sin protección sin avisar. Se descartó 10 h. |
+| `MONITOR_START` | 22:00 (hora local del reloj) | agus-chaud (usuario del proyecto) | 2026-10-18 | Decisión del usuario: la persona nunca tiene convulsiones de día; las alarmas diurnas serían falsas alarmas y falsos SMS, y monitorear 24 h agota la batería del reloj (se apagó dos veces). Reloj, DEC-072. Tradeoff: de 10:00 a 22:00 **no hay protección** (siesta o convulsión diurna sin detectar) salvo inicio manual. Sin probar en hardware (DV-12). |
+| `MONITOR_STOP` | 10:00 (hora local del reloj) | agus-chaud (usuario del proyecto) | 2026-10-18 | Decisión del usuario. La hora de despertar promedia las 9:42 en días sin parto (Candu-health Q3), así que se eligió las 10:00 y no las 9:00. Reloj, DEC-072. Tradeoff: parar antes ahorra batería pero deja sin protección el final del sueño; parar después da más falsas alarmas diurnas. Sin probar en hardware (DV-12). |

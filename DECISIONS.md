@@ -2394,6 +2394,130 @@ algo que nadie estaba observando, justo la notificación que el cuidador ve prim
 
 ---
 
+## DEC-072: El reloj monitorea automáticamente de 22:00 a 10:00 y se pausa de día
+
+**Fase:** funcionalidad pedida por el usuario (continúa DEC-069, DEC-070 y DEC-071) | **Fecha:** 2026-10-18
+
+**Por qué (del usuario, 2026-10-18):**
+- La persona **nunca tiene convulsiones de día**. Las alarmas diurnas de OSD (por ejemplo, el 2026-10-11
+  de 14:41 a 16:08, `alarmState=2`) serían falsas alarmas y, con el SMS al cuidador configurado, falsos SMS.
+- El reloj se quedó sin batería dos veces (2026-10-08 y ~2026-10-11/16, `lpm_auto_reboot`). Monitorear 24 h
+  lo agota.
+- Datos: la hora de despertar promedia las 9:42 en días sin parto (Candu-health Q3). La ventana termina a
+  las **10:00** (elección del usuario), no a las 9:00.
+
+**Qué se decidió:**
+- Dos constantes nuevas, firmadas en `CLINICAL_SIGNOFF.md` el 2026-10-18: `MONITOR_START` = **22:00** y
+  `MONITOR_STOP` = **10:00**, hora local del reloj. La ventana cruza la medianoche
+  (`MonitoringSchedule`, puro y con tests, incluidos 21:59 / 22:00 / 09:59 / 10:00 y cambios de horario de verano).
+- **Alarmas exactas diarias** (`MonitoringScheduler`): una a las 22:00 (inicio) y otra a las 10:00 (parada),
+  con `setExactAndAllowWhileIdle`. Se vuelven a armar al arrancar el reloj, al actualizar la app, al cambiar la
+  hora o la zona horaria, al cambiar el permiso de alarmas exactas, al abrir la app y **cada vez que suena una
+  alarma**. Re-armar es idempotente (mismo `PendingIntent`).
+- **22:00:** inicia el monitoreo por el camino de DEC-069 (con `try/catch` que degrada a la notificación
+  silenciosa "⚠ El monitoreo NO se reinició"), **aunque** el usuario lo haya detenido a mano la noche anterior.
+  Antes de iniciar guarda `was_monitoring = true`: si el arranque falla, el pedido de reanudar del teléfono
+  (DEC-070, a las 01:00) y los reinicios "sticky" siguen funcionando.
+- **10:00:** detiene el monitoreo como **pausa programada**: manda el mensaje nuevo
+  **`/osd/monitoring_paused`** con payload = epoch ms del próximo inicio (decimal, UTF-8). **No** manda
+  `/osd/monitoring_stopped` (parada deliberada, DEC-070). Si el service no corría, igual avisa al teléfono.
+  No deja marca de "detenido a mano": a las 22:00 el monitoreo arranca otra vez.
+- **Reinicio o actualización de la app (`BootReceiver`):** arranca el monitoreo **solo dentro de la ventana
+  22:00 a 10:00**, y no importa lo que diga `was_monitoring`, **salvo** que el usuario lo haya detenido a mano
+  durante esta noche. Fuera de la ventana no arranca (solo arma las alarmas). Cambia DEC-069: antes un reinicio
+  a las 14:00 con el monitoreo encendido lo reanudaba.
+- **Manual:** el botón "Iniciar monitoreo" funciona de día y corre hasta las 10:00 siguientes (la alarma de las
+  10:00 lo detiene) o hasta que se lo detenga a mano. Una **parada manual** (de día o de noche) se mantiene
+  hasta las 22:00 siguientes (`manual_stop_until_ms`); cualquier inicio la borra, y la alarma de las 22:00 también.
+- **Pantalla del reloj:** una línea corta: "Monitoreo automático de 22:00 a 10:00", o "En pausa hasta las 22:00"
+  si está apagado fuera de la ventana o detenido a mano.
+- **Teléfono:** `/osd/monitoring_paused` activa un estado de **pausa programada** en el reloj de corte
+  (`NoDataTracker`, persistente). Mientras dura: `noDataAction` devuelve NONE (sin reintentos ni alerta de
+  8 h), la notificación fija dice **"SeizureGuard: paused for the day" / "Monitoring resumes automatically at
+  22:00."** (silenciosa, canal bajo, hora local derivada del payload) y no se muestra ninguna falla. Al llegar
+  la hora de reanudar sin datos, el reloj de corte **empieza en esa hora**: reintento a las +3 h (01:00) y
+  alerta a las +8 h (06:00) con las constantes firmadas de DEC-070 **sin cambios**. Cualquier dato válido
+  borra la pausa (por ejemplo, un inicio manual de día). La pausa sobrevive al reinicio del proceso.
+  `onStoppedByUser` (parada deliberada) sigue siendo un camino aparte y gana sobre la pausa.
+- **Fallas durante la pausa:** no se muestra "NOT monitoring" con una causa, ni la notificación de falla, ni se
+  registran en el historial: de día no se espera dato. Si OSD mismo no responde durante la pausa, no hay nada
+  que informar. Al terminar la pausa vuelve el comportamiento normal.
+- **Defensa contra payload corrupto:** el teléfono ignora una hora de reanudar que ya pasó o que está a más de
+  16 h (`MAX_SCHEDULED_PAUSE_MS`, una guarda de seguridad, no una constante clínica; la pausa real es de 12 h,
+  13 h con cambio de horario). Un mensaje malformado se descarta y cuenta como malformado: queda el
+  comportamiento de siempre.
+- **Relojes viejos** nunca mandan el mensaje: el teléfono se comporta como hasta ahora (fail-safe).
+- **`TRANSPORT_CONTRACT_VERSION` no se sube (sigue en 1):** el path es aditivo y un teléfono viejo lo ignora,
+  igual que en DEC-070. Costo conocido: un reloj nuevo con un teléfono viejo haría reintentar y alertar
+  ("no data for 8 hours") **todos los días a las 18:00** (10:00 + 8 h). Subir la versión lo mostraría como
+  "update needed", pero obligaría a tocar unos 15 tests y mostraría el aviso también con un reloj viejo, que es
+  compatible. Se prefirió no subirla; **instalar siempre reloj y teléfono de la misma versión** (la guía lo dice).
+- Un test fija los literales de path de ambos lados (`/osd/monitoring_paused`).
+
+**Evidencia en la documentación oficial (consultada 2026-10-18):**
+- Alarmas exactas, [developer.android.com/develop/background-work/services/alarms](https://developer.android.com/develop/background-work/services/alarms) y
+  [.../alarms/schedule](https://developer.android.com/develop/background-work/services/alarms/schedule):
+  desde Android 12 hace falta `SCHEDULE_EXACT_ALARM` o `USE_EXACT_ALARM`. `USE_EXACT_ALARM` se concede
+  automáticamente, el usuario no puede revocarlo y está sujeto a la política de Google Play para "casos de uso
+  limitados" (alarmas, calendarios). `SCHEDULE_EXACT_ALARM` **no viene concedido** en instalaciones nuevas de apps
+  con target 33 o más, el usuario y el sistema pueden revocarlo, y al revocarlo se cancelan las alarmas exactas;
+  hay que consultar `canScheduleExactAlarms()` y reprogramar al recibir
+  `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED`. Las alarmas se cancelan al apagar el equipo: hay que
+  rearmarlas en `BOOT_COMPLETED`. La página no dice qué pasa con una alarma exacta al cambiar la hora o la zona.
+- **Elección: `USE_EXACT_ALARM`** (API 33+) más `SCHEDULE_EXACT_ALARM` con `maxSdkVersion="32"` (el Watch 8 es
+  API 34; `minSdk` 30 no necesita ninguno). Motivo: se concede solo y no se puede revocar, así que no depende de
+  que alguien acepte un permiso especial en un reloj. La restricción de Play no aplica: la app es personal
+  (sideload), no se publica. **Si alguna vez se publica en Play, hay que revisar esta elección.** Si el permiso
+  faltara, `MonitoringScheduler` cae a `setAndAllowWhileIdle` (inexacta) y deja un aviso silencioso en el reloj
+  (DEC-057): "Horario automático impreciso".
+- Arrancar un foreground service desde el fondo,
+  [.../services/fgs/restrictions-bg-start](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start):
+  la lista de excepciones incluye "your app invokes an exact alarm to complete an action that the user requests"
+  y la página de alarmas dice que las alarmas exactas "aren't affected by foreground service launch
+  restrictions". También son excepción `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` y `ACTION_TIME_CHANGED` /
+  `ACTION_TIMEZONE_CHANGED`. **Límites de la evidencia:** la excepción de la alarma exacta está redactada para
+  una acción "que el usuario pide" (acá el usuario pidió la programación al instalar y firmar, pero la página no
+  lo aclara) y **la página no dice nada del tipo `health`**. Por eso **DV-12 verifica en el reloj real** que el
+  service `health` arranca desde la alarma de las 22:00. Esa página menciona que un service `health` con
+  `BODY_SENSORS` no se puede crear desde el fondo; el manifiesto ya cumple el requisito con
+  `HIGH_SAMPLING_RATE_SENSORS` (validado en hardware, ver el manifiesto).
+- Restricciones de `BOOT_COMPLETED`,
+  [.../about/versions/15/behavior-changes-15](https://developer.android.com/about/versions/15/behavior-changes-15):
+  los tipos que un receptor de boot no puede lanzar son `dataSync`, `camera`, `mediaPlayback`, `phoneCall`,
+  `mediaProjection` y `microphone`. `health` no figura (coherente con DV-10, aún sin probar en hardware).
+- `setAlarmClock` vs `setExactAndAllowWhileIdle`: la documentación describe `setAlarmClock` como la alarma más
+  crítica (el sistema sale de los modos de bajo consumo para entregarla y nunca ajusta la hora), con una
+  advertencia sobre su efecto en la batería. **Se eligió `setExactAndAllowWhileIdle`** (entrega "casi exacta"
+  incluso con ahorro de batería) porque `setAlarmClock` se muestra como "próxima alarma" del usuario en el reloj
+  y puede mezclarse con su despertador real. Riesgo: en Doze profundo la entrega puede atrasarse unos minutos
+  (DV-12 lo mide). Si DV-12 muestra atrasos que importan, el cambio es de una línea en `MonitoringScheduler`.
+
+**Alternativas descartadas:**
+- **Filtrar en el teléfono** (ignorar los datos de día): el reloj seguiría gastando batería y OSD seguiría
+  alarmando; solo ocultaría el síntoma.
+- **Filtrar del lado de OSD:** otra app, fuera de este repo, y las falsas alarmas ocurren dentro de OSD.
+- **Terminar a las 9:00:** el despertar promedia las 9:42; terminar antes deja sin protección el final del sueño.
+- **Ventana de 24 h con menos sensibilidad de día:** no baja el gasto de batería.
+
+**Riesgos y consecuencias:**
+- **De 10:00 a 22:00 NO hay protección.** Una convulsión diurna o durante una siesta no se detecta, salvo que
+  alguien toque "Iniciar monitoreo" antes (corre hasta las 10:00 siguientes). Es la decisión del usuario; la guía
+  del cuidador lo dice sin rodeos.
+- **OSD muestra FALLA todo el día**, en silencio. Es esperado (DEC-057).
+- **Si a las 22:00 el reloj no arranca** (permiso, arranque desde el fondo rechazado, reloj apagado), el sistema
+  escala como en cualquier corte: reintento a la 01:00 y alerta con vibración a las 06:00. Hasta la 01:00 la noche
+  está sin proteger; no se agrega ningún aviso nuevo.
+- **Permiso de alarmas exactas:** con `USE_EXACT_ALARM` no debería faltar; no está probado en este reloj.
+- Si el mensaje de pausa se pierde, el teléfono reintenta a las 13:00 y alerta a las 18:00 por un "corte" que no
+  lo es; el reintento puede hacer que el reloj arranque de día si `was_monitoring` quedó en `true`.
+- Si la alarma de las 10:00 no llega, el reloj sigue monitoreando de día (batería), no al revés.
+- Un reinicio del reloj de día con una sesión manual en curso **no** la reanuda (cambio respecto de DEC-069).
+- Pendiente: revisión de seguridad R19 y la sección 20 de `docs/SAFETY_FINDINGS_WATCH_OSD.md`; todo esto está
+  **sin probar en hardware real** (DV-12).
+- No cubre (aparte): reinicio del puente del teléfono tras actualizar la app; el orden de causas de falla.
+
+---
+
 ## Decisiones pendientes (a tomar en fases futuras)
 
 | ID | Decisión | Fase | Estado |

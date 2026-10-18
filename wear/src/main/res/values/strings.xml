@@ -22,6 +22,14 @@
     <!-- DEC-070: el teléfono pidió reanudar (sin datos del reloj por horas) y el sistema rechazó el arranque. Silenciosa. -->
     <string name="notification_restart_needed_text_phone_request">El monitoreo estaba detenido y no pudo reanudarse solo. Abrí SeizureGuard e iniciá el monitoreo.</string>
 
+    <!-- DEC-072: el horario automático puede atrasarse (falta el permiso de alarmas exactas). Silenciosa. -->
+    <string name="notification_schedule_inexact_title">Horario automático impreciso</string>
+    <string name="notification_schedule_inexact_text">El monitoreo automático de 22:00 a 10:00 puede iniciarse tarde. Si a las 22:00 no está activo, abrí SeizureGuard e iniciá el monitoreo.</string>
+
+    <!-- DEC-072: línea del horario en la pantalla principal -->
+    <string name="label_schedule_auto">Monitoreo automático de %1$s a %2$s</string>
+    <string name="label_schedule_paused">En pausa hasta las %1$s</string>
+
     <!-- Fase 1.1 — Botones de la UI principal -->
     <string name="btn_start_monitoring">Iniciar monitoreo</string>
     <string name="btn_stop_monitoring">Detener monitoreo</string>

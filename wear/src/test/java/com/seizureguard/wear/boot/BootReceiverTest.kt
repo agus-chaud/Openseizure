@@ -1,13 +1,19 @@
 package com.seizureguard.wear.boot
 
+import android.app.AlarmManager
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.seizureguard.wear.MainActivity
+import com.seizureguard.wear.schedule.MonitoringScheduler
 import com.seizureguard.wear.service.MonitorPrefs
 import com.seizureguard.wear.service.SeizureMonitorService
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -24,10 +30,21 @@ import org.robolectric.annotation.Config
 class BootReceiverTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val alarms = app.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val boot = Intent(Intent.ACTION_BOOT_COMPLETED)
     private val replaced = Intent(Intent.ACTION_MY_PACKAGE_REPLACED)
+    private val zone = ZoneId.of("America/Argentina/Buenos_Aires")
 
-    private fun receiver(starter: (Context) -> Unit) = BootReceiver().also { it.starter = starter }
+    private fun at(h: Int, mi: Int = 0, day: Int = 18): Instant =
+        ZonedDateTime.of(LocalDateTime.of(2026, 10, day, h, mi), zone).toInstant()
+
+    private var now = at(23) // inside the night window unless a test says otherwise
+
+    private fun receiver(starter: (Context) -> Unit) = BootReceiver().also {
+        it.starter = starter
+        it.clock = { now }
+        it.zone = { zone }
+    }
     private fun failureNotification() =
         shadowOf(nm).getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID)
 
@@ -36,37 +53,83 @@ class BootReceiverTest {
         assertFalse(shouldResume(false))
     }
 
-    @Test fun flagUnset_doesNothing() {
-        var started = 0
-        receiver { started++ }.onReceive(app, boot)
-        assertEquals(0, started)
-        assertNull(failureNotification())
+    @Test fun shouldStartAtBoot_needsTheWindow_andNoPendingManualStop() {
+        assertTrue(shouldStartAtBoot(true, 0L, 1_000L))
+        assertFalse(shouldStartAtBoot(false, 0L, 1_000L))
+        assertFalse("manual stop still in force", shouldStartAtBoot(true, 2_000L, 1_000L))
+        assertTrue("manual stop expired", shouldStartAtBoot(true, 1_000L, 1_000L))
     }
 
-    @Test fun flagSet_bootCompleted_startsMonitoring() {
-        MonitorPrefs.setWasMonitoring(app, true)
+    // ── Inside the night window ───────────────────────────────────────────────
+
+    @Test fun insideWindow_bootCompleted_startsMonitoring_evenWithoutTheFlag() {
         var started = 0
         receiver { started++ }.onReceive(app, boot)
         assertEquals(1, started)
+        assertTrue("records the intent to monitor", MonitorPrefs.wasMonitoring(app))
         assertNull(failureNotification())
     }
 
-    @Test fun flagSet_packageReplaced_startsMonitoring() {
-        MonitorPrefs.setWasMonitoring(app, true)
+    @Test fun insideWindow_packageReplaced_startsMonitoring() {
         var started = 0
         receiver { started++ }.onReceive(app, replaced)
         assertEquals(1, started)
     }
 
-    @Test fun flagUnset_packageReplaced_doesNothing() {
+    @Test fun afterMidnightInsideWindow_startsMonitoring() {
+        now = at(3, 30, day = 19)
         var started = 0
-        receiver { started++ }.onReceive(app, replaced)
+        receiver { started++ }.onReceive(app, boot)
+        assertEquals(1, started)
+    }
+
+    @Test fun at0959_starts_at1000_doesNot() {
+        var started = 0
+        now = at(9, 59, day = 19)
+        receiver { started++ }.onReceive(app, boot)
+        assertEquals(1, started)
+        now = at(10, 0, day = 19)
+        receiver { started++ }.onReceive(app, boot)
+        assertEquals("10:00 is outside the window", 1, started)
+    }
+
+    @Test fun insideWindow_manualStopDuringThisNight_holdsAcrossReboot() {
+        MonitorPrefs.setManualStopUntilMs(app, at(22, day = 19).toEpochMilli())
+        var started = 0
+        receiver { started++ }.onReceive(app, boot)
         assertEquals(0, started)
     }
 
-    @Test fun flagSet_realStarter_launchesServiceWithActionStart() {
+    @Test fun insideWindow_aManualStopFromLastNight_noLongerHolds() {
+        MonitorPrefs.setManualStopUntilMs(app, at(22, day = 18).toEpochMilli() - 1)
+        var started = 0
+        receiver { started++ }.onReceive(app, boot)
+        assertEquals(1, started)
+    }
+
+    // ── Outside the night window ──────────────────────────────────────────────
+
+    @Test fun outsideWindow_doesNotStart_evenWithTheFlag_butArmsTheAlarms() {
+        now = at(14)
         MonitorPrefs.setWasMonitoring(app, true)
-        BootReceiver().onReceive(app, boot)
+        var started = 0
+        receiver { started++ }.onReceive(app, boot)
+        assertEquals(0, started)
+        assertNull(failureNotification())
+        assertEquals(2, shadowOf(alarms).scheduledAlarms.size)
+        val actions = shadowOf(alarms).scheduledAlarms.map { shadowOf(it.operation).savedIntent.action }.toSet()
+        assertEquals(setOf(MonitoringScheduler.ACTION_MONITOR_START, MonitoringScheduler.ACTION_MONITOR_STOP), actions)
+    }
+
+    @Test fun insideWindow_alsoArmsTheAlarms() {
+        receiver { }.onReceive(app, replaced)
+        assertEquals(2, shadowOf(alarms).scheduledAlarms.size)
+    }
+
+    // ── Plumbing kept from DEC-069 ────────────────────────────────────────────
+
+    @Test fun insideWindow_realStarter_launchesServiceWithActionStart() {
+        BootReceiver().also { it.clock = { now }; it.zone = { zone } }.onReceive(app, boot)
         val started = shadowOf(app).nextStartedService
         assertNotNull(started)
         assertEquals(SeizureMonitorService.ACTION_START, started.action)
@@ -74,11 +137,11 @@ class BootReceiverTest {
     }
 
     @Test fun otherAction_isIgnored() {
-        MonitorPrefs.setWasMonitoring(app, true)
         var started = 0
         receiver { started++ }.onReceive(app, Intent(Intent.ACTION_USER_PRESENT))
         assertEquals(0, started)
         assertNull(shadowOf(app).nextStartedService)
+        assertTrue(shadowOf(alarms).scheduledAlarms.isEmpty())
     }
 
     @Test fun sameFlagAsService_noMigration() {
@@ -89,7 +152,6 @@ class BootReceiverTest {
     }
 
     @Test fun startFailure_degradesToSilentNotification() {
-        MonitorPrefs.setWasMonitoring(app, true)
         receiver { throw SecurityException("boot FGS not allowed") }.onReceive(app, boot)
         val notification = failureNotification()
         assertNotNull(notification)
@@ -104,7 +166,6 @@ class BootReceiverTest {
     }
 
     @Test fun startFailure_doesNotCrashTheReceiver() {
-        MonitorPrefs.setWasMonitoring(app, true)
         receiver { throw IllegalStateException("anything") }.onReceive(app, replaced)
         assertNotNull(failureNotification())
     }

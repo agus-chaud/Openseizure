@@ -26,7 +26,13 @@ import com.seizureguard.wear.alarm.DisplayStatus
 import com.seizureguard.wear.alarm.DisplayStatusColors
 import com.seizureguard.wear.alarm.DisplayStatusMapper
 import com.seizureguard.wear.alarm.TestBuildBanner
+import com.seizureguard.wear.schedule.MonitoringSchedule
+import com.seizureguard.wear.schedule.MonitoringScheduler
+import com.seizureguard.wear.schedule.ScheduleLabel
+import com.seizureguard.wear.service.MonitorPrefs
 import com.seizureguard.wear.service.SeizureMonitorService
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * Fase 1.1 — UI principal del monitoreo nocturno.
@@ -51,8 +57,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // DEC-072: (re-)arm the daily alarms whenever the app is opened. Required on a fresh install, where no boot or
+        // update broadcast has run yet (BOOT_COMPLETED only reaches an app the user has launched once).
+        runCatching { MonitoringScheduler(this).armAll() }
         setContent {
             SeizureGuardWearApp(
+                manualStopUntilMs = MonitorPrefs.manualStopUntilMs(this),
                 onStartMonitoring = {
                     startService(SeizureMonitorService.startIntent(this))
                 },
@@ -78,7 +88,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun SeizureGuardWearApp(
     onStartMonitoring: () -> Unit,
-    onStopMonitoring: () -> Unit
+    onStopMonitoring: () -> Unit,
+    manualStopUntilMs: Long = 0L,
 ) {
     val isMonitoring by SeizureMonitorService.monitoring.collectAsState()
     val alarmState by SeizureMonitorService.alarmState.collectAsState()
@@ -118,6 +129,16 @@ fun SeizureGuardWearApp(
                                           stringResource(R.string.label_monitoring_off)
     }
 
+    val scheduleText = when (ScheduleLabel.of(isMonitoring, Instant.now(), ZoneId.systemDefault(), manualStopUntilMs)) {
+        ScheduleLabel.PAUSED -> stringResource(
+            R.string.label_schedule_paused, MonitoringSchedule.MONITOR_START.toString()
+        )
+        ScheduleLabel.SCHEDULE -> stringResource(
+            R.string.label_schedule_auto,
+            MonitoringSchedule.MONITOR_START.toString(), MonitoringSchedule.MONITOR_STOP.toString()
+        )
+    }
+
     MaterialTheme {
         Column(
             modifier = Modifier
@@ -139,6 +160,13 @@ fun SeizureGuardWearApp(
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.body1,
                 color = statusColor
+            )
+            // DEC-072: one short line with the schedule, or "paused until 22:00" outside the window.
+            Text(
+                text = scheduleText,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.caption1,
+                color = Color.White
             )
             if (display.degradedHint) {
                 Text(

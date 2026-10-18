@@ -18,12 +18,20 @@ import com.seizureguard.wear.R
 object RestartNeededNotifier {
     private const val TAG = "RestartNeededNotifier"
 
-    /** @param textRes wording of the notice; the default says the watch rebooted, so other paths pass their own. */
-    fun post(context: Context, textRes: Int = R.string.notification_restart_needed_text) {
+    /**
+     * @param textRes wording of the notice; the default says the watch rebooted, so other paths pass their own.
+     * @param titleRes @param notificationId let other silent notices (the DEC-072 schedule notice) reuse this shape.
+     */
+    fun post(
+        context: Context,
+        textRes: Int = R.string.notification_restart_needed_text,
+        titleRes: Int = R.string.notification_restart_needed_title,
+        notificationId: Int = SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID,
+    ) {
         try {
             SeizureMonitorService.ensureNotificationChannel(context)
             val notification = NotificationCompat.Builder(context, SeizureMonitorService.CHANNEL_ID)
-                .setContentTitle(context.getString(R.string.notification_restart_needed_title))
+                .setContentTitle(context.getString(titleRes))
                 .setContentText(context.getString(textRes))
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -39,7 +47,7 @@ object RestartNeededNotifier {
                 )
                 .build()
             context.getSystemService(NotificationManager::class.java)
-                .notify(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID, notification)
+                .notify(notificationId, notification)
         } catch (e: Exception) {
             // Last resort: this runs at boot and must never take the process down.
             Log.e(TAG, "Could not post the restart-needed notification", e)

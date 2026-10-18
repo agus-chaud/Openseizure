@@ -145,6 +145,17 @@ class WearDataLayerManager(
     suspend fun sendMonitoringStopped(): Boolean = sendToAllNodes(PATH_MONITORING_STOPPED, ByteArray(0))
 
     /**
+     * Avisa al teléfono que la pausa diurna programada empezó (DEC-072): el payload es el epoch ms (decimal, UTF-8)
+     * del próximo inicio automático. El teléfono no reintenta ni alerta hasta esa hora. Distinto de
+     * [sendMonitoringStopped] (parada deliberada). Mejor esfuerzo: si se pierde, el teléfono se comporta como
+     * antes (reintenta a las 3 h, alerta a las 8 h): el fallo va hacia el lado seguro.
+     *
+     * @return true si algún nodo lo aceptó; nunca lanza.
+     */
+    suspend fun sendMonitoringPaused(nextStartMs: Long): Boolean =
+        sendToAllNodes(PATH_MONITORING_PAUSED, nextStartMs.toString().toByteArray(Charsets.UTF_8))
+
+    /**
      * Registra un listener para el pedido de settings de OSD (/osd/send_settings con payload "start").
      * Cuando OSD arranca la fuente Android Wear, manda "start"; el reloj debe responder con /osd/settings.
      *
@@ -258,6 +269,8 @@ class WearDataLayerManager(
         const val PATH_SEND_SETTINGS = "/osd/send_settings"  // OSD → reloj: pide settings ("start")
         /** Reloj → teléfono: el usuario detuvo el monitoreo a propósito (DEC-070). Sin payload. */
         const val PATH_MONITORING_STOPPED = "/osd/monitoring_stopped"
+        /** Reloj → teléfono: pausa diurna programada (DEC-072). Payload: epoch ms del próximo inicio, decimal UTF-8. */
+        const val PATH_MONITORING_PAUSED = "/osd/monitoring_paused"
         /** Teléfono → reloj: reanudar el monitoreo si el usuario lo tenía encendido (DEC-070). Sin payload. */
         const val PATH_RESUME_MONITORING = "/osd/resume_monitoring"
         /**

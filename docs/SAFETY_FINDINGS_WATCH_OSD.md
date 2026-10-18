@@ -463,3 +463,24 @@ notificación sigue en el canal LOW, sin sonido ni vibración, y se actualiza so
 protegida). No toca constantes de lógica de detección. `CAREGIVER_GUIDE.md` está actualizado (tabla de
 estados de la notificación fija y "NOT monitoring" = sin protección). Riesgo residual: R18-F4 hasta la
 prueba en hardware.
+
+## 20. Monitoreo solo de noche, de 22:00 a 10:00 (2026-10-18)
+
+**Qué cambió:** por decisión del usuario (la paciente no tiene crisis de día, para evitar falsas
+alarmas y SMS diurnos y para ahorrar batería), el reloj monitorea solo de 22:00 a 10:00 (DEC-072,
+constantes `MONITOR_START`/`MONITOR_STOP` firmadas el 2026-10-18). `safety-reviewer` R19 revisó el diff real.
+
+| ID | Severidad | Hallazgo | Estado |
+|---|---|---|---|
+| R19-F1 | CRÍTICO | De 10:00 a 22:00 no hay protección. Una crisis diurna o durante una siesta no se detecta salvo que alguien toque "Iniciar monitoreo". | Aceptado por el usuario (DEC-072); documentado en `CAREGIVER_GUIDE.md` |
+| R19-F2 | ALTO | Si la alarma de las 22:00 no se dispara (Doze, permiso de alarma exacta), la noche arranca sin protección. | Mitigado: el teléfono cuenta el corte desde las 22:00 (reintento 01:00, alerta con vibración 06:00) |
+| R19-F3 | ALTO | En ese caso, el pedido de reanudar del teléfono se ignoraba porque `was_monitoring` quedaba en falso desde las 10:00: los reintentos no servían. | **ARREGLADO** en esta revisión: dentro de la ventana nocturna y sin parada manual pendiente, el pedido arranca el monitoreo |
+| R19-F4 | ALTO | No está verificado en el reloj real que el arranque desde una alarma exacta se permita para un service `health` ni que `USE_EXACT_ALARM` quede otorgado. | **ABIERTO**: verificar con DV-12 |
+| R19-F5 | MEDIO | Teléfono viejo + reloj nuevo: el teléfono no entiende la pausa y alertaría todos los días a las 18:00 (10:00 + 8 h). `TRANSPORT_CONTRACT_VERSION` no se subió. | Aceptado: se instalan ambos juntos; documentado en DEC-072 |
+| R19-F6 | MEDIO | OSD muestra "FALLA" todo el día porque no recibe datos. Es silencioso, pero puede acostumbrar a ignorar "FALLA". | Aceptado; la guía explica que de día es esperable |
+| R19-F7 | BAJO | Un reinicio de día ya no reanuda una sesión manual diurna (cambia DEC-069 fuera de la ventana). | Aceptado: coherente con "de día no se monitorea" |
+| R19-F8 | INFO | El receptor de las alarmas no es exportado: otra app no puede detener el monitoreo. El de re-armado solo re-arma. | Sin acción |
+
+No cambia ninguna constante firmada existente (las de DEC-070 siguen: 3 h / 1 h / 3 / 8 h). La pausa es silenciosa (DEC-057).
+
+**Veredicto R19: PASS.** Clasificación: `alarm-path` (define cuándo hay protección). Las únicas constantes nuevas que deciden cuándo hay detección (`MONITOR_START` 22:00, `MONITOR_STOP` 10:00) están firmadas por el usuario en `CLINICAL_SIGNOFF.md`. `CAREGIVER_GUIDE.md` está actualizado (horario, sin protección de día, siesta manual, FALLA diurna esperable). Riesgo residual: R19-F1 (aceptado) y R19-F4 hasta correr DV-12.

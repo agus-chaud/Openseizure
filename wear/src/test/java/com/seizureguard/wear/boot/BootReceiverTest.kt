@@ -121,6 +121,21 @@ class BootReceiverTest {
         assertEquals(setOf(MonitoringScheduler.ACTION_MONITOR_START, MonitoringScheduler.ACTION_MONITOR_STOP), actions)
     }
 
+    @Test fun outsideWindow_announcesTheScheduledPause_andClearsTheFlag() {
+        now = at(14)
+        MonitorPrefs.setWasMonitoring(app, true)
+        var pausedUntil = -1L
+        receiver { }.also { it.pausedNotifier = { _, until -> pausedUntil = until } }.onReceive(app, replaced)
+        assertEquals(at(22).toEpochMilli(), pausedUntil)
+        assertFalse(MonitorPrefs.wasMonitoring(app))
+    }
+
+    @Test fun insideWindow_doesNotAnnounceAPause() {
+        var announced = false
+        receiver { }.also { it.pausedNotifier = { _, _ -> announced = true } }.onReceive(app, boot)
+        assertFalse(announced)
+    }
+
     @Test fun insideWindow_alsoArmsTheAlarms() {
         receiver { }.onReceive(app, replaced)
         assertEquals(2, shadowOf(alarms).scheduledAlarms.size)

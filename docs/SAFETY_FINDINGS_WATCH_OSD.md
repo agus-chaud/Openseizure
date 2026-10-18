@@ -479,6 +479,7 @@ constantes `MONITOR_START`/`MONITOR_STOP` firmadas el 2026-10-18). `safety-revie
 | R19-F5 | MEDIO | Teléfono viejo + reloj nuevo: el teléfono no entiende la pausa y alertaría todos los días a las 18:00 (10:00 + 8 h). `TRANSPORT_CONTRACT_VERSION` no se subió. | Aceptado: se instalan ambos juntos; documentado en DEC-072 |
 | R19-F6 | MEDIO | OSD muestra "FALLA" todo el día porque no recibe datos. Es silencioso, pero puede acostumbrar a ignorar "FALLA". | Aceptado; la guía explica que de día es esperable |
 | R19-F7 | BAJO | Un reinicio de día ya no reanuda una sesión manual diurna (cambia DEC-069 fuera de la ventana). | Aceptado: coherente con "de día no se monitorea" |
+| R19-F9 | ALTO | Un reinicio o una actualización del reloj de día no avisaba la pausa: el teléfono lo contaba como corte, su reintento a las 3 h podía arrancar el monitoreo de día y a las 8 h vibraba en falso. | **ARREGLADO** en esta revisión: de día el reloj apaga `was_monitoring` y manda `/osd/monitoring_paused`; si un pedido de reanudar llega de día y se ignora, vuelve a mandar la pausa |
 | R19-F8 | INFO | El receptor de las alarmas no es exportado: otra app no puede detener el monitoreo. El de re-armado solo re-arma. | Sin acción |
 
 No cambia ninguna constante firmada existente (las de DEC-070 siguen: 3 h / 1 h / 3 / 8 h). La pausa es silenciosa (DEC-057).

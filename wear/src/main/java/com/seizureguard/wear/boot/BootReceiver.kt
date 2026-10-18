@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.seizureguard.wear.schedule.MonitoringPausedMessage
 import com.seizureguard.wear.schedule.MonitoringSchedule
 import com.seizureguard.wear.schedule.MonitoringScheduler
 import com.seizureguard.wear.service.MonitorPrefs
@@ -32,6 +33,7 @@ fun shouldStartAtBoot(inNightWindow: Boolean, manualStopUntilMs: Long, nowMs: Lo
 class BootReceiver : BroadcastReceiver() {
 
     internal var starter: (Context) -> Unit = defaultMonitoringStarter
+    internal var pausedNotifier: (Context, Long) -> Unit = MonitoringPausedMessage::send
     internal var clock: () -> Instant = { Instant.now() }
     internal var zone: () -> ZoneId = { ZoneId.systemDefault() }
 
@@ -45,6 +47,13 @@ class BootReceiver : BroadcastReceiver() {
         val manualStopUntil = MonitorPrefs.manualStopUntilMs(context)
         if (!shouldStartAtBoot(inWindow, manualStopUntil, now.toEpochMilli())) {
             Log.i(TAG, "Not starting ($action): inNightWindow=$inWindow, manualStopUntil=$manualStopUntil")
+            if (!inWindow) {
+                // A daytime boot or update is the scheduled pause: say so, or the phone counts it as an outage
+                // and its retry would start monitoring in the daytime (DEC-072).
+                MonitorPrefs.setWasMonitoring(context, false)
+                runCatching { pausedNotifier(context, MonitoringSchedule.nextStart(now, zone()).toEpochMilli()) }
+                    .onFailure { Log.e(TAG, "Could not tell the phone about the pause", it) }
+            }
             return
         }
         MonitorPrefs.setWasMonitoring(context, true) // the intent to monitor, for sticky restarts and the phone request

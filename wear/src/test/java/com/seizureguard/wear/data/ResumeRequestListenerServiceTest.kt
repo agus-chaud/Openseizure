@@ -84,6 +84,22 @@ class ResumeRequestListenerServiceTest {
         assertFalse(MonitorPrefs.wasMonitoring(app))
     }
 
+    @Test fun daytime_ignoredRequest_reannouncesTheScheduledPause() {
+        MonitorPrefs.setWasMonitoring(app, false)
+        var pausedUntil = -1L
+        service { }.also { it.pausedNotifier = { _, until -> pausedUntil = until } }
+            .onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(at(22).toEpochMilli(), pausedUntil)
+    }
+
+    @Test fun nightWindow_startedRequest_doesNotAnnounceAPause() {
+        now = at(1, day = 19)
+        var announced = false
+        service { }.also { it.pausedNotifier = { _, _ -> announced = true } }
+            .onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertTrue(!announced)
+    }
+
     @Test fun daytime_flagFalse_isIgnored() {
         now = at(14)
         MonitorPrefs.setWasMonitoring(app, false)

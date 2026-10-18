@@ -35,8 +35,16 @@ class ResumeRequestListenerServiceTest {
         override fun getSourceNodeId() = "phone"
     }
 
+    private val zone = java.time.ZoneId.of("America/Argentina/Buenos_Aires")
+    private fun at(h: Int, day: Int = 18) = java.time.ZonedDateTime.of(java.time.LocalDateTime.of(2026, 10, day, h, 0), zone).toInstant()
+    private var now = at(14) // daytime unless a test says otherwise
+
     private fun service(starter: (Context) -> Unit) =
-        Robolectric.buildService(ResumeRequestListenerService::class.java).create().get().also { it.starter = starter }
+        Robolectric.buildService(ResumeRequestListenerService::class.java).create().get().also {
+            it.starter = starter
+            it.clock = { now }
+            it.zone = { zone }
+        }
 
     private fun notice() = shadowOf(nm).getNotification(SeizureMonitorService.RESTART_NEEDED_NOTIFICATION_ID)
 
@@ -54,6 +62,52 @@ class ResumeRequestListenerServiceTest {
         service { started++ }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
         assertEquals("a deliberate stop must stay stopped", 0, started)
         assertNull(notice())
+    }
+
+    @Test fun nightWindow_flagFalse_noManualStop_startsAMissedNight_andRecordsTheIntent() {
+        now = at(1, day = 19)
+        MonitorPrefs.setWasMonitoring(app, false)
+        var started = 0
+        service { started++ }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(1, started)
+        assertTrue(MonitorPrefs.wasMonitoring(app))
+        assertNull(notice())
+    }
+
+    @Test fun nightWindow_manualStopPending_isIgnored() {
+        now = at(1, day = 19)
+        MonitorPrefs.setWasMonitoring(app, false)
+        MonitorPrefs.setManualStopUntilMs(app, at(22, day = 19).toEpochMilli())
+        var started = 0
+        service { started++ }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(0, started)
+        assertFalse(MonitorPrefs.wasMonitoring(app))
+    }
+
+    @Test fun daytime_flagFalse_isIgnored() {
+        now = at(14)
+        MonitorPrefs.setWasMonitoring(app, false)
+        var started = 0
+        service { started++ }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(0, started)
+        assertFalse(MonitorPrefs.wasMonitoring(app))
+    }
+
+    @Test fun daytime_manualSessionFlagTrue_startsAsBefore() {
+        now = at(14)
+        MonitorPrefs.setWasMonitoring(app, true)
+        var started = 0
+        service { started++ }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(1, started)
+    }
+
+    @Test fun nightWindow_missedNight_refusedStart_postsThePhoneRequestNotice() {
+        now = at(1, day = 19)
+        service { throw IllegalStateException("not allowed") }.onMessageReceived(event(WearDataLayerManager.PATH_RESUME_MONITORING))
+        assertEquals(
+            app.getString(com.seizureguard.wear.R.string.notification_restart_needed_text_phone_request),
+            notice().extras.getString("android.text"),
+        )
     }
 
     @Test fun flagNeverSet_freshInstall_isIgnored() {

@@ -44,6 +44,7 @@ Out of scope: phone bridge restart after app update (MY_PACKAGE_REPLACED, separa
 - Lint: :phone:lintDebug and :wear:lintDebug (both flavors) passed.
 - T3: DEC-072, CLINICAL_SIGNOFF (MONITOR_START/STOP), CAREGIVER_GUIDE, HARDWARE_RUNBOOK DV-12.
 - Decision: TRANSPORT_CONTRACT_VERSION stays 1 (a bump to 2 was tried and reverted: ~15 existing tests hard-code 1 as MATCH). Cost documented in DEC-072: old phone + new watch = daily 18:00 false alert.
+- Fix (coordinator): phone resume request (DEC-070) now also starts inside the night window with no manual stop pending, and sets was_monitoring=true. +5 tests in ResumeRequestListenerServiceTest.
 - Not done: no hardware test; SAFETY_FINDINGS section 20 and R19 left for T4.
 
 ## Next step

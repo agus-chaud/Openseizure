@@ -22,6 +22,8 @@ import com.seizureguard.wear.boot.resumeMonitoringIfWanted
 class ResumeRequestListenerService : WearableListenerService() {
 
     internal var starter: (Context) -> Unit = defaultMonitoringStarter
+    internal var clock: () -> java.time.Instant = { java.time.Instant.now() }
+    internal var zone: () -> java.time.ZoneId = { java.time.ZoneId.systemDefault() }
 
     override fun onMessageReceived(event: MessageEvent) {
         if (event.path != WearDataLayerManager.PATH_RESUME_MONITORING) {
@@ -33,6 +35,7 @@ class ResumeRequestListenerService : WearableListenerService() {
             resumeMonitoringIfWanted(
                 this, "phone resume request", starter,
                 noticeTextRes = R.string.notification_restart_needed_text_phone_request,
+                clock = clock, zone = zone,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Resume request failed unexpectedly", e)

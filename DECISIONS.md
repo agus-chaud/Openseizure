@@ -2426,6 +2426,12 @@ algo que nadie estaba observando, justo la notificación que el cuidador ve prim
   22:00 a 10:00**, y no importa lo que diga `was_monitoring`, **salvo** que el usuario lo haya detenido a mano
   durante esta noche. Fuera de la ventana no arranca (solo arma las alarmas). Cambia DEC-069: antes un reinicio
   a las 14:00 con el monitoreo encendido lo reanudaba.
+- **Pedido de reanudar del teléfono (DEC-070):** arranca el monitoreo si `was_monitoring` es `true` **o** si
+  el reloj está dentro de la ventana 22:00 a 10:00 y no hay una parada manual pendiente para esta noche (la misma
+  regla que el arranque; `shouldStartAtBoot`). Así el reintento de la 01:00 sirve justo cuando la alarma de las
+  22:00 no llegó (`was_monitoring` quedó en `false` tras la parada de las 10:00). Al arrancar así guarda
+  `was_monitoring = true`. De día con el flag en `false`, o con parada manual pendiente, lo ignora. Si el
+  sistema rechaza el arranque, notificación silenciosa con el texto del pedido del teléfono.
 - **Manual:** el botón "Iniciar monitoreo" funciona de día y corre hasta las 10:00 siguientes (la alarma de las
   10:00 lo detiene) o hasta que se lo detenga a mano. Una **parada manual** (de día o de noche) se mantiene
   hasta las 22:00 siguientes (`manual_stop_until_ms`); cualquier inicio la borra, y la alarma de las 22:00 también.

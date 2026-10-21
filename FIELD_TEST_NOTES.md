@@ -66,17 +66,45 @@ comunican por Wear Data Layer / del lado de OSD.
 
 ---
 
-## 🔜 Próximos pasos (en orden de probabilidad)
+> ## 🧭 ACTUALIZACIÓN (septiembre 2026) — causa raíz confirmada
+>
+> Todo lo de arriba es el **registro histórico** de la sesión de junio 2026 y queda intacto. Lo que
+> cambió: la sospecha principal de esa sesión —"la versión de OSD instalada (V5.0.5) todavía no
+> tenía terminado el soporte de reloj"— **quedó refutada**. Con OSD V5.0.8, V5.0.9 y la beta actual,
+> todas con `SdDataSourceAw` completo, el fallo es **idéntico**.
+>
+> **Causa raíz real (confirmada, ver [DEC-050](DECISIONS.md)):** el Wear Data Layer solo entrega
+> mensajes entre apps que comparten **package name Y certificado de firma** (el "AppKey" de Google).
+> SeizureGuard (`com.seizureguard.wear`, debug key propia) y OSD (`uk.org.openseizuredetector`,
+> release key de Graham) no comparten ninguno de los dos, así que Google Play Services descarta cada
+> mensaje reloj→teléfono **antes** de que OSD lo vea (`Failed to deliver message to AppKey[...]` en
+> el logcat del teléfono, emitido por `com.google.android.gms.persistent`). Es independiente de la
+> versión de OSD. La app de reloj oficial de OSD (WearSD) funciona solo porque usa el mismo
+> `applicationId` y la misma firma que la app de teléfono.
+>
+> **Sobre los "próximos pasos" de abajo:** apuntaban a las **herramientas de diagnóstico**, no a la
+> causa. Conseguir el APK beta de OSD y conseguir el cable USB de datos habrían servido para *ver*
+> el lado OSD, pero **ninguno de los dos arregla la conexión**. Quedan **superados** por DEC-050 y
+> por la exploración SDD `watch-osd-message-delivery`
+> (`openspec/changes/watch-osd-message-delivery/exploration.md`), donde se elige el fix (el usuario
+> se inclina por que SeizureGuard adopte el `applicationId` de OSD + firma compartida, pendiente de
+> consultar con Graham).
 
-1. **Probar el APK BETA de OSD**, no el 5.0.5 release. Graham dijo que el Android Wear data source
-   está en la **rama `beta`** (escondido tras developer mode). Es posible que el release 5.0.5 no
-   tenga el AW source completo/funcional. → Compilar/conseguir el beta de
-   `github.com/OpenSeizureDetector/Android_Pebble_SD` (rama `beta`).
+## 🔜 Próximos pasos (en orden de probabilidad) — SUPERADOS por DEC-050
+
+> Estos pasos son de la sesión de junio 2026 y se conservan como registro. Los tres apuntaban a
+> herramientas de diagnóstico, no a la causa raíz (ver la actualización de arriba). El trabajo real
+> se sigue ahora en la exploración SDD `watch-osd-message-delivery`.
+
+1. ~~**Probar el APK BETA de OSD**, no el 5.0.5 release.~~ Hecho: la beta (y V5.0.8 / V5.0.9) traen
+   `SdDataSourceAw` completo y **fallan igual**. No era la causa.
 2. **Coordinar con Graham** (GitHub discussion #69): pasarle el log del reloj (prueba que envía todo
-   bien) y preguntar cómo el AW source espera conectarse, y si 5.0.5 vs beta importa.
-3. **Conseguir un cable de datos USB** para leer el logcat del teléfono (`SdDataSourceAw:D`) y ver el
-   lado OSD. Los 3 cables probados eran "solo carga" (Windows no detectaba el teléfono). El pareo
-   inalámbrico de adb falla con `protocol fault` (bug de adb 37 en Windows con este Samsung).
+   bien) y preguntar cómo el AW source espera conectarse. Sigue vigente, ahora enfocado en la firma
+   y el `applicationId` compartidos (ver DEC-050).
+3. ~~**Conseguir un cable de datos USB** para leer el logcat del teléfono~~ (`SdDataSourceAw:D`). El
+   logcat del teléfono se consiguió y confirmó la causa (`Failed to deliver ... AppKey`). El cable
+   era para *leer el logcat*, nunca fue el enlace reloj↔teléfono (ese siempre es Bluetooth vía Wear
+   Data Layer; el Galaxy Watch 8 no tiene puerto de datos).
 
 ## Estado de conexión para retomar
 

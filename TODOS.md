@@ -12,8 +12,10 @@ Items identificados durante reviews pero fuera del scope de la fase actual.
 > el último Critical: T3** (el modo secuencial manda datos sintéticos a OSD por defecto en debug).
 > El detalle del plan vive en engram (`audit/wear-2026-06`).
 >
-> **TODO vivo:** el único ítem accionable de este archivo es **TODO-003** (hueco de gobernanza en
-> `CLINICAL_SIGNOFF.md`, agosto 2026). Los TODO-001 y 002 son historia.
+> **TODO vivo:** **TODO-003** (hueco de gobernanza en `CLINICAL_SIGNOFF.md`, agosto 2026) y la
+> sección **DV-1 a DV-9** al final del archivo — las verificaciones en hardware de
+> `watch-osd-message-delivery`, movidas desde `openspec/` el 2026-10-21. Los TODO-001 y 002
+> son historia.
 
 ---
 
@@ -94,3 +96,80 @@ constantes de detección. Los criterios y el razonamiento completo están en
 
 **Depends on:** Nada. Se puede escribir en cualquier momento. Pasa a ser prerequisito si se retoma
 el enfoque companion.
+
+---
+
+## DV-1 a DV-9: verificaciones en hardware pendientes  *(watch-osd-message-delivery)*
+
+**What:** Las verificaciones manuales en dispositivo que faltan para considerar validada la feature
+`watch-osd-message-delivery`. El código está completo y mergeado en `main` (PRs #42-#46, Batch 9);
+lo único abierto son estas pruebas, que necesitan el reloj y el teléfono.
+
+**Why:** Hasta 2026-10 esta lista vivía solo en
+`openspec/changes/watch-osd-message-delivery/tasks.md` y en engram
+(`sdd/watch-osd-message-delivery/batch9-status`, obs #1471). Al retirarse SDD en gentle-ai 4.0.0 no
+quedan herramientas que lean `openspec/`. Se copia acá para que la checklist no dependa de ese
+directorio.
+
+**Context:** PROP-SC y el gate E2E del design dicen que la feature **no se considera validada**
+hasta que DV-1 a DV-9 pasen, en particular DV-6 y DV-8. No bloquean el merge de PRs individuales.
+**DV-3 está hecha** (2026-10-07: `mDataFrequencyCheckEnabled` on by default; cadencia del reloj
+fijada por DEC-068). DV-5 puede esperar, según `docs/SAFETY_FINDINGS_WATCH_OSD.md`.
+
+### Pendientes
+
+- [ ] **GATE-0.1** Correr `docs/EXPERIMENTO_WEARSD_OSD_BETA.md` de punta a punta en hardware real
+      (reloj + teléfono). *Asumido PASS en DEC-052; no se volvió a correr de forma independiente.*
+- [ ] **DV-1** Confirmar el comportamiento de `startForeground(connectedDevice)` cuando
+      `BLUETOOTH_CONNECT` está denegado: debe fallar de forma ruidosa, nunca crashear.
+      (Batch 5, T5.1/T5.2)
+- [ ] **DV-2** Confirmar que `connectedDevice` está en la lista de tipos FGS permitidos en
+      BOOT_COMPLETED para la versión de Android objetivo; si no, verificar el camino de degradación
+      a notificación de T6.3. (Batch 6)
+- [ ] **DV-4** Estado congelado / fuente equivocada: poner OSD en otra fuente de datos y, por
+      separado, cerrar OSD. El reloj debe mostrar DEGRADADO dentro del techo firmado (link 60 s;
+      OSD congelada ~75 s, calculado y no medido), con notificación silenciosa en el teléfono y sin
+      sonido ni vibración. (Batch 5c, hallazgo de seguridad F1)
+- [ ] **DV-5** Medir el costo de batería del teléfono del keep-alive de 10 s atado al reloj durante
+      8 h; relajar a 15 s (`ALARM_STATE_STALE_MS` 25 s) si es material. *Puede esperar.* (Batch 7/8)
+- [ ] **DV-6** Una corrida completa de 8 h de noche (gate E2E del design) antes de confiar en la
+      feature en uso real. **Bloqueante para considerarla validada.**
+- [ ] **DV-7** Inyección de fallas, de a una: (a) matar el listener de mensajes del companion,
+      (b) matar OSD, (c) forzar el cierre del companion, (d) No Molestar, (e) notificaciones
+      denegadas. Cada una debe terminar en falla visible (DEGRADADO en el reloj, notificación
+      silenciosa en el teléfono) **sin sonido ni vibración**; (c) no produce aviso ni resumen.
+      Registrar tiempo hasta la falla visible y si algo sonó. Clave en (a): el retry/self-heal del
+      listener (Batch 5e, PR #28) nunca se probó en hardware.
+      Pasos: `HARDWARE_RUNBOOK.md` sección 4.7. (DEC-057)
+- [ ] **DV-8** Latencia clínica (techo 40 s, `techo_latencia_clinica` en `CLINICAL_SIGNOFF.md`):
+      imitar una convulsión (sacudida fuerte y rítmica, 1-3 por segundo) y medir, desde el inicio de
+      la sacudida, (a) vibración fuerte del reloj, (b) sonido de alarma de OSD en el teléfono del
+      paciente, (c) SMS al cuidador. Mínimo 5 corridas; (a) y (b) deben estar en 40 s o menos en
+      **todas**, si no el valor se revisa y se vuelve a firmar. Sub-medición opcional: la brecha
+      entre la alarma del teléfono y la vibración del reloj contra el techo de relay de 8 s.
+      Pasos: `docs/GUIA_PRUEBAS_RELOJ_REAL.md`. **Bloqueante para considerarla validada.**
+- [ ] **DV-9** Qué ve el cuidador: (a) "MONITOREO DEGRADADO" en el reloj unos 80 s después de
+      arrancar con el puente del teléfono detenido; (b) "SILENCIADO, no avisa convulsiones" con MUTE
+      de OSD activo y sin vibración; (c) "SeizureGuard: update needed" con versiones reloj/teléfono
+      desalineadas (opcional si no hay build desalineado disponible); (d) reinicio del teléfono con
+      el puente (igual que DV-2); (e) el resumen matutino silencioso a las ~8:00.
+      (Batches 5d, 7, 8, DEC-057)
+
+### Follow-ups de review pendientes
+
+Origen: engram obs #1471.
+
+- [ ] **R11-F1** Aviso de "update needed" que queda viejo.
+- [ ] **R9-F2** Batería en -1.
+- [ ] **R8-F5** y **R8-F6**
+
+**Where to start:** `HARDWARE_RUNBOOK.md` y `docs/GUIA_PRUEBAS_RELOJ_REAL.md`.
+
+**Depends on:** Hardware (Galaxy Watch 8 + teléfono Samsung A52).
+
+> **Ojo antes de arrancar las DV.** `FIELD_TEST_NOTES.md` documenta que el pipeline reloj-OSD
+> estaba bloqueado por **DEC-050**: el Wear Data Layer solo entrega mensajes entre apps que
+> comparten `applicationId` **y** certificado de firma, y SeizureGuard (`com.seizureguard.wear`,
+> debug key) y OSD (`uk.org.openseizuredetector`, release key de Graham) no comparten ninguno de
+> los dos. Las DV que dependen de la entrega de mensajes no van a pasar hasta que ese fix esté
+> aplicado. Verificar su estado primero.

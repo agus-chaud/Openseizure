@@ -20,7 +20,7 @@ que le contestan.**
 
 ---
 
-> ## 🛟 Invariante de seguridad #1 — el reloj SIEMPRE manda datos reales
+> ## 🛟 el reloj SIEMPRE manda datos reales
 >
 > Existe un "modo validación" de desarrollo que manda **números sintéticos** (`1,2,3,...`) en vez
 > del acelerómetro real, para probar el transporte. Si el detector recibe datos sintéticos creyendo
@@ -37,7 +37,7 @@ que le contestan.**
 
 ---
 
-> ## 🛟 Invariante de seguridad #2 — si el monitoreo se rompe, el reloj lo MUESTRA (sin vibrar)
+> ## 🛟  si el monitoreo se rompe, el reloj lo MUESTRA (sin vibrar)
 >
 > El peor estado de una app así no es la alarma falsa: es la **falsa sensación de seguridad** (el
 > sistema dice "todo bien" mientras algo está roto). Un **watchdog** — un chequeo automático que
@@ -59,10 +59,7 @@ que le contestan.**
 > solo ante los estados de alarma de OSD (2, 3 y 5) y da un aviso corto ante el estado 1; una falla
 > del sistema en OSD (estados 4, 7 o un valor desconocido) se muestra en pantalla como falla, sin
 > vibrar; y el estado "silenciado" (6) dice *"SILENCIADO, no avisa convulsiones"* en vez de
-> "Monitoreo activo". Los tiempos de aviso (10s / 40s / 40s) son **calculados, no medidos** en el
-> reloj real: la verificación en hardware sigue pendiente. Detalle técnico en `DECISIONS.md` →
-> **DEC-048**, **DEC-057**, **DEC-059** y **DEC-061**.
-
+> "Monitoreo activo". 
 ---
 
 ## Para el lector data scientist: qué es esto y por qué importa
